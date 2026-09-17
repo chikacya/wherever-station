@@ -8,8 +8,11 @@ const root = path.resolve(__dirname, "..");
 const storage = fs.mkdtempSync(path.join(os.tmpdir(), "wherever-backup-test-"));
 try {
   const methods = new Map();
-  const server = { registerRPC(name, handler) { methods.set(name, handler); }, route() {} };
-  const sandbox = { console, Buffer, __storageDir__: storage, __dirname: root, require(name) { return name === "server" ? server : require(name); } };
+  const routes = new Map();
+  const server = { registerRPC(name, handler) { methods.set(name, handler); }, route(method, url, handler) { routes.set(`${method} ${url}`, handler); } };
+  const runtimeBuffer = Object.create(Buffer);
+  runtimeBuffer.byteLength = undefined; // Komari's plugin Buffer does not expose this Node helper.
+  const sandbox = { console, Buffer: runtimeBuffer, __storageDir__: storage, __dirname: root, require(name) { return name === "server" ? server : require(name); } };
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(path.join(root, "script.js"), "utf8"), sandbox, { filename: "script.js" });
   sandbox.load();
@@ -28,6 +31,19 @@ try {
   assert.equal(backup.providerSecrets["panel-1"].token, "private-api-token");
   assert.equal(backup.ruleSetCache["rules-1"].version, "abc");
   assert.equal(backup.state.subscriptions[0].token, "a".repeat(48));
+  const ticket = call("preparePortableBackupDownload");
+  assert.match(ticket.url, /^\/proxy\/backup\/[a-f0-9]{64}$/);
+  const headers = {};
+  let responseBody = "";
+  const response = { statusCode: 200, setHeader(name, value) { headers[name] = value; }, end(body) { responseBody = body; } };
+  const download = routes.get("GET /proxy/backup/:token");
+  download({ url: ticket.url }, response);
+  assert.equal(response.statusCode, 200);
+  assert.match(headers["Content-Disposition"], /^attachment; filename="wherever-station-backup-/);
+  assert.equal(JSON.parse(responseBody).providerSecrets["panel-1"].token, "private-api-token");
+  const replay = { statusCode: 200, setHeader() {}, end() {} };
+  download({ url: ticket.url }, replay);
+  assert.equal(replay.statusCode, 404);
   const preview = call("previewPortableBackup", { backup });
   assert.equal(preview.incoming.nodes, 1);
   assert.equal(preview.boundAgents, 1);

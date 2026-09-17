@@ -34,11 +34,13 @@ async function main() {
     await page.addInitScript(() => { window.showSaveFilePicker = undefined; });
     await page.route('https://api.github.com/repos/NodePassProject/Nowhere/releases?**', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ tag_name: 'v2.0.0', draft: false, prerelease: false }]) }));
     await page.route('https://api.github.com/repos/SagerNet/sing-box/releases?**', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ tag_name: 'v1.13.11', draft: false, prerelease: false }]) }));
+    await page.route('**/proxy/backup/*', route => route.fulfill({ status: 200, headers: { 'content-type': 'application/octet-stream', 'content-disposition': 'attachment; filename="wherever-station-backup-2026-09-17.json"' }, body: JSON.stringify({ format: 'wherever-station-backup', schema: 1, state }) }));
     await page.route('**/api/rpc2', async route => {
       const request = route.request().postDataJSON();
       let result = {};
       if (request.method === 'proxyConsole:getState') result = state;
       else if (request.method === 'proxyConsole:exportPortableBackup') result = { format: 'wherever-station-backup', schema: 1, exportedAt: '2026-09-17T00:00:00Z', state, providerSecrets: {}, ruleSetCache: {} };
+      else if (request.method === 'proxyConsole:preparePortableBackupDownload') result = { url: '/proxy/backup/fixture', filename: 'wherever-station-backup-2026-09-17.json', expiresAt: '2026-09-17T00:01:00Z' };
       else if (request.method === 'proxyConsole:previewPortableBackup') result = { exportedAt: '2026-09-17T00:00:00Z', current: { machines: 2, nodes: state.nodes.length, subscriptions: 0, managedInstances: 0 }, incoming: { machines: 2, nodes: state.nodes.length, subscriptions: 0, managedInstances: 0 }, providerTokens: 0, ruleCaches: 0, boundAgents: 2 };
       else if (request.method === 'common:getNodes') result = clients;
       else if (request.method === 'common:getNodesLatestStatus') result = {};
@@ -60,11 +62,13 @@ async function main() {
     await page.setViewportSize({ width: 375, height: 812 });
     const settingsLayout = await page.locator('html').evaluate(element => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
     if (settingsLayout.scrollWidth > settingsLayout.clientWidth) throw new Error('Settings overflow on mobile');
-    const downloadPromise = page.waitForEvent('download');
     await dialog.getByRole('button', { name: '下载备份' }).click();
+    const backupLink = dialog.getByRole('link', { name: '点击下载备份文件' });
+    await backupLink.waitFor();
+    const downloadPromise = page.waitForEvent('download');
+    await backupLink.click();
     const download = await downloadPromise;
     if (!download.suggestedFilename().startsWith('wherever-station-backup-')) throw new Error('Backup download filename is incorrect');
-    await dialog.getByRole('link', { name: '点击这里保存备份文件' }).waitFor();
     const backupFixture = { format: 'wherever-station-backup', schema: 1, exportedAt: '2026-09-17T00:00:00Z', state, providerSecrets: {}, ruleSetCache: {} };
     await dialog.locator('.backup-file-picker input').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backupFixture)) });
     await dialog.getByText('恢复预览', { exact: false }).waitFor();

@@ -13,7 +13,7 @@
     "allowRoutes": true,
     "allowSystemRPC": true,
     "timeout": 15,
-    "maxHTTPBodyBytes": 1048576
+    "maxHTTPBodyBytes": 8388608
   },
   "pages": [
     {

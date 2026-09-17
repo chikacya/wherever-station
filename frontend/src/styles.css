@@ -532,6 +532,18 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .settings-appearance button { min-height: 48px; padding: 0 14px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out); }
 .settings-appearance button.active { color: var(--text); background: var(--primary-soft); border-color: var(--primary); }
 .settings-appearance button:active { transform: scale(.98); }
+.settings-backup { grid-column: 1 / -1; }
+.settings-backup > p, .backup-preview > p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.settings-backup-actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-backup-actions > .button { min-height: 44px; }
+.backup-file-picker { position: relative; cursor: pointer; }
+.backup-file-picker input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.backup-file-picker:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }
+.backup-file-picker:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+.backup-preview { padding: 12px; display: grid; gap: 10px; background: var(--surface-2); border: 1px solid var(--border-strong); }
+.backup-preview > strong { font-size: 12px; }
+.backup-preview > div { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--text); font: 11px/1.5 var(--mono); }
+.backup-preview .button { justify-self: start; }
 .import-preview { max-height: 280px; margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: auto; }
 .import-meta { grid-template-columns: minmax(180px, 1fr) minmax(150px, .72fr) auto; align-items: end; }
 .import-meta > .button { min-width: 132px; }
@@ -598,8 +610,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .selected-list { position: relative; transition: background var(--fast), box-shadow var(--fast); }
 .selected-list.over { background: color-mix(in srgb, var(--primary-soft) 55%, var(--surface)); box-shadow: inset 0 0 0 2px var(--primary); }
 .selected-stack { display: grid; gap: 5px; }
-.selected-node { min-height: 48px; display: grid; grid-template-columns: 32px minmax(0, 1fr) 34px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; cursor: grab; touch-action: none; transition: border-color var(--fast), box-shadow var(--fast), background var(--fast); }
-.selected-node:active { cursor: grabbing; }
+.selected-node { min-height: 48px; display: grid; grid-template-columns: 44px minmax(0, 1fr) 34px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; touch-action: pan-y; transition: border-color var(--fast), box-shadow var(--fast), background var(--fast); }
 .selected-node:hover { border-color: var(--border-strong); background: var(--surface-2); }
 .selected-node > div { min-width: 0; display: flex; flex-direction: column; }
 .selected-node strong, .selected-node small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -649,10 +660,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .quick-row { margin: 8px 0; display: flex; gap: 5px; flex-wrap: wrap; }
 .quick-row button { min-height: 30px; padding: 3px 8px; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; }
 .palette { max-height: 390px; display: grid; gap: 5px; overflow: auto; }
-.palette-node { min-width: 0; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: stretch; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; cursor: grab; touch-action: none; }
-.palette-node:active { cursor: grabbing; }
+.palette-node { min-width: 0; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: stretch; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; touch-action: pan-y; }
 .palette-node.selected { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); background: var(--primary-soft); }
-.drag-handle { width: 32px; min-height: 36px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: grab; touch-action: none; }
+.drag-handle { width: 44px; min-height: 44px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: grab; touch-action: none; }
 .drag-handle:active { cursor: grabbing; color: var(--primary); }
 .palette-node .node-copy { min-width: 0; padding: 6px 7px 6px 0; text-align: left; display: flex; flex-direction: column; }
 .palette-node strong, .palette-node small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -661,21 +671,19 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .group-editor-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .group-editor-head > div { display: flex; gap: 7px; align-items: baseline; }
 .group-editor-head span { color: var(--muted); font-size: 11px; }
-.group-card { border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; background: var(--surface); cursor: grab; touch-action: none; transition: border-color var(--fast), box-shadow var(--fast), background var(--fast); }
+.group-card { border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; background: var(--surface); touch-action: pan-y; transition: border-color var(--fast), box-shadow var(--fast), background var(--fast); }
 .group-card:hover { border-color: color-mix(in srgb, var(--primary) 35%, var(--border-strong)); box-shadow: 0 3px 12px rgba(25,31,43,.06); }
-.group-card:active { cursor: grabbing; }
-.group-dragbar { min-height: 30px; padding: 4px 9px; display: flex; align-items: center; justify-content: center; gap: 5px; color: var(--muted); background: var(--surface-2); border-bottom: 1px solid var(--border); font-size: 9px; }
+.group-dragbar { width: 100%; min-height: 44px; padding: 4px 9px; display: flex; align-items: center; justify-content: center; gap: 5px; color: var(--muted); background: var(--surface-2); border: 0; border-bottom: 1px solid var(--border); font-size: 9px; cursor: grab; touch-action: none; }
 .group-head { min-height: 44px; padding: 5px 7px; display: grid; grid-template-columns: minmax(100px, 1fr) 112px 36px; gap: 5px; align-items: center; border-bottom: 1px solid var(--border); cursor: default; touch-action: auto; }
 .group-head input, .group-head select, .group-options input { min-height: 34px; padding: 5px 8px; font-size: 11px; }
 .group-options { padding: 7px; display: grid; grid-template-columns: minmax(0, 1fr) 90px; gap: 6px; border-bottom: 1px solid var(--border); cursor: default; touch-action: auto; }
 .group-drop { min-height: 48px; padding: 7px; transition: background var(--fast), outline var(--fast); }
 .group-drop.over { background: var(--primary-soft); outline: 2px solid var(--primary); outline-offset: -2px; }
 .drop-hint { min-height: 36px; display: grid; place-items: center; color: var(--muted); font-size: 11px; border: 1px dashed var(--border-strong); border-radius: 6px; }
-.group-entry { min-height: 36px; padding: 2px 4px 2px 9px; display: flex; justify-content: space-between; align-items: center; border: 1px solid transparent; border-bottom-color: var(--border); border-radius: 5px; cursor: grab; touch-action: none; }
+.group-entry { min-height: 44px; padding: 2px 4px; display: flex; justify-content: space-between; align-items: center; border: 1px solid transparent; border-bottom-color: var(--border); border-radius: 5px; touch-action: pan-y; }
 .group-entry:hover { background: var(--surface-2); border-color: var(--border); }
-.group-entry:active { cursor: grabbing; }
 .group-entry:last-child { border-bottom: 0; }
-.group-entry > span { min-width: 0; display: flex; gap: 7px; align-items: center; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.group-entry > span { min-width: 0; flex: 1; display: flex; gap: 7px; align-items: center; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .group-entry > div { display: flex; }
 .group-entry .icon-button { width: 30px; height: 30px; }
 .node-source-state { display: grid; gap: 3px; }

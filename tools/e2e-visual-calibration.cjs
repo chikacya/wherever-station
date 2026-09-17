@@ -156,7 +156,7 @@ async function main() {
     await subscriptionDialog.waitFor();
     await page.waitForTimeout(340);
     const dragSource = subscriptionDialog.locator('.palette-node').first();
-    const dragBox = await dragSource.boundingBox();
+    const dragBox = await dragSource.locator('.drag-handle').boundingBox();
     if (!dragBox) throw new Error('Subscription drag source is missing');
     const pointer = { x: dragBox.x + dragBox.width / 2 - 80, y: dragBox.y + dragBox.height / 2 - 30 };
     await page.mouse.move(dragBox.x + dragBox.width / 2, dragBox.y + dragBox.height / 2);

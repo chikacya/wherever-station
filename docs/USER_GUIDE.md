@@ -110,6 +110,10 @@ Nowhere exposes protocol telemetry when its version supports the required interf
 
 ## Settings and drafts
 
-Global settings contain only cross-page preferences: public subscription base URL, resource warning thresholds, and theme. Node, certificate, provider, and instance options remain in their own workflows.
+Global settings contain cross-page preferences and **Backup & migration**. Download a JSON backup before moving the plugin, then select it in the new installation, review the replacement counts, and confirm restore. The backup includes node URIs, subscription tokens, provider API tokens, and cached rule sets: keep the file private.
+
+Restore replaces plugin records only. It does not install Komari Agents, move certificate/private-key files or proxy binaries, or start/stop services. After moving to another Komari installation, review Agent bindings, the public subscription base URL, certificate paths, and managed-instance status before operating those instances. Export a fresh backup before replacing existing data.
+
+Node, certificate, provider, and instance options remain in their own workflows.
 
 Long editors keep an unfinished draft in the current browser tab. Closing and reopening the editor restores it; saving or choosing **Discard draft** removes it. Provider API tokens are deliberately excluded. Closing the browser tab clears session drafts.

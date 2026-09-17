@@ -22,19 +22,22 @@ async function main() {
     deploymentPresets: [{ id: 'reality', name: 'VLESS Reality', suffix: 'Reality', summary: 'Reality', hidden: false, values: { protocol: 'vless-reality', serverName: 'www.apple.com', handshakeServer: 'www.apple.com', handshakePort: 443, flow: 'xtls-rprx-vision' } }],
     providers: [],
   };
+  for (let index = 0; index < 24; index++) state.nodes.push({ ...state.nodes[0], id: `extra-${index}`, name: `Tokyo Extra ${index + 1}` });
   const clients = {
     'agent-us': { uuid: 'agent-us', name: 'GCP 美西', ipv4: '203.0.113.10' },
     'agent-my': { uuid: 'agent-my', name: 'Evoxt 马来西亚', ipv4: '203.0.113.20' },
   };
   const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {}), headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, hasTouch: true });
     await page.route('https://api.github.com/repos/NodePassProject/Nowhere/releases?**', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ tag_name: 'v2.0.0', draft: false, prerelease: false }]) }));
     await page.route('https://api.github.com/repos/SagerNet/sing-box/releases?**', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ tag_name: 'v1.13.11', draft: false, prerelease: false }]) }));
     await page.route('**/api/rpc2', async route => {
       const request = route.request().postDataJSON();
       let result = {};
       if (request.method === 'proxyConsole:getState') result = state;
+      else if (request.method === 'proxyConsole:exportPortableBackup') result = { format: 'wherever-station-backup', schema: 1, exportedAt: '2026-09-17T00:00:00Z', state, providerSecrets: {}, ruleSetCache: {} };
+      else if (request.method === 'proxyConsole:previewPortableBackup') result = { exportedAt: '2026-09-17T00:00:00Z', current: { machines: 2, nodes: state.nodes.length, subscriptions: 0, managedInstances: 0 }, incoming: { machines: 2, nodes: state.nodes.length, subscriptions: 0, managedInstances: 0 }, providerTokens: 0, ruleCaches: 0, boundAgents: 2 };
       else if (request.method === 'common:getNodes') result = clients;
       else if (request.method === 'common:getNodesLatestStatus') result = {};
       else if (request.method === 'public:getMe') result = { two_factor_enabled: false };
@@ -55,6 +58,16 @@ async function main() {
     await page.setViewportSize({ width: 375, height: 812 });
     const settingsLayout = await page.locator('html').evaluate(element => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
     if (settingsLayout.scrollWidth > settingsLayout.clientWidth) throw new Error('Settings overflow on mobile');
+    const downloadPromise = page.waitForEvent('download');
+    await dialog.getByRole('button', { name: '下载备份' }).click();
+    const download = await downloadPromise;
+    if (!download.suggestedFilename().startsWith('wherever-station-backup-')) throw new Error('Backup download filename is incorrect');
+    const backupFixture = { format: 'wherever-station-backup', schema: 1, exportedAt: '2026-09-17T00:00:00Z', state, providerSecrets: {}, ruleSetCache: {} };
+    await dialog.locator('.backup-file-picker input').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backupFixture)) });
+    await dialog.getByText('恢复预览', { exact: false }).waitFor();
+    await page.setViewportSize({ width: 320, height: 812 });
+    const backupLayout = await page.locator('html').evaluate(element => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
+    if (backupLayout.scrollWidth > backupLayout.clientWidth) throw new Error('Backup preview overflows on a narrow phone');
     await dialog.getByRole('radio', { name: '浅色' }).click();
     await dialog.getByRole('button', { name: '取消' }).click();
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -71,7 +84,8 @@ async function main() {
     await dialog.getByRole('button', { name: '取消' }).click();
     await page.getByRole('button', { name: '添加节点', exact: true }).click();
     dialog = page.locator('dialog[open]');
-    if (!(await dialog.locator('label').filter({ hasText: /^节点名称/ }).locator('input').inputValue()).startsWith('🇲🇾 马来西亚 |')) throw new Error('Node draft was not restored');
+    const restoredNodeName = await dialog.locator('label').filter({ hasText: /^节点名称/ }).locator('input').inputValue();
+    if (!restoredNodeName.startsWith('🇲🇾 马来西亚 |')) throw new Error(`Node draft was not restored: ${restoredNodeName}`);
     await dialog.getByRole('button', { name: '取消' }).click();
 
     await page.getByRole('button', { name: '订阅', exact: true }).click();
@@ -89,7 +103,7 @@ async function main() {
     await dialog.getByRole('tab', { name: /2\. 代理组/ }).click();
     await dialog.getByRole('button', { name: '添加代理组' }).click();
     const source = dialog.locator('.palette-node').first();
-    const box = await source.boundingBox();
+    const box = await source.locator('.drag-handle').boundingBox();
     if (!box) throw new Error('Missing draggable node');
     const pointer = { x: box.x + box.width / 2 + 24, y: box.y + box.height / 2 + 18 };
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -103,6 +117,21 @@ async function main() {
     if (offset > 8) throw new Error(`Drag overlay is ${offset.toFixed(1)}px away from the pointer`);
     await page.mouse.up();
     await page.waitForTimeout(250);
+    await page.setViewportSize({ width: 375, height: 812 });
+    const palette = dialog.locator('.palette');
+    await palette.scrollIntoViewIfNeeded();
+    const paletteBox = await palette.boundingBox();
+    if (!paletteBox) throw new Error('Mobile node palette is missing');
+    const touch = await page.context().newCDPSession(page);
+    const startX = paletteBox.x + 90;
+    const startY = paletteBox.y + paletteBox.height - 30;
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: startX, y: startY }] });
+    for (let step = 1; step <= 12; step++) await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: startX, y: startY - step * 12 }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(200);
+    if (await palette.evaluate(element => element.scrollTop) < 30) throw new Error('Touch swipe did not scroll the mobile subscription node list');
+    if (await overlay.isVisible()) throw new Error('Touch scroll started a node drag');
+    await page.setViewportSize({ width: 1280, height: 900 });
     await dialog.getByRole('button', { name: '取消', exact: true }).click();
     await dialog.waitFor({ state: 'hidden' });
 
@@ -117,7 +146,7 @@ async function main() {
     dialog = page.locator('dialog[open]');
     if (await dialog.locator('label').filter({ hasText: /^服务器/ }).locator('select').inputValue() !== 'my') throw new Error('Deployment draft was not restored');
 
-    console.log(JSON.stringify({ ok: true, automaticNames: true, neutralNodeEditor: true, pointerAnchoredDrag: true, modalBackdropSafe: true, sessionDrafts: true, settings: true }));
+    console.log(JSON.stringify({ ok: true, automaticNames: true, neutralNodeEditor: true, pointerAnchoredDrag: true, touchScroll: true, modalBackdropSafe: true, sessionDrafts: true, backupUi: true, settings: true }));
   } finally {
     await browser.close();
   }

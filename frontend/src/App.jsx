@@ -2263,7 +2263,7 @@ function Subscriptions({ state, persist, notify, onOpenSettings }) {
   );
 }
 function DraggableNode({ node, selected, machine, onToggle }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
     id: `palette:${node.id}`,
     data: { kind: "node", nodeId: node.id, label: node.name },
   });
@@ -2273,12 +2273,10 @@ function DraggableNode({ node, selected, machine, onToggle }) {
       style={{ opacity: isDragging ? 0.42 : 1 }}
       className={`palette-node ${selected ? "selected" : ""}`}
       onClick={onToggle}
-      {...listeners}
-      {...attributes}
     >
-      <span className="drag-handle" aria-hidden="true">
+      <button type="button" ref={setActivatorNodeRef} className="drag-handle" aria-label={`拖动 ${node.name}`} onClick={(event) => event.stopPropagation()} {...attributes} {...listeners}>
         <GripVertical size={15} />
-      </span>
+      </button>
       <span className="node-copy">
         <strong>{node.name}</strong>
         <small>
@@ -2304,12 +2302,10 @@ function SelectedNode({ node, machine, onRemove, recent }) {
         opacity: sortable.isDragging ? 0.42 : 1,
       }}
       className={`selected-node ${recent ? "recent" : ""}`}
-      {...sortable.attributes}
-      {...sortable.listeners}
     >
-      <span className="drag-handle" aria-hidden="true">
+      <button type="button" ref={sortable.setActivatorNodeRef} className="drag-handle" aria-label={`拖动 ${node.name} 调整顺序`} {...sortable.attributes} {...sortable.listeners}>
         <GripVertical size={15} />
-      </span>
+      </button>
       <div>
         <strong>{node.name}</strong>
         <small>
@@ -2392,9 +2388,8 @@ function SortableGroupEntry({
         opacity: sortable.isDragging ? 0.4 : 1,
       }}
       className="group-entry"
-      {...sortable.attributes}
-      {...sortable.listeners}
     >
+      <button type="button" ref={sortable.setActivatorNodeRef} className="drag-handle" aria-label={`拖动 ${name || "项目"} 调整顺序`} {...sortable.attributes} {...sortable.listeners}><GripVertical size={14} /></button>
       <span>
         {entry.kind === "group" ? <Boxes size={14} /> : <Network size={14} />}
         {name || "已移除项目"}
@@ -2447,13 +2442,11 @@ function SortableGroup({ group, nodes, allGroups, onChange, onRemove }) {
         opacity: sortable.isDragging ? 0.42 : 1,
       }}
       className="group-card"
-      {...sortable.attributes}
-      {...sortable.listeners}
     >
-      <div className="group-dragbar">
+      <button type="button" ref={sortable.setActivatorNodeRef} className="group-dragbar" aria-label={`拖动代理组 ${group.name}`} {...sortable.attributes} {...sortable.listeners}>
         <GripVertical size={16} />
         <span>拖动整个代理组调整位置</span>
-      </div>
+      </button>
       <div className="group-head" onPointerDown={stop}>
         <input
           aria-label="代理组名称"
@@ -3225,9 +3218,12 @@ function SubscriptionEditor({
     </Modal>
   );
 }
-function SettingsDialog({ open, value, theme, onClose, onSave }) {
+function SettingsDialog({ open, value, revision, theme, onClose, onSave, onRestored }) {
   const [form, setForm] = useState({});
   const [error, setError] = useState("");
+  const [backup, setBackup] = useState(null);
+  const [backupPreview, setBackupPreview] = useState(null);
+  const [backupBusy, setBackupBusy] = useState(false);
   useEffect(() => {
     if (open) {
       const initial = {
@@ -3239,6 +3235,8 @@ function SettingsDialog({ open, value, theme, onClose, onSave }) {
       };
       setForm(readSessionDraft("settings")?.value || initial);
       setError("");
+      setBackup(null);
+      setBackupPreview(null);
     }
   }, [open]);
   useEffect(() => {
@@ -3270,6 +3268,42 @@ function SettingsDialog({ open, value, theme, onClose, onSave }) {
     } catch (reason) {
       setError(reason.message);
     }
+  };
+  const downloadBackup = async () => {
+    setBackupBusy(true); setError("");
+    try {
+      const exported = await rpc("proxyConsole:exportPortableBackup");
+      const url = URL.createObjectURL(new Blob([JSON.stringify(exported, null, 2) + "\n"], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `wherever-station-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (reason) { setError(reason.message); }
+    finally { setBackupBusy(false); }
+  };
+  const selectBackup = async (file) => {
+    setBackup(null); setBackupPreview(null); setError("");
+    if (!file) return;
+    setBackupBusy(true);
+    try {
+      if (file.size > 8 * 1024 * 1024) throw new Error("备份超过 8 MB，请检查文件内容");
+      const parsed = JSON.parse(await file.text());
+      const preview = await rpc("proxyConsole:previewPortableBackup", { backup: parsed });
+      setBackup(parsed); setBackupPreview({ ...preview, revision });
+    } catch (reason) { setError(reason instanceof SyntaxError ? "文件不是有效的 JSON 备份" : reason.message); }
+    finally { setBackupBusy(false); }
+  };
+  const restoreBackup = async () => {
+    if (!backup || !backupPreview || !window.confirm("确认用备份替换当前插件数据？此操作不会改动 VPS 上的进程或文件。")) return;
+    setBackupBusy(true); setError("");
+    try {
+      const restored = await rpc("proxyConsole:restorePortableBackup", { backup, expectedRevision: backupPreview.revision });
+      clearSessionDraft("settings");
+      setBackup(null); setBackupPreview(null);
+      onRestored(restored);
+    } catch (reason) { setError(reason.message); }
+    finally { setBackupBusy(false); }
   };
   return (
     <Modal
@@ -3304,6 +3338,21 @@ function SettingsDialog({ open, value, theme, onClose, onSave }) {
               <button key={mode} type="button" role="radio" aria-checked={form.themeMode === mode} className={form.themeMode === mode ? "active" : ""} onClick={() => setForm({ ...form, themeMode: mode })}><Icon size={17} /><span>{label}</span></button>
             ))}
           </div>
+        </section>
+        <section className="settings-backup">
+          <span>PORTABILITY</span>
+          <strong>备份与迁移</strong>
+          <p>导出节点、订阅、宿主、预设、面板连接及规则缓存。备份含节点凭据和 API Token，请妥善保管。</p>
+          <div className="settings-backup-actions">
+            <Button icon={Download} onClick={downloadBackup} disabled={backupBusy}>下载备份</Button>
+            <label className="button backup-file-picker"><Upload size={16} /><span>选择备份文件</span><input type="file" accept=".json,application/json" onChange={(event) => { selectBackup(event.target.files?.[0]); event.target.value = ""; }} disabled={backupBusy} /></label>
+          </div>
+          {backupPreview && <div className="backup-preview" role="status">
+            <strong>恢复预览 · {backupPreview.exportedAt ? new Date(backupPreview.exportedAt).toLocaleString("zh-CN") : "未知时间"}</strong>
+            <div><span>服务器 {backupPreview.current.machines} → {backupPreview.incoming.machines}</span><span>节点 {backupPreview.current.nodes} → {backupPreview.incoming.nodes}</span><span>订阅 {backupPreview.current.subscriptions} → {backupPreview.incoming.subscriptions}</span><span>托管实例 {backupPreview.current.managedInstances} → {backupPreview.incoming.managedInstances}</span></div>
+            <p>将替换当前插件数据。{backupPreview.boundAgents} 个 Agent 绑定需在目标 Komari 核对；证书文件、内核和 VPS 进程不会随备份迁移。</p>
+            <Button variant="primary" icon={Upload} onClick={restoreBackup} disabled={backupBusy}>{backupBusy ? "恢复中…" : "确认覆盖并恢复"}</Button>
+          </div>}
         </section>
       </div>
       {error && <p className="form-error">{error}</p>}
@@ -5676,11 +5725,13 @@ export default function App() {
         open={settingsOpen}
         value={state.settings || EMPTY_STATE.settings}
         theme={theme}
+        revision={state.revision}
         onClose={() => setSettingsOpen(false)}
         onSave={async (settings) => {
           await persist({ ...state, settings }, "控制台设置已保存");
           setSettingsOpen(false);
         }}
+        onRestored={(restored) => { setState(restored); setSettingsOpen(false); notify("备份已恢复，请核对 Agent 绑定和证书路径"); }}
       />
       {toast && (
         <div className={`toast ${toast.error ? "error" : ""}`} role="status">

@@ -469,6 +469,68 @@ function readState() {
   if (raw.version !== 14) writeState(state);
   return state;
 }
+const PORTABLE_BACKUP_SCHEMA = 1;
+const PORTABLE_BACKUP_MAX_BYTES = 8 * 1024 * 1024;
+const PORTABLE_COLLECTIONS = ["machines", "nodes", "nodeDrafts", "subscriptions", "externalSources", "ruleSets", "serviceBindings", "managedInstances", "certificates", "deploymentPresets", "providers"];
+function portableCounts(state) {
+  return Object.fromEntries(PORTABLE_COLLECTIONS.map((key) => [key, state[key].length]));
+}
+function exportPortableBackup() {
+  const state = readState();
+  const providerIds = new Set(state.providers.map((item) => item.id));
+  const ruleSetIds = new Set(state.ruleSets.map((item) => item.id));
+  return {
+    format: "wherever-station-backup", schema: PORTABLE_BACKUP_SCHEMA,
+    exportedAt: new Date().toISOString(),
+    state,
+    providerSecrets: Object.fromEntries(Object.entries(readProviderSecrets()).filter(([id]) => providerIds.has(id))),
+    ruleSetCache: Object.fromEntries(Object.entries(readRuleSetCache()).filter(([id]) => ruleSetIds.has(id))),
+  };
+}
+function preparePortableBackup(value) {
+  if (!value || value.format !== "wherever-station-backup" || value.schema !== PORTABLE_BACKUP_SCHEMA) throw new Error("不是受支持的 Wherever Station 备份");
+  if (Buffer.byteLength(JSON.stringify(value), "utf8") > PORTABLE_BACKUP_MAX_BYTES) throw new Error("备份超过 8 MB，请检查文件内容");
+  const raw = value.state;
+  if (!raw || !Number.isInteger(raw.version) || raw.version < 1 || raw.version > defaultState().version || PORTABLE_COLLECTIONS.some((key) => !Array.isArray(raw[key]))) throw new Error("备份状态不完整或来自较新版本");
+  if (!value.providerSecrets || typeof value.providerSecrets !== "object" || Array.isArray(value.providerSecrets) || !value.ruleSetCache || typeof value.ruleSetCache !== "object" || Array.isArray(value.ruleSetCache)) throw new Error("备份凭据或规则缓存不完整");
+  const state = cleanState(raw);
+  if (PORTABLE_COLLECTIONS.some((key) => state[key].length !== raw[key].length)) throw new Error("备份存在无效记录，未执行恢复");
+  const providerIds = new Set(state.providers.map((item) => item.id));
+  const ruleSetIds = new Set(state.ruleSets.map((item) => item.id));
+  const providerSecrets = {};
+  for (const [id, secret] of Object.entries(value.providerSecrets)) {
+    if (!providerIds.has(id) || !secret || typeof secret.token !== "string" || !secret.token || secret.token.length > 2048) throw new Error("备份中的面板凭据无效");
+    providerSecrets[id] = { token: secret.token };
+  }
+  const ruleSetCache = {};
+  for (const [id, entry] of Object.entries(value.ruleSetCache)) {
+    if (!ruleSetIds.has(id) || !entry || typeof entry !== "object" || !Array.isArray(entry.rules)) throw new Error("备份中的规则缓存无效");
+    ruleSetCache[id] = entry;
+  }
+  return { state, providerSecrets, ruleSetCache };
+}
+function previewPortableBackup(params) {
+  const backup = preparePortableBackup(params && params.backup);
+  return { exportedAt: params.backup.exportedAt, current: portableCounts(readState()), incoming: portableCounts(backup.state), providerTokens: Object.keys(backup.providerSecrets).length, ruleCaches: Object.keys(backup.ruleSetCache).length, boundAgents: backup.state.machines.filter((item) => item.monitorClientId).length };
+}
+function restorePortableBackup(params) {
+  const backup = preparePortableBackup(params && params.backup);
+  const current = readState();
+  if (Number(params && params.expectedRevision) !== current.revision) throw new Error("数据已变化，请重新预览备份后再恢复");
+  const previousSecrets = readProviderSecrets();
+  const previousCache = readRuleSetCache();
+  backup.state.revision = current.revision + 1;
+  try {
+    writeProviderSecrets(backup.providerSecrets);
+    writeRuleSetCache(backup.ruleSetCache);
+    writeState(backup.state);
+  } catch (error) {
+    writeProviderSecrets(previousSecrets);
+    writeRuleSetCache(previousCache);
+    throw error;
+  }
+  return readState();
+}
 function saveState(input) {
   const current = readState();
   const incoming = cleanState(input);
@@ -1652,5 +1714,5 @@ function load() {
   server.registerRPC("proxyConsole:deleteProvider", deleteProvider);
   server.registerRPC("proxyConsole:startProviderOperation", startProviderOperation);
   server.registerRPC("proxyConsole:getProviderOperation", getProviderOperation);
-readState(); server.route("GET", "/proxy/sub/:token", publicSubscription); server.registerRPC("proxyConsole:getState", () => readState()); server.registerRPC("proxyConsole:getCompatibilityCatalog", () => ({ nowhere: compatibilityCatalog(), protocols: protocolCatalog() })); server.registerRPC("proxyConsole:saveState", (params) => saveState(params && params.state)); server.registerRPC("proxyConsole:validateNode", validateNode); server.registerRPC("proxyConsole:parseNodeUris", parseNodeUris); server.registerRPC("proxyConsole:newToken", () => ({ token: crypto.randomBytes(24).toString("hex") })); server.registerRPC("proxyConsole:getAccessStats", accessStats); server.registerRPC("proxyConsole:getSubscriptionHistory", subscriptionHistory); server.registerRPC("proxyConsole:previewSubscriptionChange", subscriptionChangePreview); server.registerRPC("proxyConsole:subscriptionPreflight", subscriptionPreflight); server.registerRPC("proxyConsole:syncExternalSource", syncExternalSource); server.registerRPC("proxyConsole:startExternalSourceOperation", startExternalSourceOperation); server.registerRPC("proxyConsole:getExternalSourceOperation", getExternalSourceOperation); server.registerRPC("proxyConsole:syncRuleSet", syncRuleSet); server.registerRPC("proxyConsole:deleteRuleSet", deleteRuleSet); server.registerRPC("proxyConsole:serviceCommand", serviceCommand); server.registerRPC("proxyConsole:statusCommand", statusCommand); server.registerRPC("proxyConsole:newManagedNowhereValues", newManagedNowhereValues); server.registerRPC("proxyConsole:previewManagedNowhere", previewManagedNowhere); server.registerRPC("proxyConsole:previewManagedNowhereMigration", previewManagedNowhereMigration); server.registerRPC("proxyConsole:createManagedNowhereDraft", createManagedNowhereDraft); server.registerRPC("proxyConsole:prepareManagedNowhereAction", prepareManagedNowhereAction); server.registerRPC("proxyConsole:recordManagedNowhereResult", recordManagedNowhereResult); server.registerRPC("proxyConsole:newManagedSingBoxValues", newManagedSingBoxValues); server.registerRPC("proxyConsole:previewManagedSingBox", previewManagedSingBox); server.registerRPC("proxyConsole:prepareManagedSingBoxCreate", prepareManagedSingBoxCreate); server.registerRPC("proxyConsole:prepareManagedSingBoxAction", prepareManagedSingBoxAction); server.registerRPC("proxyConsole:prepareManagedSingBoxUpdate", prepareManagedSingBoxUpdate); server.registerRPC("proxyConsole:recordManagedSingBoxResult", recordManagedSingBoxResult); if (typeof server.cron === "function") server.cron("17 * * * *", syncDueSources);
+readState(); server.route("GET", "/proxy/sub/:token", publicSubscription); server.registerRPC("proxyConsole:getState", () => readState()); server.registerRPC("proxyConsole:exportPortableBackup", exportPortableBackup); server.registerRPC("proxyConsole:previewPortableBackup", previewPortableBackup); server.registerRPC("proxyConsole:restorePortableBackup", restorePortableBackup); server.registerRPC("proxyConsole:getCompatibilityCatalog", () => ({ nowhere: compatibilityCatalog(), protocols: protocolCatalog() })); server.registerRPC("proxyConsole:saveState", (params) => saveState(params && params.state)); server.registerRPC("proxyConsole:validateNode", validateNode); server.registerRPC("proxyConsole:parseNodeUris", parseNodeUris); server.registerRPC("proxyConsole:newToken", () => ({ token: crypto.randomBytes(24).toString("hex") })); server.registerRPC("proxyConsole:getAccessStats", accessStats); server.registerRPC("proxyConsole:getSubscriptionHistory", subscriptionHistory); server.registerRPC("proxyConsole:previewSubscriptionChange", subscriptionChangePreview); server.registerRPC("proxyConsole:subscriptionPreflight", subscriptionPreflight); server.registerRPC("proxyConsole:syncExternalSource", syncExternalSource); server.registerRPC("proxyConsole:startExternalSourceOperation", startExternalSourceOperation); server.registerRPC("proxyConsole:getExternalSourceOperation", getExternalSourceOperation); server.registerRPC("proxyConsole:syncRuleSet", syncRuleSet); server.registerRPC("proxyConsole:deleteRuleSet", deleteRuleSet); server.registerRPC("proxyConsole:serviceCommand", serviceCommand); server.registerRPC("proxyConsole:statusCommand", statusCommand); server.registerRPC("proxyConsole:newManagedNowhereValues", newManagedNowhereValues); server.registerRPC("proxyConsole:previewManagedNowhere", previewManagedNowhere); server.registerRPC("proxyConsole:previewManagedNowhereMigration", previewManagedNowhereMigration); server.registerRPC("proxyConsole:createManagedNowhereDraft", createManagedNowhereDraft); server.registerRPC("proxyConsole:prepareManagedNowhereAction", prepareManagedNowhereAction); server.registerRPC("proxyConsole:recordManagedNowhereResult", recordManagedNowhereResult); server.registerRPC("proxyConsole:newManagedSingBoxValues", newManagedSingBoxValues); server.registerRPC("proxyConsole:previewManagedSingBox", previewManagedSingBox); server.registerRPC("proxyConsole:prepareManagedSingBoxCreate", prepareManagedSingBoxCreate); server.registerRPC("proxyConsole:prepareManagedSingBoxAction", prepareManagedSingBoxAction); server.registerRPC("proxyConsole:prepareManagedSingBoxUpdate", prepareManagedSingBoxUpdate); server.registerRPC("proxyConsole:recordManagedSingBoxResult", recordManagedSingBoxResult); if (typeof server.cron === "function") server.cron("17 * * * *", syncDueSources);
 }

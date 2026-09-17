@@ -540,6 +540,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .backup-download-help p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .backup-download-help code { max-width: 100%; overflow-wrap: anywhere; font-size: 11px; }
 .backup-download-ready { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.backup-download-ready p { margin: 0; }
+.backup-download-ready p + p { margin-top: 6px; }
+.backup-download-fallback { padding: 0; border: 0; background: none; color: var(--primary-strong); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .backup-download-ready a { color: var(--primary-strong); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .backup-file-picker { position: relative; cursor: pointer; }
 .backup-file-picker input { position: absolute; width: 1px; height: 1px; opacity: 0; }

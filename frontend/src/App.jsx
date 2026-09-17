@@ -3219,6 +3219,7 @@ function SubscriptionEditor({
   );
 }
 function SettingsDialog({ open, value, revision, theme, onClose, onSave, onRestored }) {
+  const safariDownload = /^((?!chrome|crios|android|edg).)*safari/i.test(navigator.userAgent);
   const [form, setForm] = useState({});
   const [error, setError] = useState("");
   const [backup, setBackup] = useState(null);
@@ -3374,7 +3375,7 @@ function SettingsDialog({ open, value, revision, theme, onClose, onSave, onResto
             <label className="button backup-file-picker"><Upload size={16} /><span>选择备份文件</span><input type="file" accept=".json,application/json" onChange={(event) => { selectBackup(event.target.files?.[0]); event.target.value = ""; }} disabled={backupBusy} /></label>
           </div>
           {backupDownloadStatus === "saved" && <p role="status">备份已保存。</p>}
-          {backupDownloadStatus === "ready" && backupDownload && <p role="status" className="backup-download-ready">备份已准备好，请<a href={backupDownload.url}>点击下载备份文件</a>（链接有效 60 秒，仅可使用一次；Safari 可在右上角查看下载）。</p>}
+          {backupDownloadStatus === "ready" && backupDownload && <p role="status" className="backup-download-ready">{safariDownload ? <>Safari 请右键<a href={backupDownload.url} onClick={(event) => { event.preventDefault(); setError("Safari 请右键链接选择“下载链接文件”；触控设备请长按链接"); }}>此链接</a>，选择“下载链接文件”（触控设备请长按；也可在新标签页打开）。</> : <>备份已准备好，请<a href={backupDownload.url}>点击下载备份文件</a>。</>}链接有效 60 秒，仅可使用一次。</p>}
           {backupDownloadStatus === "blocked" && <div className="backup-download-help" role="status">
             <p>Komari 内嵌页不允许普通下载。复制独立页面地址，在浏览器地址栏打开后再下载。</p>
             <Button icon={Copy} onClick={async () => { try { await navigator.clipboard.writeText(window.location.href); setBackupDownloadStatus("copied"); } catch (reason) { setError("复制失败，请手动复制下方地址"); } }}>复制页面地址</Button>

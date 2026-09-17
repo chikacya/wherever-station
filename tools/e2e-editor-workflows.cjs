@@ -77,6 +77,7 @@ async function main() {
     dialog = page.locator('dialog[open]');
     const hostSelect = dialog.locator('label').filter({ hasText: /^关联 VPS/ }).locator('select');
     await hostSelect.selectOption('my');
+    await page.waitForFunction(() => JSON.parse(sessionStorage.getItem('wherever-station:draft:node:new') || 'null')?.value?.machineId === 'my');
     const nodeName = dialog.locator('label').filter({ hasText: /^节点名称/ }).locator('input');
     if (!(await nodeName.inputValue()).startsWith('🇲🇾 马来西亚 |')) throw new Error('Manual node name did not follow the selected server');
     const uri = dialog.locator('textarea[placeholder*="其他协议 URI"]');
@@ -146,7 +147,24 @@ async function main() {
     dialog = page.locator('dialog[open]');
     if (await dialog.locator('label').filter({ hasText: /^服务器/ }).locator('select').inputValue() !== 'my') throw new Error('Deployment draft was not restored');
 
-    console.log(JSON.stringify({ ok: true, automaticNames: true, neutralNodeEditor: true, pointerAnchoredDrag: true, touchScroll: true, modalBackdropSafe: true, sessionDrafts: true, backupUi: true, settings: true }));
+    // Komari embeds plugin pages without allow-downloads: use a save picker or show a usable fallback.
+    await page.addInitScript(() => {
+      window.showSaveFilePicker = async () => ({ createWritable: async () => ({
+        write: async (content) => { window.__backupBytesWritten = content.length; },
+        close: async () => {}, abort: async () => {},
+      }) });
+    });
+    await page.setContent(`<iframe title="Komari plugin" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts" src="${base}/admin.html" style="width:100%;height:800px"></iframe>`);
+    const embedded = page.frameLocator('iframe');
+    await embedded.getByRole('button', { name: '打开设置' }).click();
+    await embedded.getByRole('button', { name: '下载备份' }).click();
+    await embedded.getByText('备份已保存。').waitFor();
+    if (!(await embedded.locator('body').evaluate(() => window.__backupBytesWritten)) > 100) throw new Error('Sandboxed backup was not written with the save picker');
+    await embedded.locator('body').evaluate(() => { window.showSaveFilePicker = undefined; });
+    await embedded.getByRole('button', { name: '下载备份' }).click();
+    await embedded.getByText('Komari 内嵌页不允许普通下载', { exact: false }).waitFor();
+
+    console.log(JSON.stringify({ ok: true, automaticNames: true, neutralNodeEditor: true, pointerAnchoredDrag: true, touchScroll: true, modalBackdropSafe: true, sessionDrafts: true, backupUi: true, embeddedBackup: true, settings: true }));
   } finally {
     await browser.close();
   }

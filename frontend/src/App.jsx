@@ -3224,6 +3224,7 @@ function SettingsDialog({ open, value, revision, theme, onClose, onSave, onResto
   const [backup, setBackup] = useState(null);
   const [backupPreview, setBackupPreview] = useState(null);
   const [backupBusy, setBackupBusy] = useState(false);
+  const [backupDownloadStatus, setBackupDownloadStatus] = useState("");
   useEffect(() => {
     if (open) {
       const initial = {
@@ -3237,6 +3238,7 @@ function SettingsDialog({ open, value, revision, theme, onClose, onSave, onResto
       setError("");
       setBackup(null);
       setBackupPreview(null);
+      setBackupDownloadStatus("");
     }
   }, [open]);
   useEffect(() => {
@@ -3270,15 +3272,39 @@ function SettingsDialog({ open, value, revision, theme, onClose, onSave, onResto
     }
   };
   const downloadBackup = async () => {
-    setBackupBusy(true); setError("");
+    setBackupDownloadStatus(""); setError("");
+    const filename = `wherever-station-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    let fileHandle = null;
+    const sandboxBlocksDownloads = (() => {
+      try { return !!window.frameElement?.sandbox && !window.frameElement.sandbox.contains("allow-downloads"); }
+      catch { return false; }
+    })();
+    if (sandboxBlocksDownloads) {
+      if (typeof window.showSaveFilePicker !== "function") { setBackupDownloadStatus("blocked"); return; }
+      try {
+        // The picker needs the click's user activation, so open it before the RPC request.
+        fileHandle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: "JSON 备份", accept: { "application/json": [".json"] } }] });
+      } catch (reason) {
+        if (reason?.name !== "AbortError") setBackupDownloadStatus("blocked");
+        return;
+      }
+    }
+    setBackupBusy(true);
     try {
       const exported = await rpc("proxyConsole:exportPortableBackup");
-      const url = URL.createObjectURL(new Blob([JSON.stringify(exported, null, 2) + "\n"], { type: "application/json" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `wherever-station-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.append(link); link.click(); link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const content = JSON.stringify(exported, null, 2) + "\n";
+      if (fileHandle) {
+        const writable = await fileHandle.createWritable();
+        try { await writable.write(content); await writable.close(); }
+        catch (reason) { await writable.abort().catch(() => {}); throw reason; }
+        setBackupDownloadStatus("saved");
+      } else {
+        const url = URL.createObjectURL(new Blob([content], { type: "application/json" }));
+        const link = document.createElement("a");
+        link.href = url; link.download = filename;
+        document.body.append(link); link.click(); link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
     } catch (reason) { setError(reason.message); }
     finally { setBackupBusy(false); }
   };
@@ -3347,6 +3373,13 @@ function SettingsDialog({ open, value, revision, theme, onClose, onSave, onResto
             <Button icon={Download} onClick={downloadBackup} disabled={backupBusy}>下载备份</Button>
             <label className="button backup-file-picker"><Upload size={16} /><span>选择备份文件</span><input type="file" accept=".json,application/json" onChange={(event) => { selectBackup(event.target.files?.[0]); event.target.value = ""; }} disabled={backupBusy} /></label>
           </div>
+          {backupDownloadStatus === "saved" && <p role="status">备份已保存。</p>}
+          {backupDownloadStatus === "blocked" && <div className="backup-download-help" role="status">
+            <p>Komari 内嵌页不允许普通下载。复制独立页面地址，在浏览器地址栏打开后再下载。</p>
+            <Button icon={Copy} onClick={async () => { try { await navigator.clipboard.writeText(window.location.href); setBackupDownloadStatus("copied"); } catch (reason) { setError("复制失败，请手动复制下方地址"); } }}>复制页面地址</Button>
+            <code>{window.location.href}</code>
+          </div>}
+          {backupDownloadStatus === "copied" && <p role="status">地址已复制，请粘贴到浏览器地址栏打开。</p>}
           {backupPreview && <div className="backup-preview" role="status">
             <strong>恢复预览 · {backupPreview.exportedAt ? new Date(backupPreview.exportedAt).toLocaleString("zh-CN") : "未知时间"}</strong>
             <div><span>服务器 {backupPreview.current.machines} → {backupPreview.incoming.machines}</span><span>节点 {backupPreview.current.nodes} → {backupPreview.incoming.nodes}</span><span>订阅 {backupPreview.current.subscriptions} → {backupPreview.incoming.subscriptions}</span><span>托管实例 {backupPreview.current.managedInstances} → {backupPreview.incoming.managedInstances}</span></div>

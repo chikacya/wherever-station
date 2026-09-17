@@ -1,7 +1,7 @@
 {
   "name": "wherever-station-runtime",
   "private": true,
-  "version": "0.67.0",
+  "version": "0.68.0",
   "description": "Komari plugin for server-aware node management, subscriptions, and isolated proxy instances",
   "license": "GPL-3.0-only",
   "repository": {

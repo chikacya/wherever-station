@@ -69,6 +69,7 @@ async function main() {
     await backupLink.click();
     const download = await downloadPromise;
     if (!download.suggestedFilename().startsWith('wherever-station-backup-')) throw new Error('Backup download filename is incorrect');
+    if (!(await backupLink.isVisible())) throw new Error('Download link was removed during browser navigation');
     const backupFixture = { format: 'wherever-station-backup', schema: 1, exportedAt: '2026-09-17T00:00:00Z', state, providerSecrets: {}, ruleSetCache: {} };
     await dialog.locator('.backup-file-picker input').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backupFixture)) });
     await dialog.getByText('恢复预览', { exact: false }).waitFor();

@@ -3225,6 +3225,8 @@ function SettingsDialog({ open, value, revision, theme, onClose, onSave, onResto
   const [backupPreview, setBackupPreview] = useState(null);
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupDownloadStatus, setBackupDownloadStatus] = useState("");
+  const [backupDownload, setBackupDownload] = useState(null);
+  useEffect(() => () => { if (backupDownload?.url) URL.revokeObjectURL(backupDownload.url); }, [backupDownload]);
   useEffect(() => {
     if (open) {
       const initial = {
@@ -3239,6 +3241,7 @@ function SettingsDialog({ open, value, revision, theme, onClose, onSave, onResto
       setBackup(null);
       setBackupPreview(null);
       setBackupDownloadStatus("");
+      setBackupDownload(null);
     }
   }, [open]);
   useEffect(() => {
@@ -3272,23 +3275,23 @@ function SettingsDialog({ open, value, revision, theme, onClose, onSave, onResto
     }
   };
   const downloadBackup = async () => {
-    setBackupDownloadStatus(""); setError("");
+    setBackupDownloadStatus(""); setBackupDownload(null); setError("");
     const filename = `wherever-station-backup-${new Date().toISOString().slice(0, 10)}.json`;
     let fileHandle = null;
     const sandboxBlocksDownloads = (() => {
       try { return !!window.frameElement?.sandbox && !window.frameElement.sandbox.contains("allow-downloads"); }
       catch { return false; }
     })();
-    if (sandboxBlocksDownloads) {
-      if (typeof window.showSaveFilePicker !== "function") { setBackupDownloadStatus("blocked"); return; }
+    if (typeof window.showSaveFilePicker === "function") {
       try {
         // The picker needs the click's user activation, so open it before the RPC request.
         fileHandle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: "JSON 备份", accept: { "application/json": [".json"] } }] });
       } catch (reason) {
-        if (reason?.name !== "AbortError") setBackupDownloadStatus("blocked");
-        return;
+        if (reason?.name === "AbortError") return;
+        if (sandboxBlocksDownloads) { setBackupDownloadStatus("blocked"); return; }
       }
     }
+    if (sandboxBlocksDownloads && !fileHandle) { setBackupDownloadStatus("blocked"); return; }
     setBackupBusy(true);
     try {
       const exported = await rpc("proxyConsole:exportPortableBackup");
@@ -3300,10 +3303,11 @@ function SettingsDialog({ open, value, revision, theme, onClose, onSave, onResto
         setBackupDownloadStatus("saved");
       } else {
         const url = URL.createObjectURL(new Blob([content], { type: "application/json" }));
+        setBackupDownload({ url, filename });
         const link = document.createElement("a");
         link.href = url; link.download = filename;
         document.body.append(link); link.click(); link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        setBackupDownloadStatus("ready");
       }
     } catch (reason) { setError(reason.message); }
     finally { setBackupBusy(false); }
@@ -3374,6 +3378,7 @@ function SettingsDialog({ open, value, revision, theme, onClose, onSave, onResto
             <label className="button backup-file-picker"><Upload size={16} /><span>选择备份文件</span><input type="file" accept=".json,application/json" onChange={(event) => { selectBackup(event.target.files?.[0]); event.target.value = ""; }} disabled={backupBusy} /></label>
           </div>
           {backupDownloadStatus === "saved" && <p role="status">备份已保存。</p>}
+          {backupDownloadStatus === "ready" && backupDownload && <p role="status" className="backup-download-ready">如果浏览器没有自动下载，请<a href={backupDownload.url} download={backupDownload.filename}>点击这里保存备份文件</a>。</p>}
           {backupDownloadStatus === "blocked" && <div className="backup-download-help" role="status">
             <p>Komari 内嵌页不允许普通下载。复制独立页面地址，在浏览器地址栏打开后再下载。</p>
             <Button icon={Copy} onClick={async () => { try { await navigator.clipboard.writeText(window.location.href); setBackupDownloadStatus("copied"); } catch (reason) { setError("复制失败，请手动复制下方地址"); } }}>复制页面地址</Button>

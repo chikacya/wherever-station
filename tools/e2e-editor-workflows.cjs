@@ -30,6 +30,8 @@ async function main() {
   const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {}), headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, hasTouch: true });
+    // Model browsers without a native save picker (including the full-screen fallback path).
+    await page.addInitScript(() => { window.showSaveFilePicker = undefined; });
     await page.route('https://api.github.com/repos/NodePassProject/Nowhere/releases?**', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ tag_name: 'v2.0.0', draft: false, prerelease: false }]) }));
     await page.route('https://api.github.com/repos/SagerNet/sing-box/releases?**', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ tag_name: 'v1.13.11', draft: false, prerelease: false }]) }));
     await page.route('**/api/rpc2', async route => {
@@ -62,6 +64,7 @@ async function main() {
     await dialog.getByRole('button', { name: '下载备份' }).click();
     const download = await downloadPromise;
     if (!download.suggestedFilename().startsWith('wherever-station-backup-')) throw new Error('Backup download filename is incorrect');
+    await dialog.getByRole('link', { name: '点击这里保存备份文件' }).waitFor();
     const backupFixture = { format: 'wherever-station-backup', schema: 1, exportedAt: '2026-09-17T00:00:00Z', state, providerSecrets: {}, ruleSetCache: {} };
     await dialog.locator('.backup-file-picker input').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backupFixture)) });
     await dialog.getByText('恢复预览', { exact: false }).waitFor();
@@ -75,9 +78,9 @@ async function main() {
     await page.getByRole('button', { name: '节点', exact: true }).click();
     await page.getByRole('button', { name: '添加节点', exact: true }).click();
     dialog = page.locator('dialog[open]');
+    await page.waitForFunction(() => !!JSON.parse(sessionStorage.getItem('wherever-station:draft:node:new') || 'null')?.value?.id);
     const hostSelect = dialog.locator('label').filter({ hasText: /^关联 VPS/ }).locator('select');
     await hostSelect.selectOption('my');
-    await page.waitForFunction(() => JSON.parse(sessionStorage.getItem('wherever-station:draft:node:new') || 'null')?.value?.machineId === 'my');
     const nodeName = dialog.locator('label').filter({ hasText: /^节点名称/ }).locator('input');
     if (!(await nodeName.inputValue()).startsWith('🇲🇾 马来西亚 |')) throw new Error('Manual node name did not follow the selected server');
     const uri = dialog.locator('textarea[placeholder*="其他协议 URI"]');

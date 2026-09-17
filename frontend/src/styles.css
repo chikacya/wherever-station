@@ -539,6 +539,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .backup-download-help { display: grid; justify-items: start; gap: 8px; }
 .backup-download-help p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .backup-download-help code { max-width: 100%; overflow-wrap: anywhere; font-size: 11px; }
+.backup-download-ready { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.backup-download-ready a { color: var(--primary-strong); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .backup-file-picker { position: relative; cursor: pointer; }
 .backup-file-picker input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .backup-file-picker:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }

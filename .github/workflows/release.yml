@@ -1,0 +1,33 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/verify
+      - run: node tools/release-check.js "${{ github.ref_name }}"
+      - name: Create checksums
+        run: cd dist && sha256sum wherever-station-*.zip > SHA256SUMS
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/wherever-station-*.zip dist/SHA256SUMS --verify-tag --generate-notes --title "Wherever Station ${{ github.ref_name }}"
+      - name: Publish Komari plugin source
+        run: |
+          git fetch origin main
+          git switch -C market-publish origin/main
+          python3 tools/build-market-catalog.py "dist/wherever-station-${GITHUB_REF_NAME#v}.zip" "$GITHUB_REF_NAME" v1.json
+          git add v1.json
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "Update Komari plugin source for $GITHUB_REF_NAME"
+            git push origin HEAD:main
+          fi

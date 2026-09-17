@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/verify
+      - name: Verify deterministic package
+        run: |
+          before="$(sha256sum dist/wherever-station-*.zip | cut -d' ' -f1)"
+          npm run package
+          after="$(sha256sum dist/wherever-station-*.zip | cut -d' ' -f1)"
+          test "$before" = "$after"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wherever-station-${{ github.sha }}
+          path: dist/wherever-station-*.zip
+          if-no-files-found: error

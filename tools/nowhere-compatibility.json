@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "adapters": [
+    {
+      "id": "nowhere-v1",
+      "generation": 1,
+      "major": 1,
+      "minimumVersion": "v1.5.0",
+      "maximumVersion": "v1.8.3",
+      "verifiedVersions": [
+        "v1.5.0",
+        "v1.5.1",
+        "v1.5.2",
+        "v1.6.0",
+        "v1.7.0",
+        "v1.8.0",
+        "v1.8.1",
+        "v1.8.2",
+        "v1.8.3"
+      ]
+    },
+    {
+      "id": "nowhere-v2",
+      "generation": 2,
+      "major": 2,
+      "minimumVersion": "v2.0.0",
+      "maximumVersion": "v2.0.0",
+      "verifiedVersions": [
+        "v2.0.0"
+      ]
+    }
+  ]
+}

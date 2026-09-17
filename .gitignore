@@ -1,0 +1,11 @@
+.DS_Store
+node_modules/
+frontend/node_modules/
+dist/
+artifacts/
+__pycache__/
+*.py[cod]
+seed.json
+*.log
+*.backup
+*.tmp

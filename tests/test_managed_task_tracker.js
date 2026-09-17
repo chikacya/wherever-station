@@ -1,0 +1,41 @@
+const assert = require('assert');
+const { managedTaskTracker } = require('../tools/managed-task-tracker');
+const flush = () => new Promise(resolve => setImmediate(resolve));
+async function main() {
+  const store = new Map(); let recorded = 0; let mismatch = false; let outputKind = 'nowhere';
+  const calls = [];
+  const options = { store, call: async (method, params = {}) => {
+    calls.push(method);
+    if (method === 'admin:getTasksByClientId') return [{ task_id: 'recovered123', command: 'owned-command\n# wherever-operation:lost-bind' }];
+    if (method === 'admin:getTaskById') return { command: mismatch ? 'another command' : 'owned-command\n# wherever-operation:' + (params.task_id === 'certificate-task' ? 'cert-task' : store.has('lost-bind') ? 'lost-bind' : 'op'), clients: ['agent'] };
+    const prefix = outputKind === 'certificate' ? 'PCCERT\t1\t' : 'PCNOWHERE\t2\t';
+    return { exit_code: 0, result: prefix + Buffer.from(JSON.stringify({ ok: true, state: 'active' })).toString('base64') };
+  }, complete: (kind, id, result) => { recorded++; return { result }; } };
+  let tracker = managedTaskTracker(options);
+  const prepared = tracker.prepare('nowhere', { operationId: 'op', instanceId: 'instance', clientId: 'agent', command: 'owned-command', action: 'start' });
+  assert.equal(prepared.deduplicated, false);
+  const duplicate = tracker.prepare('nowhere', { operationId: 'op', instanceId: 'instance', clientId: 'agent', command: 'owned-command', action: 'start' });
+  assert.equal(duplicate.deduplicated, true);
+  assert.equal(duplicate.command, '');
+  assert.throws(() => tracker.prepare('nowhere', { operationId: 'op', instanceId: 'other', clientId: 'agent', command: 'other-command', action: 'start' }), /requestId/);
+  assert(!JSON.stringify([...store]).includes('owned-command'));
+  tracker.bind({ operationId: 'op', taskId: 'task12345' });
+  await flush(); assert.equal(tracker.get('op').phase, 'completed'); assert.equal(recorded, 1);
+  tracker = managedTaskTracker(options); tracker.resume(); await flush(); assert.equal(recorded, 1);
+  assert.throws(() => tracker.bind({ operationId: 'op', taskId: 'different123' }), /其他任务/);
+  mismatch = true;
+  tracker.prepare('nowhere', { operationId: 'bad', clientId: 'agent', command: 'owned-command' });
+  tracker.bind({ operationId: 'bad', taskId: 'task12345' }); await flush();
+  assert.equal(tracker.get('bad').phase, 'rejected'); assert.equal(recorded, 1);
+  mismatch = false;
+  tracker.prepare('nowhere', { operationId: 'lost-bind', clientId: 'agent', command: 'owned-command' });
+  tracker = managedTaskTracker(options); tracker.resume(); await flush();
+  assert.equal(tracker.get('lost-bind').phase, 'completed'); assert.equal(recorded, 2);
+  outputKind = 'certificate';
+  tracker.prepare('certificate', { operationId: 'cert-task', instanceId: 'cert-fixture', clientId: 'agent', command: 'owned-command', action: 'inspect' });
+  tracker.bind({ operationId: 'cert-task', taskId: 'certificate-task' }); await flush();
+  assert.equal(tracker.get('cert-task').phase, 'completed'); assert.equal(recorded, 3);
+  assert(calls.every(method => ['admin:getTasksByClientId', 'admin:getTaskById', 'admin:getSpecificTaskResult'].includes(method)));
+  console.log('task tracker authorization boundary / resume / dedup passed');
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });

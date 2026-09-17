@@ -1,0 +1,31 @@
+const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { spawnSync } = require('child_process');
+const { planManagedNowhere } = require('../tools/managed-nowhere');
+const { decodeNowhereConfig } = require('../tools/nowhere-config');
+const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'wherever-read-'));
+try {
+  const plan = planManagedNowhere({ id: 'nw-readtest', name: '测试', key: 'test-only-key', publicHost: 'example.com', port: 32077, network: 'tcp', pool: 0 });
+  const filename = path.join(directory, 'nowhere.env');
+  fs.writeFileSync(filename, plan.environment, { mode: 0o600 });
+  const prelude = `import json,os,sys\nP=json.loads(sys.argv[1])\nos.geteuid=lambda:0\nactive=lambda unit:'inactive'\nemit=lambda value:print(json.dumps(value))\ndef stop(error): raise RuntimeError(error)\n`;
+  const result = spawnSync('python3', ['-c', prelude + fs.readFileSync(path.join(__dirname, '../tools/nowhere-read.py'), 'utf8'), JSON.stringify({ environmentPath: filename, unitName: 'owned.service' })], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const read = JSON.parse(result.stdout);
+  assert.equal(read.ok, true);
+  assert.match(read.configurationHash, /^[a-f0-9]{64}$/);
+  const decoded = decodeNowhereConfig(read.configuration);
+  const restored = planManagedNowhere({ ...decoded, id: plan.id, name: '测试' });
+  assert.equal(restored.environment, plan.environment);
+  assert.equal(decoded.pool, 0);
+  const v2Plan = planManagedNowhere({ id: 'nw-read-v2', version: 'v2.0.0', name: 'V2', key: 'test-only-v2-key', publicHost: 'example.com', port: 32078, tcpPort: 32078, udpPort: 32079, tcpCarrier: 'tcp4', udpCarrier: 'udp6', morph: 1, transportMemoryProfile: 'memory' });
+  const v2Values = Object.fromEntries(v2Plan.environment.trim().split('\n').map(line => { const index = line.indexOf('='); return [line.slice(0, index), JSON.parse(line.slice(index + 1))]; }));
+  const v2Decoded = decodeNowhereConfig(v2Values);
+  const v2Restored = planManagedNowhere({ ...v2Decoded, id: v2Plan.id, name: 'V2' });
+  assert.equal(v2Restored.environment, v2Plan.environment);
+  assert.equal(v2Decoded.tcpCarrier, 'tcp4'); assert.equal(v2Decoded.udpCarrier, 'udp6'); assert.equal(v2Decoded.morph, 1);
+  assert.throws(() => decodeNowhereConfig({}), /缺少字段/);
+  console.log('Nowhere private config read and lossless planning passed');
+} finally { fs.rmSync(directory, { recursive: true, force: true }); }

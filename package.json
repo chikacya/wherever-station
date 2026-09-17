@@ -1,0 +1,37 @@
+{
+  "name": "wherever-station-runtime",
+  "private": true,
+  "version": "0.67.0",
+  "description": "Komari plugin for server-aware node management, subscriptions, and isolated proxy instances",
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chikacya/wherever-station.git"
+  },
+  "homepage": "https://github.com/chikacya/wherever-station#readme",
+  "bugs": {
+    "url": "https://github.com/chikacya/wherever-station/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test tests/*.js",
+    "test:python": "python3 -m unittest discover -s tests -p 'test_*.py'",
+    "test:frontend": "npm --prefix frontend test",
+    "test:e2e": "node tools/e2e-local.cjs",
+    "test:core": "node tools/check-output-core.cjs",
+    "check:public": "node tools/public-tree-check.js",
+    "audit": "npm audit --omit=dev && npm --prefix frontend audit --omit=dev",
+    "build": "npm --prefix frontend run build",
+    "package": "python3 tools/package-release.py",
+    "release:check": "node tools/release-check.js",
+    "ci": "npm run audit && npm run check:public && npm run test && npm run test:python && npm run test:frontend && npm run build && npm run release:check && npm run package"
+  },
+  "dependencies": {
+    "js-yaml": "4.3.2"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}

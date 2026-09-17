@@ -1,0 +1,29 @@
+name: Verify runtime and UI
+description: Shared checks for pull requests and tagged releases
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: |
+          package-lock.json
+          frontend/package-lock.json
+    - uses: actions/setup-python@v7
+      with:
+        python-version: "3.12"
+    - run: npm ci && npm --prefix frontend ci
+      shell: bash
+    - run: npm run ci
+      shell: bash
+    - run: npx playwright install --with-deps chromium
+      shell: bash
+    - run: npm run test:e2e
+      shell: bash
+    - name: Validate generated sing-box configuration
+      shell: bash
+      run: |
+        binary="$RUNNER_TEMP/wherever-check-sing-box"
+        python3 -c 'import runpy,sys; runpy.run_path("tools/download-sing-box.py")["install_release"](sys.argv[1], "1.13.18")' "$binary"
+        SING_BOX_BINARY="$binary" npm run test:core

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="wherever-station-icon-title">
+  <title id="wherever-station-icon-title">Wherever Station</title>
+  <rect class="station-surface" x="4" y="4" width="56" height="56" rx="14" fill="#9bb7d7"/>
+  <path class="station-post" d="M31 21h2v30H31z" fill="#07527a"/>
+  <circle class="station-location" cx="32" cy="52" r="3.5" fill="#e85d4a"/>
+  <rect class="station-sign" x="16" y="10" width="32" height="11" rx="2.4" fill="#07527a"/>
+  <rect class="station-sign-border" x="17.5" y="11.4" width="29" height="8.2" rx="1.5" fill="none" stroke="#f3f1e8" stroke-width=".8" opacity=".9"/>
+</svg>

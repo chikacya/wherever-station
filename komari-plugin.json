@@ -1,0 +1,27 @@
+{
+  "name": {"zh_CN": "Wherever Station", "en": "Wherever Station"},
+  "short": "proxy-console",
+  "description": {"zh_CN": "节点、订阅、宿主与代理服务工作台", "en": "Workspace for nodes, subscriptions, hosts, and proxy services"},
+  "author": "chikacya",
+  "url": "https://github.com/chikacya/wherever-station",
+  "icon": "icon.svg",
+  "version": "0.67.0",
+  "komari": ">=1.4.3",
+  "entry": "script.js",
+  "permissions": {
+    "node": true,
+    "allowRoutes": true,
+    "allowSystemRPC": true,
+    "timeout": 15,
+    "maxHTTPBodyBytes": 1048576
+  },
+  "pages": [
+    {
+      "file": "pages/admin.html",
+      "title": {"zh_CN": "Wherever Station", "en": "Wherever Station"},
+      "icon": "icon.svg",
+      "type": "iframe",
+      "visibility": "admin"
+    }
+  ]
+}

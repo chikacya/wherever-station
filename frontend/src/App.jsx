@@ -2262,19 +2262,20 @@ function Subscriptions({ state, persist, notify, onOpenSettings }) {
     </section>
   );
 }
-function DraggableNode({ node, selected, machine, onToggle }) {
+function DraggableNode({ node, selected, machine, onToggle, handleOnly }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
     id: `palette:${node.id}`,
     data: { kind: "node", nodeId: node.id, label: node.name },
   });
   return (
     <div
-      ref={setNodeRef}
+      ref={(element) => { setNodeRef(element); if (!handleOnly) setActivatorNodeRef(element); }}
       style={{ opacity: isDragging ? 0.42 : 1 }}
       className={`palette-node ${selected ? "selected" : ""}`}
       onClick={onToggle}
+      {...(handleOnly ? {} : { ...attributes, ...listeners })}
     >
-      <button type="button" ref={setActivatorNodeRef} className="drag-handle" aria-label={`拖动 ${node.name}`} onClick={(event) => event.stopPropagation()} {...attributes} {...listeners}>
+      <button type="button" ref={handleOnly ? setActivatorNodeRef : undefined} className="drag-handle" aria-label={`拖动 ${node.name}`} onClick={(event) => event.stopPropagation()} {...(handleOnly ? { ...attributes, ...listeners } : {})}>
         <GripVertical size={15} />
       </button>
       <span className="node-copy">
@@ -2543,12 +2544,28 @@ function SubscriptionEditor({
   const [form, setForm] = useState(null);
   const [search, setSearch] = useState("");
   const [activeDrag, setActiveDrag] = useState(null);
+  const dragPointer = useRef(null);
+  const dragScrollOrigin = useRef(0);
+  const [handleOnly, setHandleOnly] = useState(() => window.matchMedia("(max-width: 760px), (pointer: coarse)").matches);
   const [recentNodeId, setRecentNodeId] = useState("");
   const [review, setReview] = useState(null);
   const draftKey = `subscription:${subscription?.id || "new"}`;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
   );
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 760px), (pointer: coarse)");
+    const update = () => setHandleOnly(media.matches);
+    media.addEventListener("change", update);
+    update();
+    return () => media.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    if (!open) return undefined;
+    const trackPointer = (event) => { dragPointer.current = { x: event.clientX, y: event.clientY }; };
+    document.addEventListener("pointermove", trackPointer, { capture: true, passive: true });
+    return () => document.removeEventListener("pointermove", trackPointer, true);
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     setStage("nodes");
@@ -2879,6 +2896,14 @@ function SubscriptionEditor({
   };
   const collisionDetection = (args) => {
     const pointer = pointerWithin(args);
+    const kind = args.active.data.current?.kind;
+    const preferred = kind === "node" || kind === "selected-node"
+      ? ["group-drop", "selected-node", "selected-list"]
+      : kind === "group-entry" ? ["group-entry", "group-drop"] : [];
+    for (const targetKind of preferred) {
+      const hits = pointer.filter(({ id }) => args.droppableContainers.find((container) => container.id === id)?.data.current?.kind === targetKind);
+      if (hits.length) return hits;
+    }
     return pointer.length ? pointer : closestCenter(args);
   };
   const submit = async () => {
@@ -3004,7 +3029,11 @@ function SubscriptionEditor({
       {stage === "rules" ? <><RuleEditor rules={form.customRules} policyMode={form.policyMode} onChange={(patch) => { setReview(null); setForm((current) => ({ ...current, ...patch })); }} onPreview={(params) => rpc("proxyConsole:previewPolicy", params)} /><div className="rule-set-picker"><div><strong>远程规则集</strong><span>只有缓存成功且启用的规则集会参与输出；顺序位于手写规则之后。</span></div>{ruleSets.length ? ruleSets.map((source) => <label key={source.id} className="rule-set-option"><input type="checkbox" checked={form.ruleSetIds.includes(source.id)} onChange={(event) => { setReview(null); setForm((current) => ({ ...current, ruleSetIds: event.target.checked ? [...current.ruleSetIds, source.id] : current.ruleSetIds.filter((id) => id !== source.id) })); }} /><span><strong>{source.name}</strong><small>{source.lastSuccessAt ? `${source.entryCount} 条 · 缓存 ${source.version}` : "尚无可用缓存"}{source.lastError && source.lastSuccessAt ? " · 最近刷新失败，沿用旧缓存" : ""}</small></span></label>) : <p className="muted">可在“订阅源”页添加文本规则集。</p>}</div></> : <DndContext
         sensors={sensors}
         collisionDetection={collisionDetection}
-        onDragStart={({ active }) => setActiveDrag(active.data.current || null)}
+        onDragStart={({ active, activatorEvent }) => {
+          if (activatorEvent && "clientX" in activatorEvent) dragPointer.current = { x: activatorEvent.clientX, y: activatorEvent.clientY };
+          dragScrollOrigin.current = document.querySelector("dialog[open]")?.scrollTop || 0;
+          setActiveDrag(active.data.current || null);
+        }}
         onDragCancel={() => setActiveDrag(null)}
         onDragEnd={onDragEnd}
       >
@@ -3165,6 +3194,7 @@ function SubscriptionEditor({
                   machine={machineMap.get(node.machineId)}
                   selected={form.nodeIds.includes(node.id)}
                   onToggle={() => toggleNode(node.id)}
+                  handleOnly={handleOnly}
                 />
               ))}
             </div>
@@ -3173,14 +3203,16 @@ function SubscriptionEditor({
         <DragOverlay
           modifiers={[({ activatorEvent, draggingNodeRect, overlayNodeRect, transform }) => {
             if (!activatorEvent || !draggingNodeRect || !overlayNodeRect) return transform;
-            const point = "clientX" in activatorEvent
+            const start = "clientX" in activatorEvent
               ? activatorEvent
               : activatorEvent.touches?.[0] || activatorEvent.changedTouches?.[0];
-            if (!point) return transform;
+            if (!start) return transform;
+            const point = dragPointer.current || { x: start.clientX + transform.x, y: start.clientY + transform.y };
+            const scrollDelta = (document.querySelector("dialog[open]")?.scrollTop || 0) - dragScrollOrigin.current;
             return {
               ...transform,
-              x: transform.x + point.clientX - draggingNodeRect.left - overlayNodeRect.width / 2,
-              y: transform.y + point.clientY - draggingNodeRect.top - overlayNodeRect.height / 2,
+              x: point.x - draggingNodeRect.left - overlayNodeRect.width / 2,
+              y: point.y - draggingNodeRect.top - overlayNodeRect.height / 2 + scrollDelta,
             };
           }]}
           dropAnimation={{ duration: 160, easing: "ease-out" }}

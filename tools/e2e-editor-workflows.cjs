@@ -29,7 +29,7 @@ async function main() {
   };
   const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {}), headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, hasTouch: true });
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     // Model browsers without a native save picker (including the full-screen fallback path).
     await page.addInitScript(() => { window.showSaveFilePicker = undefined; });
     await page.route('https://api.github.com/repos/NodePassProject/Nowhere/releases?**', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ tag_name: 'v2.0.0', draft: false, prerelease: false }]) }));
@@ -128,12 +128,41 @@ async function main() {
     if (offset > 8) throw new Error(`Drag overlay is ${offset.toFixed(1)}px away from the pointer`);
     await page.mouse.up();
     await page.waitForTimeout(250);
+    const card = dialog.locator('.palette-node').first();
+    const cardText = await card.locator('.node-copy').boundingBox();
+    const groupDrop = dialog.locator('.group-drop').first();
+    if (!cardText || !(await groupDrop.boundingBox())) throw new Error('Missing node card or group drop area');
+    await page.mouse.move(cardText.x + cardText.width / 2, cardText.y + cardText.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(cardText.x + cardText.width / 2 + 12, cardText.y + cardText.height / 2 + 12, { steps: 4 });
+    let dropPointer;
+    for (let attempt = 0; attempt < 4 && !(await groupDrop.getAttribute('class')).includes('over'); attempt++) {
+      const target = await groupDrop.boundingBox();
+      dropPointer = { x: target.x + target.width / 2, y: target.y + target.height / 2 };
+      await page.mouse.move(dropPointer.x, dropPointer.y, { steps: 12 });
+      await page.waitForTimeout(60);
+    }
+    const groupDropActive = await groupDrop.getAttribute('class');
+    const draggedBox = await overlay.boundingBox();
+    const dragOffset = Math.hypot(draggedBox.x + draggedBox.width / 2 - dropPointer.x, draggedBox.y + draggedBox.height / 2 - dropPointer.y);
+    if (dragOffset > 12) throw new Error(`Cross-column drag overlay drifted ${dragOffset.toFixed(1)}px from the pointer`);
+    await page.mouse.up();
+    if (!(await dialog.locator('.group-entry').count())) throw new Error(`Dragging a node card into a proxy group failed (drop=${groupDropActive})`);
+    await page.waitForTimeout(220);
     await page.setViewportSize({ width: 375, height: 812 });
     const palette = dialog.locator('.palette');
     await palette.scrollIntoViewIfNeeded();
+    const mobileHandle = await dialog.locator('.palette-node .drag-handle').first().boundingBox();
+    if (!mobileHandle) throw new Error('Mobile drag handle is missing');
+    const touch = await page.context().newCDPSession(page);
+    const handleX = mobileHandle.x + mobileHandle.width / 2;
+    const handleY = mobileHandle.y + mobileHandle.height / 2;
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: handleX, y: handleY }] });
+    for (let step = 1; step <= 6; step++) await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: handleX + step * 3, y: handleY + step * 4 }] });
+    await overlay.waitFor();
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     const paletteBox = await palette.boundingBox();
     if (!paletteBox) throw new Error('Mobile node palette is missing');
-    const touch = await page.context().newCDPSession(page);
     const startX = paletteBox.x + 90;
     const startY = paletteBox.y + paletteBox.height - 30;
     await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: startX, y: startY }] });

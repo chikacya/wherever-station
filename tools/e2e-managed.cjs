@@ -75,10 +75,10 @@ async function main() {
     await frame.getByRole('button', { name: '部署节点', exact: true }).click();
     console.log(JSON.stringify({ stage, ok: true }));
     stage = 'create';
-    await frame.getByRole('button', { name: kind === 'nowhere' ? '新建 Nowhere' : '新建 sing-box', exact: true }).click();
+    await frame.getByRole('button', { name: kind === 'nowhere' ? /部署 Nowhere/ : /sing-box 快捷部署/ }).click();
     let dialog = frame.locator('dialog[open]');
     await dialog.getByLabel('节点名称', { exact: true }).fill(testName);
-    const hostSelect = dialog.locator('label').filter({ hasText: /^节点宿主/ }).locator('select');
+    const hostSelect = dialog.locator('label').filter({ hasText: /^(节点宿主|服务器)/ }).locator('select');
     await hostSelect.locator('option').first().waitFor({ state: 'attached' });
     const options = await hostSelect.locator('option').allTextContents();
     const matches = options.filter(label => label.toLowerCase().includes(machine.toLowerCase()));
@@ -113,8 +113,8 @@ async function main() {
     if (kind === 'nowhere') {
       const network = opt('--network', 'tcp');
       if (!['tcp', 'udp', 'mix'].includes(network)) throw new Error('Nowhere network must be tcp, udp, or mix');
-      await dialog.getByLabel('TCP Carrier 端口', { exact: true }).fill(network === 'udp' ? '0' : String(port));
-      await dialog.getByLabel('UDP Carrier 端口', { exact: true }).fill(network === 'tcp' ? '0' : String(port));
+      await dialog.locator('label').filter({ hasText: /^TCP Carrier 端口/ }).locator('input').fill(network === 'udp' ? '0' : String(port));
+      await dialog.locator('label').filter({ hasText: /^UDP Carrier 端口/ }).locator('input').fill(network === 'tcp' ? '0' : String(port));
       await dialog.locator('label').filter({ hasText: /^客户端输出/ }).locator('select').selectOption('both');
     }
     const expectedIp = await dialog.getByLabel('公网域名或 IP', { exact: false }).inputValue();
@@ -292,7 +292,12 @@ async function main() {
         await page.waitForTimeout(500);
       }
       if (!sample) throw new Error('Visible-page sampling did not report active instance');
-      console.log(JSON.stringify({ stage: 'automatic-state-sample', ok: true, elapsedMs: Date.now() - began, pidPresent: sample.pid > 0 }));
+      if (kind === 'nowhere') {
+        if (sample.telemetry?.source !== 'local') throw new Error(`Nowhere 2.0.2 did not expose local telemetry (${sample.telemetry?.source || 'missing'})`);
+        if (!/^v?2\.0\.2$/.test(sample.telemetry.version || '')) throw new Error(`Unexpected Nowhere telemetry version: ${sample.telemetry?.version || 'missing'}`);
+        if (sample.telemetry.lifecycle !== 'READY') throw new Error(`Nowhere telemetry lifecycle is not ready: ${sample.telemetry.lifecycle || 'missing'}`);
+      }
+      console.log(JSON.stringify({ stage: 'automatic-state-sample', ok: true, elapsedMs: Date.now() - began, pidPresent: sample.pid > 0, telemetrySource: sample.telemetry?.source || '', telemetryVersion: sample.telemetry?.version || '' }));
     }
     let outbound;
     if (kind === 'nowhere') {

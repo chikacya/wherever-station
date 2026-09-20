@@ -3885,20 +3885,32 @@ function Providers({ state, setState, notify, onNavigate }) {
   </section>;
 }
 
-function HostServiceControls({ machine, me, serviceStates, refreshServices, serviceBusy, notify }) {
+function HostServiceControls({ machine, managedInstances = [], me, serviceStates, refreshServices, serviceBusy, notify, onNavigate }) {
   const [telemetryOpen, setTelemetryOpen] = useState(false);
   const [history, setHistory] = useState([]);
   const [sampleMs, setSampleMs] = useState(3000);
   const rows = serviceStates[machine.monitorClientId] || {};
+  const nowhereSources = [
+    { key: "nowhere", label: "原生服务", instance: null },
+    ...managedInstances.filter((item) => item.kind === "nowhere").map((instance) => ({ key: instance.id, label: instance.name || instance.id, instance })),
+  ];
+  const preferredSource = nowhereSources.find((item) => item.instance?.adoptionState === "adopted")?.key || "nowhere";
+  const [nowhereSource, setNowhereSource] = useState(preferredSource);
+  const selectedSource = nowhereSources.find((item) => item.key === nowhereSource) || nowhereSources[0];
   useEffect(() => {
     setHistory([]);
     setTelemetryOpen(false);
+    setNowhereSource(preferredSource);
   }, [machine.monitorClientId]);
   useEffect(() => {
-    const row = rows.nowhere; const telemetry = row?.telemetry;
+    if (!nowhereSources.some((item) => item.key === nowhereSource)) setNowhereSource(preferredSource);
+  }, [nowhereSource, preferredSource, managedInstances.length]);
+  useEffect(() => { setHistory([]); }, [nowhereSource]);
+  useEffect(() => {
+    const row = rows[nowhereSource]; const telemetry = row?.telemetry;
     if (!telemetry || !Number.isFinite(telemetry.upBytesPerSecond) || !Number.isFinite(telemetry.downBytesPerSecond)) return;
     setHistory((current) => current.at(-1)?.observedAt === row.observedAt ? current : [...current, { observedAt: row.observedAt, up: telemetry.upBytesPerSecond, down: telemetry.downBytesPerSecond }].slice(-60));
-  }, [rows.nowhere?.observedAt]);
+  }, [nowhereSource, rows[nowhereSource]?.observedAt]);
   useEffect(() => {
     if (!telemetryOpen || sampleMs <= 0 || me?.two_factor_enabled) return undefined;
     refreshServices(false, null, machine.monitorClientId);
@@ -3917,7 +3929,7 @@ function HostServiceControls({ machine, me, serviceStates, refreshServices, serv
       notify(`${service} 已${label}`); await refreshServices(false, otp, machine.monitorClientId);
     } catch (error) { notify(error.message, true); }
   };
-  const nowhere = rows.nowhere; const telemetry = nowhere?.telemetry;
+  const nowhere = rows[nowhereSource]; const telemetry = nowhere?.telemetry;
   const serviceStatus = (service) => {
     const row = rows[service];
     const state = typeof row === "string" ? row : row?.state || "unknown";
@@ -3929,7 +3941,6 @@ function HostServiceControls({ machine, me, serviceStates, refreshServices, serv
     };
   };
   const singBox = serviceStatus("sing-box");
-  const nowhereService = serviceStatus("nowhere");
   return <>
     <section className="service-observatory-grid" aria-label={`${machine.name} 宿主服务与遥测`}>
       <article className="service-observatory singbox-observatory">
@@ -3944,19 +3955,19 @@ function HostServiceControls({ machine, me, serviceStates, refreshServices, serv
         <footer><div><Button icon={Play} onClick={() => action("sing-box", "start")} disabled={serviceBusy || singBox.state === "active"}>启动</Button><Button icon={Square} onClick={() => action("sing-box", "stop")} disabled={serviceBusy || singBox.state !== "active"}>停止</Button><Button icon={RotateCw} onClick={() => action("sing-box", "restart")} disabled={serviceBusy || singBox.state !== "active"}>重启</Button></div><span>宿主服务</span></footer>
       </article>
       <article className="service-observatory nowhere-observatory">
-        <header><span>PROTOCOL TELEMETRY / NOWHERE</span><Status tone={nowhereService.tone} title={nowhereService.row?.error || undefined}>{nowhereService.label}</Status></header>
-        <div className="service-observatory-title"><PackageOpen size={21} /><div><strong>Nowhere</strong><span>{NOWHERE_LIFECYCLE[telemetry?.lifecycle] || (nowhereService.state === "active" ? "进程运行中" : machine.name)}</span></div></div>
+        <header><span>PROTOCOL TELEMETRY / NOWHERE</span><Status tone={serviceStatus(nowhereSource).tone} title={serviceStatus(nowhereSource).row?.error || undefined}>{serviceStatus(nowhereSource).label}</Status></header>
+        <div className="service-observatory-title"><PackageOpen size={21} /><div><strong>Nowhere</strong><span>{NOWHERE_LIFECYCLE[telemetry?.lifecycle] || (serviceStatus(nowhereSource).state === "active" ? "进程运行中" : machine.name)}</span></div><label className="service-source-select"><span>状态来源</span><select value={nowhereSource} onChange={(event) => setNowhereSource(event.target.value)} aria-label="选择 Nowhere 状态来源">{nowhereSources.map((source) => <option key={source.key} value={source.key}>{source.label}</option>)}</select></label></div>
         <div className="service-throughput-pair">
           <div><span>↓ DOWNLOAD</span><strong>{bytes(telemetry?.downBytesPerSecond, true)}</strong></div>
           <div><span>↑ UPLOAD</span><strong>{bytes(telemetry?.upBytesPerSecond, true)}</strong></div>
         </div>
         <div className="service-trend"><TelemetrySparkline points={history} /><span>{telemetry?.source === "local" ? "LOCAL" : "WAITING"}</span></div>
-        <footer><div><Button icon={Play} onClick={() => action("nowhere", "start")} disabled={serviceBusy || nowhereService.state === "active"}>启动</Button><Button icon={Square} onClick={() => action("nowhere", "stop")} disabled={serviceBusy || nowhereService.state !== "active"}>停止</Button><Button icon={RotateCw} onClick={() => action("nowhere", "restart")} disabled={serviceBusy || nowhereService.state !== "active"}>重启</Button></div><Button icon={Activity} variant="primary" onClick={() => setTelemetryOpen(true)}>实时遥测</Button></footer>
+        <footer><div>{selectedSource.instance ? <Button icon={ExternalLink} onClick={() => onNavigate?.("deploy")}>前往托管实例</Button> : <><Button icon={Play} onClick={() => action("nowhere", "start")} disabled={serviceBusy || serviceStatus(nowhereSource).state === "active"}>启动</Button><Button icon={Square} onClick={() => action("nowhere", "stop")} disabled={serviceBusy || serviceStatus(nowhereSource).state !== "active"}>停止</Button><Button icon={RotateCw} onClick={() => action("nowhere", "restart")} disabled={serviceBusy || serviceStatus(nowhereSource).state !== "active"}>重启</Button></>}</div><Button icon={Activity} variant="primary" onClick={() => setTelemetryOpen(true)}>实时遥测</Button></footer>
       </article>
     </section>
-    <Modal open={telemetryOpen} title={`${machine.name} · Nowhere 实时遥测`} eyebrow="宿主原有服务" onClose={() => setTelemetryOpen(false)} size="large">
+    <Modal open={telemetryOpen} title={`${selectedSource.label} · Nowhere 实时遥测`} eyebrow={selectedSource.instance ? "托管实例" : "宿主原有服务"} onClose={() => setTelemetryOpen(false)} size="large">
       <div className="telemetry-toolbar"><p>详情打开时按所选间隔更新。</p><TelemetryRefreshControl value={sampleMs} onChange={setSampleMs} /></div>
-      {telemetry ? <><div className="telemetry-status"><div><span className={`telemetry-dot ${telemetry.lifecycle === "READY" ? "ready" : ""}`} /><strong>{NOWHERE_LIFECYCLE[telemetry.lifecycle] || (nowhere?.state === "active" ? "进程运行中" : "未运行")}</strong></div><p>{telemetry.source === "local" ? `Nowhere 本地遥测${telemetry.version ? ` · ${telemetry.version}` : ""}` : "当前内核未提供可读遥测"}</p></div><div className="telemetry-grid"><div><span>当前上传</span><strong>↑ {bytes(telemetry.upBytesPerSecond, true)}</strong></div><div><span>当前下载</span><strong>↓ {bytes(telemetry.downBytesPerSecond, true)}</strong></div><div><span>累计上传</span><strong>{bytes(telemetryTotal(telemetry, "Up"))}</strong></div><div><span>累计下载</span><strong>{bytes(telemetryTotal(telemetry, "Down"))}</strong></div><div><span>Nowhere CPU</span><strong>{Number.isFinite(telemetry.cpuPercent) ? `${telemetry.cpuPercent.toFixed(1)}%` : "—"}</strong></div><div><span>Nowhere RSS</span><strong>{Number.isFinite(telemetry.rssBytes) ? bytes(telemetry.rssBytes) : "—"}</strong></div><div><span>运行时间</span><strong>{Number.isFinite(telemetry.uptimeMs) ? duration(telemetry.uptimeMs) : "—"}</strong></div><div><span>进程 PID</span><strong>{nowhere?.pid || "—"}</strong></div></div><TelemetryTrend points={history} /></> : <div className="telemetry-empty">该服务还没有可用的遥测样本。</div>}
+      {telemetry ? <><div className="telemetry-status"><div><span className={`telemetry-dot ${telemetry.lifecycle === "READY" ? "ready" : ""}`} /><strong>{NOWHERE_LIFECYCLE[telemetry.lifecycle] || (nowhere?.state === "active" ? "进程运行中" : "未运行")}</strong></div><p>{telemetry.source === "local" ? `Nowhere 本地遥测${telemetry.version ? ` · ${telemetry.version}` : ""}` : "当前内核未提供可读遥测"}</p></div><div className="telemetry-grid"><div><span>当前上传</span><strong>↑ {bytes(telemetry.upBytesPerSecond, true)}</strong></div><div><span>当前下载</span><strong>↓ {bytes(telemetry.downBytesPerSecond, true)}</strong></div><div><span>累计上传</span><strong>{bytes(telemetryTotal(telemetry, "Up"))}</strong></div><div><span>累计下载</span><strong>{bytes(telemetryTotal(telemetry, "Down"))}</strong></div><div><span>Nowhere CPU</span><strong>{Number.isFinite(telemetry.cpuPercent) ? `${telemetry.cpuPercent.toFixed(1)}%` : "—"}</strong></div><div><span>Nowhere RSS</span><strong>{Number.isFinite(telemetry.rssBytes) ? bytes(telemetry.rssBytes) : "—"}</strong></div><div><span>运行时间</span><strong>{Number.isFinite(telemetry.uptimeMs) ? duration(telemetry.uptimeMs) : "—"}</strong></div><div><span>进程 PID</span><strong>{nowhere?.pid || "—"}</strong></div></div><TelemetryTrend points={history} /></> : <div className="telemetry-empty">该状态源还没有可用的遥测样本。</div>}
       <div className="dialog-actions"><Button onClick={() => setTelemetryOpen(false)}>关闭</Button></div>
     </Modal>
   </>;
@@ -4190,6 +4201,11 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
   const activeSubscriptions = (state.subscriptions || []).filter((item) => item.enabled !== false && (!item.expiresAt || Date.parse(item.expiresAt) >= Date.now())).length;
   const plannedMachines = machineModels.filter((item) => item.trafficPlanResult.enabled);
   const attentionPlans = plannedMachines.filter((item) => ["warning", "critical", "exceeded"].includes(item.trafficPlanResult.state));
+  const profile = selectedMachine?.ipProfile;
+  const profileLocation = [profile?.location?.city, profile?.location?.region, profile?.location?.country].filter((value, index, list) => value && !/[?？�]{2,}/.test(value) && list.indexOf(value) === index).join(" · ");
+  const profileCountryCode = profile?.location?.countryCode || selectedMachine?.countryCode || "";
+  const riskLabel = { low: "低风险", medium: "中等风险", high: "高风险", unknown: "待判断" }[profile?.risk?.level || "unknown"];
+  const serviceLabel = { AVAILABLE: "可用", PARTIAL: "部分可用", BLOCKED: "受限", UNKNOWN: "未知" };
   useEffect(() => {
     if (!state.machines.length) {
       if (selectedId) setSelectedId("");
@@ -4322,13 +4338,13 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
           <article className="ip-profile-card dashboard-card">
             <header><span>IP QUALITY / SERVICE ACCESS</span><b>{selectedMachine?.ipProfile?.checkedAt ? new Date(selectedMachine.ipProfile.checkedAt).toLocaleDateString("zh-CN") : "NOT TESTED"}</b></header>
             <div className="ip-profile-main">
-              <div><span>出口位置</span><strong>{selectedMachine?.ipProfile?.geo || `${flag(selectedMachine?.countryCode)} ${selectedMachine?.countryCode || "待检测"}`}</strong><small>{selectedMachine?.ipProfile?.risk || "在目标 VPS 上运行固定版本的检测器"}</small></div>
-              <div className="ip-profile-services">{(selectedMachine?.ipProfile?.results || []).filter((item) => ["STREAM", "AI"].includes(item.category)).slice(0, 8).map((item) => <span key={`${item.category}:${item.name}`} className={`profile-${String(item.status).toLowerCase()}`}><b>{item.name}</b><small>{item.status}{item.region ? ` · ${item.region}` : ""}</small></span>)}{!selectedMachine?.ipProfile?.results?.some((item) => ["STREAM", "AI"].includes(item.category)) && <p>运行一次检测后，在这里汇总流媒体与 AI 服务可用性。</p>}</div>
+              <div className="ip-profile-summary"><span>出口位置</span><strong>{profile ? `${flag(profileCountryCode)} ${profileLocation || profileCountryCode || "位置未知"}` : `${flag(selectedMachine?.countryCode)} ${selectedMachine?.countryCode || "待检测"}`}</strong><small>{profile ? `${profile.network?.asn || "ASN 未知"} · ${profile.network?.organization || profile.network?.isp || "运营商未知"}` : "从目标 VPS 直接检测，不经过面板转发"}</small>{profile && <div className="ip-profile-risk"><b className={`risk-${profile.risk?.level || "unknown"}`}>{profile.risk?.score == null ? "—" : Math.round(profile.risk.score)}</b><span>{riskLabel}<small>{profile.publicIp || "IP 未知"}</small></span></div>}</div>
+              <div className="ip-profile-detail"><div className="ip-profile-attributes">{(profile?.attributes || []).map((item) => <span key={item.label}><small>{item.label}</small><b>{item.value}</b></span>)}</div><div className="ip-profile-services">{(profile?.services || []).slice(0, 8).map((item) => <span key={item.name} className={`profile-${String(item.status).toLowerCase()}`} title={item.detail || undefined}><b>{item.name}</b><small>{serviceLabel[item.status] || item.status}{item.region ? ` · ${item.region}` : ""}</small></span>)}{!profile?.services?.length && <p>运行检测后，在这里显示风险、网络属性与常用服务可用性。</p>}</div></div>
             </div>
-            <footer><Button icon={ShieldCheck} variant="primary" onClick={inspectIpProfile} disabled={profileBusy || !selectedModel?.client}>{profileBusy ? "检测中，可能需要约一分钟…" : selectedMachine?.ipProfile ? "重新检测" : "运行检测"}</Button><span>结果仅代表当前出口与检测时刻</span></footer>
+            <footer><Button icon={ShieldCheck} variant="primary" onClick={inspectIpProfile} disabled={profileBusy || !selectedModel?.client}>{profileBusy ? "并发检测中，约 10–15 秒…" : selectedMachine?.ipProfile ? "重新检测" : "运行检测"}</Button><span>{profile?.elapsedMs ? `${(profile.elapsedMs / 1000).toFixed(1)} 秒 · ` : ""}结果仅代表当前出口与检测时刻</span></footer>
           </article>
         </div>
-        {selectedModel?.client && <HostServiceControls machine={selectedMachine} me={me} serviceStates={serviceStates} refreshServices={refreshServices} serviceBusy={serviceBusy} notify={notify} />}
+        {selectedModel?.client && <HostServiceControls machine={selectedMachine} managedInstances={state.managedInstances.filter((item) => item.machineId === selectedMachine.id)} me={me} serviceStates={serviceStates} refreshServices={refreshServices} serviceBusy={serviceBusy} notify={notify} onNavigate={onNavigate} />}
         <div className="operation-grid">
           <article className="operation-card operation-index">
             <header><span>SYSTEM INDEX</span><b>{managedRunning} RUNNING</b></header>
@@ -5667,7 +5683,6 @@ export default function App() {
             ? prompt("请输入本次状态查询的两步验证码") || ""
             : providedOtp || "";
         if (me?.two_factor_enabled && !otp) return;
-        const spec = await rpc("proxyConsole:statusCommand");
         const bound = state.machines.filter(
           (machine) =>
             machine.monitorClientId && clients[machine.monitorClientId] &&
@@ -5678,9 +5693,11 @@ export default function App() {
           const next = { ...current };
           for (const machine of bound) {
             const previous = current[machine.monitorClientId] || {};
+            const managedRows = Object.fromEntries(state.managedInstances.filter((item) => item.machineId === machine.id && item.kind === "nowhere" && !["draft", "validated"].includes(item.status)).map((item) => [item.id, { ...(previous[item.id] || {}), pending: true, error: "" }]));
             next[machine.monitorClientId] = {
               "sing-box": { ...(previous["sing-box"] || {}), pending: true, error: "" },
               nowhere: { ...(previous.nowhere || {}), pending: true, error: "" },
+              ...managedRows,
             };
           }
           return next;
@@ -5690,6 +5707,7 @@ export default function App() {
             if (statusesRef.current[machine.monitorClientId]?.online === false) {
               throw new Error("Komari Agent 离线");
             }
+            const spec = await rpc("proxyConsole:statusCommand", { machineId: machine.id });
             const task = await executeTask(
               machine.monitorClientId,
               spec.command,
@@ -5707,6 +5725,7 @@ export default function App() {
               value: {
                 "sing-box": { ...(rows["service-sing-box"] || { state: "unknown" }), pending: false, error: "" },
                 nowhere: { ...(rows["service-nowhere"] || { state: "unknown" }), pending: false, error: "" },
+                ...Object.fromEntries(state.managedInstances.filter((item) => item.machineId === machine.id && item.kind === "nowhere" && !["draft", "validated"].includes(item.status)).map((item) => [item.id, { ...(rows[item.id] || { state: "unknown" }), pending: false, error: "" }])),
               },
             };
           }),
@@ -5721,17 +5740,17 @@ export default function App() {
             return;
           }
           const error = result.reason?.message || "状态暂不可用";
+          const machine = bound[index];
+          const unavailable = { state: "unavailable", pending: false, error, observedAt: new Date().toISOString() };
           sampled[clientId] = {
-            "sing-box": { state: "unavailable", pending: false, error, observedAt: new Date().toISOString() },
-            nowhere: { state: "unavailable", pending: false, error, observedAt: new Date().toISOString() },
+            "sing-box": unavailable,
+            nowhere: unavailable,
+            ...Object.fromEntries(state.managedInstances.filter((item) => item.machineId === machine.id && item.kind === "nowhere" && !["draft", "validated"].includes(item.status)).map((item) => [item.id, { ...unavailable }])),
           };
         });
         setServiceStates((current) => {
           const next = { ...current };
-          for (const [clientId, value] of Object.entries(sampled)) next[clientId] = {
-            nowhere: withTelemetryRate(value.nowhere, current[clientId]?.nowhere),
-            "sing-box": withTelemetryRate(value["sing-box"], current[clientId]?.["sing-box"]),
-          };
+          for (const [clientId, value] of Object.entries(sampled)) next[clientId] = Object.fromEntries(Object.entries(value).map(([key, row]) => [key, withTelemetryRate(row, current[clientId]?.[key])]));
           sessionStorage.setItem("proxy-console-service-status", JSON.stringify(next));
           return next;
         });
@@ -5760,7 +5779,7 @@ export default function App() {
         setServiceBusy(false);
       }
     },
-    [clients, me, notify, state.machines],
+    [clients, me, notify, state.machines, state.managedInstances],
   );
   useEffect(() => {
     if (

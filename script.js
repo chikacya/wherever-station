@@ -97,9 +97,14 @@ function cleanTrafficMetadata(value) {
 }
 function cleanIpProfile(value) {
   if (!value || typeof value !== "object" || value.ok !== true) return null;
+  const textMap = (input, keys, max = 160) => Object.fromEntries(keys.map((key) => [key, cleanText(input && input[key], max)]));
   return {
-    ok: true, version: cleanText(value.version, 32), publicIp: cleanText(value.publicIp, 64), geo: cleanText(value.geo, 240), risk: cleanText(value.risk, 240), checkedAt: cleanIsoDate(value.checkedAt),
-    results: (Array.isArray(value.results) ? value.results : []).slice(0, 80).map((item) => ({ category: cleanText(item.category, 24), name: cleanText(item.name, 80), status: cleanText(item.status, 24), region: cleanText(item.region, 24), detail: cleanText(item.detail, 160) })),
+    ok: true, version: cleanText(value.version, 32), publicIp: cleanText(value.publicIp, 64), elapsedMs: Math.max(0, Number(value.elapsedMs) || 0), checkedAt: cleanIsoDate(value.checkedAt),
+    location: textMap(value.location, ["countryCode", "country", "region", "city", "timezone"]),
+    network: textMap(value.network, ["asn", "organization", "isp", "domain", "type", "range"]),
+    risk: { score: Number.isFinite(Number(value.risk && value.risk.score)) ? Number(value.risk.score) : null, level: ["low", "medium", "high", "unknown"].includes(value.risk && value.risk.level) ? value.risk.level : "unknown", proxy: cleanText(value.risk && value.risk.proxy, 16), residential: typeof (value.risk && value.risk.residential) === "boolean" ? value.risk.residential : null },
+    attributes: (Array.isArray(value.attributes) ? value.attributes : []).slice(0, 12).map((item) => ({ label: cleanText(item.label, 32), value: cleanText(item.value, 80) })),
+    services: (Array.isArray(value.services) ? value.services : []).slice(0, 16).map((item) => ({ name: cleanText(item.name, 80), status: cleanText(item.status, 24), region: cleanText(item.region, 16), detail: cleanText(item.detail, 120) })),
   };
 }
 function parseSubscriptionUserinfo(value, observedAt = new Date().toISOString()) {
@@ -1239,7 +1244,13 @@ function recordMachineIpProfile(params) {
   state.revision += 1; writeState(cleanState(state)); return { state: readState(), profile: machine.ipProfile };
 }
 function serviceCommand(params) { const service = cleanText(params && params.service, 32); const action = cleanText(params && params.action, 16); if (!SERVICE_UNITS[service] || !SERVICE_ACTIONS.has(action)) throw new Error("服务或操作不在允许列表"); return { command: `/usr/bin/systemctl ${action} ${SERVICE_UNITS[service]}`, service, action }; }
-function statusCommand() { return { command: buildServiceStatus() }; }
+function statusCommand(params) {
+  const machineId = cleanText(params && params.machineId, 64);
+  if (!machineId) return { command: buildServiceStatus() };
+  const state = readState();
+  const instances = state.managedInstances.filter((item) => item.machineId === machineId && item.kind === "nowhere" && !["draft", "validated"].includes(item.status));
+  return { command: buildServiceStatus(instances) };
+}
 function prepareExistingServiceDiscovery(params) {
   const state = readState();
   const machine = state.machines.find((item) => item.id === cleanText(params && params.machineId, 64) && item.monitorClientId);

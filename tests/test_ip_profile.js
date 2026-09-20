@@ -1,29 +1,33 @@
 const assert = require("node:assert/strict");
-const { buildIpProfileCommand, parseIpProfileOutput, PINNED_COMMIT, PINNED_SHA256 } = require("../tools/ip-profile-check");
+const { buildIpProfileCommand, parseIpProfileOutput, PREFIX } = require("../tools/ip-profile-check");
 
 const command = buildIpProfileCommand();
-assert(command.includes(PINNED_COMMIT));
-assert(command.includes(PINNED_SHA256));
-assert(command.includes("sha256sum -c"));
-assert(command.includes("--json"));
+assert(command.startsWith("python3 -c"));
+assert(!command.includes("curl "));
+assert(!command.includes("raw.githubusercontent.com"));
 
 const report = {
-  version: "1.2.3",
-  public_ip: "203.0.113.8",
-  geo: "US Los Angeles AS64500 Example",
-  risk: "score=12 low",
-  results: [{ category: "STREAM", name: "Netflix", status: "YES", region: "US", detail: "Originals" }],
+  version: "builtin-2026.09", public_ip: "203.0.113.8", elapsed_ms: 8421,
+  location: { countryCode: "US", country: "United States", region: "California", city: "Los Angeles", timezone: "America/Los_Angeles" },
+  network: { asn: "AS64500", organization: "Example", isp: "Example ISP", domain: "example.test", type: "hosting", range: "203.0.113.0/24" },
+  risk: { score: 12, level: "low", proxy: "no", residential: false },
+  attributes: [{ label: "网络类型", value: "hosting" }],
+  services: [{ name: "Netflix", status: "AVAILABLE", region: "US", detail: "非自制内容可访问" }],
 };
-const output = `noise\nPCIPPROFILE\t1\t${Buffer.from(JSON.stringify(report)).toString("base64")}\n`;
+const output = `noise\n${PREFIX}${Buffer.from(JSON.stringify(report)).toString("base64")}\n`;
 assert.deepEqual(parseIpProfileOutput(output), {
-  ok: true,
-  version: "1.2.3",
-  publicIp: "203.0.113.8",
-  geo: "US Los Angeles AS64500 Example",
-  risk: "score=12 low",
-  results: [{ category: "STREAM", name: "Netflix", status: "YES", region: "US", detail: "Originals" }],
+  ok: true, version: "builtin-2026.09", publicIp: "203.0.113.8", elapsedMs: 8421,
+  location: report.location, network: report.network, risk: report.risk,
+  attributes: report.attributes, services: report.services,
 });
 assert.equal(parseIpProfileOutput("plain output").ok, false);
-assert.equal(parseIpProfileOutput("PCIPPROFILE\t1\tbad").ok, false);
+assert.equal(parseIpProfileOutput(`${PREFIX}bad`).ok, false);
 
-console.log("IP profile command tests passed");
+const source = Buffer.from([...command.matchAll(/'([^']+)'/g)][1][1], "base64").toString();
+assert(source.includes("ThreadPoolExecutor"));
+assert(source.includes("proxycheck.io"));
+assert(source.includes("my.ippure.com"));
+assert(source.includes("ChatGPT"));
+assert(source.includes("Netflix"));
+assert(source.includes("YouTube Premium"));
+console.log("built-in concurrent IP profile tests passed");

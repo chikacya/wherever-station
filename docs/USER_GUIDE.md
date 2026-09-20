@@ -25,7 +25,7 @@ Server traffic plans and subscription quotas are separate:
 
 Use **Discover nodes** to inspect existing sing-box or Nowhere services. Discovery never changes their configuration. A candidate with incomplete public address, credentials, TLS, or Reality data remains a repair draft. A complete Nowhere result can first create a stopped adoption copy, followed by an explicit switch from the deployment page; staging the copy does not stop the original service.
 
-The optional **IP quality / service access** check runs a pinned, checksum-verified diagnostic on the selected Agent. Its country, ASN, risk, and streaming results are a point-in-time observation, not a permanent property of the server.
+The optional **IP quality / service access** check runs a built-in concurrent probe on the selected Agent. It summarizes exit location, ASN, risk signals, and reachability for common streaming and AI services. The bounded probe runs only on demand and does not stay resident; every result is a point-in-time observation.
 
 ## Node library
 

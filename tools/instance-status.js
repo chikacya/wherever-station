@@ -14,10 +14,15 @@ function buildInstanceStatus(instances) {
     return { instanceId: id, kind: instance.kind, unit: `proxy-console-${instance.kind === 'nowhere' ? 'nowhere' : 'singbox'}@${id}.service` };
   }));
 }
-function buildServiceStatus() {
+function buildServiceStatus(instances = []) {
+  const managed = (Array.isArray(instances) ? instances : []).filter(instance => instance?.kind === 'nowhere').map(instance => {
+    const id = cleanInstanceId(instance.id);
+    return { instanceId: id, kind: 'nowhere', unit: `proxy-console-nowhere@${id}.service` };
+  });
   return commandForTargets([
     { instanceId: 'service-sing-box', kind: 'sing-box', unit: 'sing-box.service' },
     { instanceId: 'service-nowhere', kind: 'nowhere', unit: 'nowhere.service' },
+    ...managed,
   ]);
 }
 module.exports = { buildInstanceStatus, buildServiceStatus };

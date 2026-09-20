@@ -40,13 +40,13 @@ if (fs.existsSync(adminHtmlPath)) {
   }
 }
 
-if (compatibility.schemaVersion !== 1 || !Array.isArray(compatibility.adapters) || compatibility.adapters.length < 2) fail("invalid Nowhere compatibility catalog");
+if (compatibility.schemaVersion !== 2 || !Array.isArray(compatibility.adapters) || compatibility.adapters.length < 1) fail("invalid Nowhere compatibility catalog");
 const adapterIds = new Set();
 const verifiedVersions = new Set();
 for (const adapter of compatibility.adapters || []) {
   if (!adapter.id || adapterIds.has(adapter.id)) fail(`duplicate or missing adapter id: ${adapter.id || "(empty)"}`);
   adapterIds.add(adapter.id);
-  if (![1, 2].includes(adapter.generation) || adapter.major !== adapter.generation) fail(`invalid generation for ${adapter.id}`);
+  if (adapter.generation !== 2 || adapter.major !== 2) fail(`invalid generation for ${adapter.id}`);
   if (!Array.isArray(adapter.verifiedVersions) || !adapter.verifiedVersions.length) fail(`empty verified version list for ${adapter.id}`);
   for (const version of adapter.verifiedVersions || []) {
     if (verifiedVersions.has(version)) fail(`version appears in multiple adapters: ${version}`);

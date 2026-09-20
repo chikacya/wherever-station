@@ -10,11 +10,11 @@ async function main() {
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     page.setDefaultTimeout(8000);
-    const observed = { instanceId: 'nowhere-demo', machineId: 'jp', kind: 'nowhere', state: 'active', observedAt: '2026-09-08T15:00:00.000Z', pid: 202, telemetry: { source: 'ipc', lifecycle: 'READY', lifecycleReason: 'LISTENING', upBytesPerSecond: 1024, downBytesPerSecond: 2048, tcpLogicalUp: 1048576, tcpLogicalDown: 2097152, udpLogicalUp: 0, udpLogicalDown: 0, tcpActive: 2, udpActive: 1, tlsCarriersActive: 1, quicCarriersActive: 0, pingMs: 8, uptimeMs: 86400000, cpuPercent: 1.2, rssBytes: 12582912, openFds: 16 } };
+    const observed = { instanceId: 'nowhere-demo', machineId: 'jp', kind: 'nowhere', state: 'active', observedAt: '2026-09-08T15:00:00.000Z', pid: 202, telemetry: { source: 'local', lifecycle: 'READY', lifecycleReason: 'LISTENING', version: '2.0.2', upBytesPerSecond: 1024, downBytesPerSecond: 2048, tcpLogicalUp: '1048576', tcpLogicalDown: '2097152', udpLogicalUp: '0', udpLogicalDown: '0', tlsPayloadUp: '524288', tlsPayloadDown: '1048576', tcpActive: 2, udpActive: 1, tlsCarriersActive: 1, quicCarriersActive: 0, pingMs: 8, uptimeMs: 86400000, cpuPercent: 1.2, rssBytes: 12582912, openFds: 16 } };
     await page.route('**/api/rpc2', async route => {
       const request = route.request().postDataJSON();
       const results = {
-        'proxyConsole:getState': { version: 14, revision: 0, settings: { publicBaseUrl: '', monitoring: {} }, machines: [{ id: 'jp', name: 'Oracle 东京', region: '东京', countryCode: 'JP', monitorClientId: 'oracle' }], nodes: [], subscriptions: [], externalSources: [], serviceBindings: [], managedInstances: [{ id: 'nowhere-demo', kind: 'nowhere', name: '东京 Nowhere', machineId: 'jp', version: 'v2.0.0', port: 2078 }], deploymentPresets: [], providers: [] },
+        'proxyConsole:getState': { version: 14, revision: 0, settings: { publicBaseUrl: '', monitoring: {} }, machines: [{ id: 'jp', name: 'Oracle 东京', region: '东京', countryCode: 'JP', monitorClientId: 'oracle' }], nodes: [], subscriptions: [], externalSources: [], serviceBindings: [], managedInstances: [{ id: 'nowhere-demo', kind: 'nowhere', name: '东京 Nowhere', machineId: 'jp', version: 'v2.0.2', tcpPort: 2078, udpPort: 2078 }], deploymentPresets: [], providers: [] },
         'proxyConsole:listInstanceStates': [observed],
         'proxyConsole:listManagedTasks': [],
         'common:getNodes': { oracle: { name: 'Oracle 东京（主控）' } },

@@ -8,7 +8,7 @@ const { chromium } = require('playwright');
 async function main() {
   const args = process.argv.slice(2);
   const opt = (name, fallback = '') => args.includes(name) ? args[args.indexOf(name) + 1] : fallback;
-  if (args.includes('--help')) return console.log('node tools/e2e-managed.cjs --url HTTPS_URL --credentials FILE --machine NAME --port PORT [--kind sing-box|nowhere] [--protocol vless-reality|vmess|shadowsocks|trojan|hysteria2|tuic|anytls] [--binary CLIENT_BINARY] [--download] [--detach-on-start] [--edit [--rollback]] [--ui-connectivity]');
+  if (args.includes('--help')) return console.log('node tools/e2e-managed.cjs --url HTTPS_URL --credentials FILE --machine NAME --port PORT [--kind sing-box|nowhere] [--network tcp|udp|mix] [--protocol vless-reality|vmess|shadowsocks|trojan|hysteria2|tuic|anytls] [--binary CLIENT_BINARY] [--download] [--detach-on-start] [--edit [--rollback]] [--ui-connectivity]');
   const base = opt('--url');
   const credentialPath = opt('--credentials');
   const machine = opt('--machine');
@@ -89,8 +89,8 @@ async function main() {
     clientId = state.machines.find(item => item.id === machineId)?.monitorClientId;
     if (!clientId) throw new Error('Selected host has no bound agent');
     baseline = await serviceSnapshot();
-    await dialog.getByLabel('监听端口', { exact: true }).fill(String(port));
     if (kind === 'sing-box') {
+      await dialog.getByLabel('监听端口', { exact: true }).fill(String(port));
       const preset = state.deploymentPresets.find(item => !item.hidden && item.values?.protocol === protocol);
       if (!preset) throw new Error(`No visible quick preset for ${protocol}`);
       await dialog.locator('label').filter({ hasText: /^快捷预设/ }).locator('select').selectOption(preset.id);
@@ -108,11 +108,14 @@ async function main() {
       if (kind === 'nowhere') await dialog.getByText('高级参数', { exact: true }).click();
       await dialog.locator('label').filter({ hasText: /^内核来源/ }).locator('select').selectOption('download');
       if (kind === 'sing-box') await dialog.locator('label').filter({ hasText: /^下载版本/ }).locator('input').fill('1.13.11');
-      else await dialog.locator('label').filter({ hasText: /^下载版本/ }).locator('select').selectOption('v1.8.0');
+      else await dialog.locator('label').filter({ hasText: /^下载版本/ }).locator('select').selectOption('v2.0.2');
     }
     if (kind === 'nowhere') {
+      const network = opt('--network', 'tcp');
+      if (!['tcp', 'udp', 'mix'].includes(network)) throw new Error('Nowhere network must be tcp, udp, or mix');
+      await dialog.getByLabel('TCP Carrier 端口', { exact: true }).fill(network === 'udp' ? '0' : String(port));
+      await dialog.getByLabel('UDP Carrier 端口', { exact: true }).fill(network === 'tcp' ? '0' : String(port));
       await dialog.locator('label').filter({ hasText: /^客户端输出/ }).locator('select').selectOption('both');
-      await dialog.locator('label').filter({ hasText: /^传输/ }).locator('select').selectOption(opt('--network', 'tcp'));
     }
     const expectedIp = await dialog.getByLabel('公网域名或 IP', { exact: false }).inputValue();
     const specPromise = page.waitForResponse(response => {

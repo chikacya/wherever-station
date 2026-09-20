@@ -21,12 +21,16 @@ class ExistingServiceScanTests(unittest.TestCase):
             nowhere_env = root / "nowhere.env"
             nowhere_env.write_text(
                 "\n".join([
-                    "NOWHERE_VERSION_VALUE='v1.8.1'",
+                    "NOWHERE_VERSION_VALUE='v2.0.2'",
                     "NOWHERE_PUBLIC_HOST_VALUE='nowhere.example.com'",
                     "NOWHERE_PORT_VALUE='2077'",
+                    "NOWHERE_TCP_PORT_VALUE='2077'",
+                    "NOWHERE_UDP_PORT_VALUE='2077'",
+                    "NOWHERE_TCP_CARRIER_VALUE='tcp'",
+                    "NOWHERE_UDP_CARRIER_VALUE='udp'",
                     "NOWHERE_KEY_VALUE='secret value'",
                     "NOWHERE_NET_VALUE='mix'",
-                    "NOWHERE_ALPN_VALUE='now/1'",
+                    "NOWHERE_ALPN_VALUE='nw2'",
                 ]) + "\n",
                 encoding="utf-8",
             )
@@ -55,7 +59,7 @@ class ExistingServiceScanTests(unittest.TestCase):
             self.assertEqual({item["protocol"] for item in document["candidates"]}, {"nowhere", "shadowsocks"})
             nowhere = next(item for item in document["candidates"] if item["protocol"] == "nowhere")
             self.assertIn("nowhere.example.com:2077", nowhere["uri"])
-            self.assertIn("up=udp&down=udp", nowhere["uri"])
+            self.assertIn("up=tcp&down=tcp", nowhere["uri"])
             self.assertEqual(document["needsReview"], [])
             self.assertEqual(nowhere_env.read_text(encoding="utf-8").count("NOWHERE_KEY_VALUE"), 1)
 

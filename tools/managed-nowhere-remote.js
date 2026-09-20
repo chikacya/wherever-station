@@ -3,7 +3,7 @@ const path = require("node:path");
 const { cleanInstanceId, planManagedNowhere } = require("./managed-nowhere");
 const { nowhereCapabilities } = require("./nowhere-capabilities");
 
-const ACTIONS = new Set(["preflight", "create", "start", "stop", "restart", "status", "logs", "delete", "upgrade", "migrate-v2", "rollback-v1", "update", "read-config"]);
+const ACTIONS = new Set(["preflight", "create", "start", "stop", "restart", "status", "logs", "delete", "upgrade", "update", "read-config"]);
 
 function encodedCommand(script, payload) {
   const code = Buffer.from(script, "utf8").toString("base64");
@@ -81,21 +81,6 @@ function buildManagedNowhereCommand(action, input, sourceMode = "download") {
     const target = nowhereCapabilities(targetVersion);
     if (!current.verified || !target.verified || current.protocolGeneration !== target.protocolGeneration) throw new Error("Nowhere major-version migration required or version is unverified");
     return encodedCommand(lockExistingInstance(scriptFile("nowhere-binary-upgrade.py")), { ...payload, targetVersion });
-  }
-  if (action === "migrate-v2") {
-    const previousVersion = String(input.previousVersion || "");
-    const current = nowhereCapabilities(previousVersion);
-    const target = nowhereCapabilities(plan.version);
-    if (!current.verified || !target.verified || current.protocolGeneration !== 1 || target.protocolGeneration !== 2) throw new Error("Invalid or unverified Nowhere V1 to V2 migration");
-    return encodedCommand(lockExistingInstance(scriptFile("nowhere-migrate-v2.py")), {
-      ...payload, previousVersion, targetVersion: plan.version, environment: plan.environment,
-    });
-  }
-  if (action === "rollback-v1") {
-    if (!input.backupDirectory) throw new Error("Nowhere migration backup required");
-    return encodedCommand(lockExistingInstance(scriptFile("nowhere-rollback-v1.py")), {
-      ...payload, backupDirectory: input.backupDirectory,
-    });
   }
   if (["start", "stop", "restart"].includes(action)) {
     return encodedCommand(lockExistingInstance(scriptFile("nowhere-action.py")), { ...payload, action });

@@ -15,9 +15,9 @@ runtime_tools = (
     'managed-sing-box-config.js', 'managed-sing-box-remote.js', 'managed-sing-box.js',
     'managed-task-tracker.js', 'nowhere-action.py', 'nowhere-binary-upgrade.py',
     'nowhere-capabilities.js', 'nowhere-compatibility.json', 'nowhere-config.js',
-    'nowhere-create.py', 'nowhere-delete.py', 'nowhere-migrate-v2.py',
+    'nowhere-create.py', 'nowhere-delete.py',
     'nowhere-preflight.py', 'nowhere-read.py', 'nowhere-recover.py',
-    'nowhere-rollback-v1.py', 'nowhere-status.py', 'nowhere-update.py',
+    'nowhere-status.py', 'nowhere-update.py',
     'operation-store.js', 'protocol-capabilities.js', 'provider-s-ui.js',
     'rule-set.js', 'download-sing-box.py', 'sing-box-read.py', 'sing-box-update.py',
 )

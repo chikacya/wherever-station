@@ -13,7 +13,7 @@ const server = http.createServer((req, res) => {
 async function main() {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
-    for (const name of ['visual-calibration', 'editor-workflows', 'nowhere-migration']) {
+    for (const name of ['visual-calibration', 'editor-workflows', 'telemetry-responsive']) {
       await new Promise((resolve, reject) => {
         const child = spawn(process.execPath, [path.join(__dirname, `e2e-${name}.cjs`), '--url', `http://127.0.0.1:${server.address().port}`], { stdio: 'inherit' });
         child.on('error', reject);

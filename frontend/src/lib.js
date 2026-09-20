@@ -145,12 +145,9 @@ export function normalizeNodeName(value) {
   }
 }
 export const NOWHERE_RELEASE_FALLBACK = Object.freeze([
+  "v2.0.2",
+  "v2.0.1",
   "v2.0.0",
-  "v1.8.3",
-  "v1.8.2",
-  "v1.8.1",
-  "v1.8.0",
-  "v1.7.0",
 ]);
 export function normalizeNowhereReleases(input) {
   const seen = new Set();
@@ -162,8 +159,7 @@ export function normalizeNowhereReleases(input) {
         return null;
       const parts = match.slice(1).map(Number);
       if (
-        parts[0] < 1 ||
-        (parts[0] === 1 && parts[1] < 5) ||
+        parts[0] < 2 ||
         seen.has(tag)
       )
         return null;
@@ -436,7 +432,7 @@ export function randomId() {
 }
 export function nowhereVersionCapabilities(value) {
   const match = String(value || "").trim().match(/^v?(\d+)\.(\d+)\.(\d+)(?:[.-][A-Za-z0-9._-]+)?$/);
-  if (!match) return { known: false, supported: false, adapter: "", verified: false, compatibility: "invalid", legacyPool: false, vectorPin: false, telemetryIpcV2: false, vectorMux: false, quicMemoryProfile: false, isV2: false, protocolGeneration: 0, wireProtocol: "", customAlpn: false, carrierEndpoints: false, morph: false, transportMemoryProfile: false };
+  if (!match) return { known: false, supported: false, adapter: "", verified: false, compatibility: "invalid", vectorPin: false, vectorMux: false, localTelemetry: false, isV2: false, protocolGeneration: 0, wireProtocol: "", carrierEndpoints: false, morph: false, transportMemoryProfile: false };
   const parts = match.slice(1).map(Number);
   const version = `v${parts.join(".")}`;
   const compare = (target) => {
@@ -447,8 +443,7 @@ export function nowhereVersionCapabilities(value) {
     return 0;
   };
   const adapter = nowhereCompatibility.adapters.find((item) => item.major === parts[0] && compare(item.minimumVersion) >= 0 && compare(item.maximumVersion) <= 0);
-  if (!adapter) return { version, known: true, supported: false, adapter: "", verified: false, compatibility: "unverified", legacyPool: false, vectorPin: false, telemetryIpcV2: false, vectorMux: false, quicMemoryProfile: false, isV2: false, protocolGeneration: 0, wireProtocol: "", customAlpn: false, carrierEndpoints: false, morph: false, transportMemoryProfile: false };
-  const isV2 = adapter.generation === 2;
+  if (!adapter) return { version, known: true, supported: false, adapter: "", verified: false, compatibility: "unverified", vectorPin: false, vectorMux: false, localTelemetry: false, isV2: false, protocolGeneration: 0, wireProtocol: "", carrierEndpoints: false, morph: false, transportMemoryProfile: false };
   const atLeast = (major, minor, patch = 0) => {
     const target = [major, minor, patch];
     for (let index = 0; index < 3; index += 1) {
@@ -463,18 +458,15 @@ export function nowhereVersionCapabilities(value) {
     adapter: adapter.id,
     verified: adapter.verifiedVersions.includes(version),
     compatibility: adapter.verifiedVersions.includes(version) ? "verified" : "compatible-range",
-    legacyPool: !isV2 && atLeast(1, 5) && !atLeast(1, 8),
-    vectorPin: atLeast(1, 5, 1),
-    telemetryIpcV2: atLeast(1, 6),
-    vectorMux: atLeast(1, 8),
-    quicMemoryProfile: !isV2 && atLeast(1, 8),
-    isV2,
+    vectorPin: true,
+    vectorMux: true,
+    localTelemetry: atLeast(2, 0, 2),
+    isV2: true,
     protocolGeneration: adapter.generation,
-    wireProtocol: isV2 ? "nw2" : "now/1",
-    customAlpn: !isV2,
-    carrierEndpoints: isV2,
-    morph: isV2,
-    transportMemoryProfile: isV2,
+    wireProtocol: "nw2",
+    carrierEndpoints: true,
+    morph: true,
+    transportMemoryProfile: true,
   };
 }
 export function moveItem(items, from, to) {

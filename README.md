@@ -41,7 +41,7 @@ Screenshots use illustrative server and node data.
 - Reads S-UI and 2S-UI `/apiv2` providers without changing their inbounds, users, routes, or services.
 - Creates isolated, opt-in sing-box presets and managed Nowhere instances on connected Linux Agents.
 - Manages stable self-signed certificates or references existing PEM files for managed instances.
-- Tracks current Nowhere releases through an explicit compatibility catalog and enables lifecycle or migration operations only after verification.
+- Tracks current Nowhere 2.x releases through an explicit compatibility catalog and enables lifecycle operations only after verification.
 
 ## What it does not do
 
@@ -89,7 +89,7 @@ The Komari server and Agents must remain protocol-compatible. Do not let an Agen
 | [User guide](docs/USER_GUIDE.md) | [使用指南](docs/USER_GUIDE.zh-CN.md) | Daily workflows and UI concepts |
 | [Capabilities and boundaries](docs/CAPABILITIES.md) | [能力与边界](docs/CAPABILITIES.zh-CN.md) | Architecture, Komari relationship, permissions |
 | [Protocol support](docs/PROTOCOLS.md) | [协议支持](docs/PROTOCOLS.zh-CN.md) | Passthrough and structured conversion |
-| [Nowhere support](docs/NOWHERE.md) | [Nowhere 支持](docs/NOWHERE.zh-CN.md) | Versions, lifecycle, telemetry, migration |
+| [Nowhere support](docs/NOWHERE.md) | [Nowhere 支持](docs/NOWHERE.zh-CN.md) | Versions, lifecycle, local telemetry |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | [排错](docs/TROUBLESHOOTING.zh-CN.md) | Common operational problems |
 | [Licensing](docs/LICENSING.md) | [许可说明](docs/LICENSING.zh-CN.md) | GPL, Komari, dependencies, branding |
 The internal plugin identifier, data paths, and systemd units retain the earlier `proxy-console` name so existing installations can upgrade in place. It is a stable compatibility identifier; the product name is Wherever Station.

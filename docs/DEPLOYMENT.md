@@ -137,7 +137,7 @@ Provider tokens and subscription source URLs are credentials. Protect backups ac
 3. Review any permission changes and enable the new version.
 4. Confirm plugin status, server metrics, subscriptions, and managed instance cards.
 
-A plugin upgrade does not automatically upgrade managed sing-box or Nowhere binaries, and it does not perform major-version migrations. Those remain explicit instance operations with their own compatibility checks.
+A plugin upgrade does not automatically upgrade managed sing-box or Nowhere binaries. Binary upgrades remain explicit instance operations with their own compatibility checks.
 
 If the plugin cannot start, reinstall the previous ZIP and restore plugin data from the matching backup if the data schema changed. Do not delete `/var/lib/proxy-console/instances/` as a rollback method.
 

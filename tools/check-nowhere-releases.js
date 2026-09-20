@@ -6,7 +6,7 @@ function stableReleaseTags(input) {
     .filter((release) => release && release.draft !== true && release.prerelease !== true)
     .map((release) => String(release.tag_name || "").trim())
     .filter((tag) => /^v\d+\.\d+\.\d+$/.test(tag))
-    .filter((tag) => { const [major, minor] = tag.slice(1).split(".").map(Number); return major > 1 || (major === 1 && minor >= 5); }))]
+    .filter((tag) => Number(tag.slice(1).split(".")[0]) >= 2))]
     .sort((left, right) => {
       const a = left.slice(1).split(".").map(Number);
       const b = right.slice(1).split(".").map(Number);

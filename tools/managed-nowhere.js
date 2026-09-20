@@ -85,42 +85,31 @@ function validateAbsoluteFile(value, label) {
 }
 
 function buildAnywhereLink(input) {
-  const capabilities = nowhereCapabilities(input.version || "v1.8.0");
-  const host = capabilities.isV2
-    ? buildNowhereEndpoint(input.publicHost, input)
-    : `${hostForUrl(input.publicHost)}:${integer(input.port, "port", 1, 65535)}`;
+  const capabilities = nowhereCapabilities(input.version || "v2.0.2");
+  if (!capabilities.supported) throw new Error("Nowhere 2.x or newer is required");
+  const host = buildNowhereEndpoint(input.publicHost, input);
   const key = encodeURIComponent(text(input.key, "shared key"));
   const up = oneOf(input.up, ["tcp", "udp"], "udp", "upload transport");
   const down = oneOf(input.down, ["tcp", "udp"], "udp", "download transport");
-  const version = text(input.version || "v1.8.0", "version", 64);
   const name = encodeURIComponent(text(input.name || "Nowhere", "display name", 160));
   const query = new URLSearchParams({ up, down });
-  if (capabilities.isV2) {
-    query.set("morph", oneOf(String(input.morph ?? 0), ["0", "1"], "0", "morph"));
-    query.set("mux", oneOf(String(input.vectorMux ?? 0), ["0", "1"], "0", "vector mux"));
-  } else {
-    if (capabilities.legacyPool && up === "tcp" && down === "tcp") query.set("pool", String(integer(input.pool ?? 5, "pool", 0, 9)));
-    if (input.alpn && input.alpn !== "now/1") query.set("alpn", text(input.alpn, "ALPN"));
-  }
+  query.set("morph", oneOf(String(input.morph ?? 0), ["0", "1"], "0", "morph"));
+  query.set("mux", oneOf(String(input.vectorMux ?? 0), ["0", "1"], "0", "vector mux"));
   return `nowhere://${key}@${host}?${query.toString()}#${name}`;
 }
 
 function buildVectorLink(input) {
-  const capabilities = nowhereCapabilities(input.version || "v1.8.0");
-  const host = capabilities.isV2
-    ? buildNowhereEndpoint(input.publicHost, input)
-    : `${hostForUrl(input.publicHost)}:${integer(input.port, "port", 1, 65535)}`;
+  const capabilities = nowhereCapabilities(input.version || "v2.0.2");
+  if (!capabilities.supported) throw new Error("Nowhere 2.x or newer is required");
+  const host = buildNowhereEndpoint(input.publicHost, input);
   const key = encodeURIComponent(text(input.key, "shared key"));
   const up = oneOf(input.up, ["tcp", "udp"], "udp", "upload transport");
   const down = oneOf(input.down, ["tcp", "udp"], "udp", "download transport");
-  const version = text(input.version || "v1.8.0", "version", 64);
   const query = new URLSearchParams({ up, down });
-  if (capabilities.vectorMux) query.set("mux", oneOf(String(input.vectorMux ?? 0), ["0", "1"], "0", "vector mux"));
-  else if (capabilities.legacyPool && up === "tcp" && down === "tcp") query.set("pool", String(integer(input.pool ?? 5, "pool", 0, 256)));
-  if (capabilities.isV2) query.set("morph", oneOf(String(input.morph ?? 0), ["0", "1"], "0", "morph"));
+  query.set("mux", oneOf(String(input.vectorMux ?? 0), ["0", "1"], "0", "vector mux"));
+  query.set("morph", oneOf(String(input.morph ?? 0), ["0", "1"], "0", "morph"));
   query.set("sni", text(input.vectorSni || "none", "vector SNI"));
-  if (capabilities.vectorPin) query.set("pin", text(input.vectorPin || "none", "vector pin"));
-  if (!capabilities.isV2 && input.alpn && input.alpn !== "now/1") query.set("alpn", text(input.alpn, "ALPN"));
+  query.set("pin", text(input.vectorPin || "none", "vector pin"));
   query.set("socks", text(input.vectorSocks || "127.0.0.1:1080", "vector SOCKS"));
   return `vector://${key}@${host}?${query.toString()}`;
 }
@@ -128,8 +117,8 @@ function buildVectorLink(input) {
 function planManagedNowhere(input = {}) {
   const id = cleanInstanceId(input.id);
   const name = text(input.name || `Nowhere ${id}`, "display name", 160);
-  const version = text(input.version || "v1.8.0", "version", 64);
-  if (!VERSION_PATTERN.test(version) || !versionAtLeast(version, 1, 5, 0)) throw new Error("Invalid Nowhere version");
+  const version = text(input.version || "v2.0.2", "version", 64);
+  if (!VERSION_PATTERN.test(version) || !versionAtLeast(version, 2, 0, 0)) throw new Error("Nowhere 2.x or newer is required");
   const capabilities = nowhereCapabilities(version);
   if (!capabilities.supported) throw new Error("Unsupported Nowhere version adapter");
   const publicHost = text(input.publicHost, "public host", 253);
@@ -139,14 +128,10 @@ function planManagedNowhere(input = {}) {
   const client = oneOf(input.client, ["anywhere", "vector", "both"], "anywhere", "client");
   let network = oneOf(input.network, ["mix", "tcp", "udp"], "mix", "network");
   const hasExplicitV2Ports = Object.hasOwn(input, "tcpPort") || Object.hasOwn(input, "udpPort");
-  const tcpPort = capabilities.isV2
-    ? optionalPort(hasExplicitV2Ports ? input.tcpPort : network === "udp" ? 0 : port, "TCP carrier port")
-    : network === "udp" ? 0 : port;
-  const udpPort = capabilities.isV2
-    ? optionalPort(hasExplicitV2Ports ? input.udpPort : network === "tcp" ? 0 : port, "UDP carrier port")
-    : network === "tcp" ? 0 : port;
-  if (capabilities.isV2 && !tcpPort && !udpPort) throw new Error("Nowhere V2 requires at least one carrier");
-  if (capabilities.isV2) network = tcpPort && udpPort ? "mix" : tcpPort ? "tcp" : "udp";
+  const tcpPort = optionalPort(hasExplicitV2Ports ? input.tcpPort : network === "udp" ? 0 : port, "TCP carrier port");
+  const udpPort = optionalPort(hasExplicitV2Ports ? input.udpPort : network === "tcp" ? 0 : port, "UDP carrier port");
+  if (!tcpPort && !udpPort) throw new Error("Nowhere requires at least one carrier");
+  network = tcpPort && udpPort ? "mix" : tcpPort ? "tcp" : "udp";
   const tcpCarrier = carrierName(input.tcpCarrier, input.tcpFamily, "tcp");
   const udpCarrier = carrierName(input.udpCarrier, input.udpFamily, "udp");
   const requestedTls = integer(input.tls ?? 1, "TLS mode", 1, 2);
@@ -157,7 +142,7 @@ function planManagedNowhere(input = {}) {
     "certificate mode",
   );
   const tls = certificateMode === "ephemeral" ? 1 : 2;
-  const alpn = capabilities.isV2 ? "nw2" : text(input.alpn || "now/1", "ALPN", 64);
+  const alpn = "nw2";
   const rate = integer(input.rate ?? 0, "upload rate", 0, 1_000_000);
   const etar = integer(input.etar ?? 0, "download rate", 0, 1_000_000);
   const dial = text(input.dial || "auto", "dial address", 253);
@@ -169,13 +154,11 @@ function planManagedNowhere(input = {}) {
     ? Number(telemetryMatch[1]) * (telemetryMatch[2] === "s" ? 1000 : 1)
     : 0;
   if (telemetryMs < 250 || telemetryMs > 60_000) throw new Error("Invalid telemetry interval");
-  const pool = integer(input.pool ?? 5, "pool", 0, client === "vector" ? 256 : 9);
   const vectorSocks = text(input.vectorSocks || "127.0.0.1:1080", "vector SOCKS", 512);
   const vectorSni = text(input.vectorSni || "none", "vector SNI", 253);
   const vectorPin = text(input.vectorPin || "none", "vector pin", 64);
   if (vectorPin !== "none" && !/^[0-9a-f]{64}$/.test(vectorPin)) throw new Error("Invalid vector pin");
   const vectorMux = integer(input.vectorMux ?? 0, "vector mux", 0, 1);
-  const quicMemoryProfile = oneOf(input.quicMemoryProfile, ["memory", "balanced", "throughput"], "balanced", "QUIC memory profile");
   const morph = integer(input.morph ?? 0, "morph", 0, 1);
   const transportMemoryProfile = oneOf(input.transportMemoryProfile, ["memory", "balanced", "throughput"], "throughput", "transport memory profile");
   const directory = path.posix.join(INSTANCE_ROOT, id);
@@ -192,20 +175,14 @@ function planManagedNowhere(input = {}) {
   const certificateHost = text(input.certificateHost || publicHost, "certificate host", 253);
   const certificateDays = integer(input.certificateDays ?? 825, "certificate validity", 1, 3650);
   const query = new URLSearchParams({ tls: String(tls) });
-  if (capabilities.isV2) query.set("morph", String(morph));
-  else {
-    if (alpn !== "now/1") query.set("alpn", alpn);
-    if (network !== "mix") query.set("net", network);
-  }
+  query.set("morph", String(morph));
   if (dial !== "auto") query.set("dial", dial);
   if (socks !== "none") query.set("socks", socks);
   if (rate) query.set("rate", String(rate));
   if (etar) query.set("etar", String(etar));
   if (tls === 2) { query.set("crt", certificatePath); query.set("key", privateKeyPath); }
   if (log !== "info") query.set("log", log);
-  const portalEndpoint = capabilities.isV2
-    ? buildNowhereEndpoint(listenHost || "*", { tcpPort, udpPort, tcpCarrier, udpCarrier })
-    : `${listenHostForUrl(listenHost)}:${port}`;
+  const portalEndpoint = buildNowhereEndpoint(listenHost || "*", { tcpPort, udpPort, tcpCarrier, udpCarrier });
   const portal = `portal://${encodeURIComponent(key)}@${portalEndpoint}?${query.toString()}`;
   const environmentValues = {
     NOWHERE_PORTAL: portal, NOWHERE_CLIENT_VALUE: client, NOWHERE_VERSION_VALUE: version,
@@ -221,14 +198,9 @@ function planManagedNowhere(input = {}) {
     NOWHERE_TELEMETRY_INTERVAL_VALUE: telemetryInterval, NOW_TELEMETRY_INTERVAL: telemetryInterval,
     NOWHERE_VECTOR_SOCKS_VALUE: vectorSocks, NOWHERE_VECTOR_SNI_VALUE: vectorSni,
     NOWHERE_VECTOR_PIN_VALUE: vectorPin, NOWHERE_VECTOR_MUX_VALUE: vectorMux,
-    NOWHERE_QUIC_MEMORY_PROFILE_VALUE: quicMemoryProfile, NOW_QUIC_MEMORY_PROFILE: quicMemoryProfile,
     NOWHERE_MORPH_VALUE: morph, NOWHERE_TRANSPORT_MEMORY_PROFILE_VALUE: transportMemoryProfile,
-    NOWHERE_POOL_VALUE: pool,
   };
-  if (capabilities.isV2) {
-    delete environmentValues.NOW_QUIC_MEMORY_PROFILE;
-    environmentValues.NOW_TRANSPORT_MEMORY_PROFILE = transportMemoryProfile;
-  }
+  environmentValues.NOW_TRANSPORT_MEMORY_PROFILE = transportMemoryProfile;
   const extensions = input.extensionEnvironment && typeof input.extensionEnvironment === "object" && !Array.isArray(input.extensionEnvironment)
     ? Object.entries(input.extensionEnvironment) : [];
   if (extensions.length > 32) throw new Error("Too many Nowhere extension settings");
@@ -238,8 +210,8 @@ function planManagedNowhere(input = {}) {
   }
   const environment = Object.entries(environmentValues).map(([keyName, value]) => `${keyName}=${quoteEnvironment(value)}`).join("\n") + "\n";
   const unit = `[Unit]\nDescription=Wherever Station managed Nowhere ${id}\nDocumentation=https://github.com/NodePassProject/Nowhere\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nEnvironmentFile=${environmentPath}\nExecStart=${binaryPath} \${NOWHERE_PORTAL}\nRestart=on-failure\nRestartSec=3\nLimitNOFILE=1048576\nUMask=0077\nNoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=full\nProtectHome=read-only\n\n[Install]\nWantedBy=multi-user.target\n`;
-  const linkInput = { publicHost, port, tcpPort, udpPort, tcpCarrier, udpCarrier, key, version, alpn, pool, vectorMux, vectorSni, vectorPin, vectorSocks, morph, name };
-  const carriers = network === "tcp" ? [["tcp", "tcp"]] : network === "udp" ? [["udp", "udp"]] : capabilities.isV2 ? [["tcp", "tcp"], ["udp", "udp"], ["tcp", "udp"], ["udp", "tcp"]] : [["udp", "udp"], ["tcp", "tcp"], ["tcp", "udp"], ["udp", "tcp"]];
+  const linkInput = { publicHost, port, tcpPort, udpPort, tcpCarrier, udpCarrier, key, version, alpn, vectorMux, vectorSni, vectorPin, vectorSocks, morph, name };
+  const carriers = network === "tcp" ? [["tcp", "tcp"]] : network === "udp" ? [["udp", "udp"]] : [["tcp", "tcp"], ["udp", "udp"], ["tcp", "udp"], ["udp", "tcp"]];
   const links = {
     anywhere: client === "vector" ? [] : carriers.map(([up, down]) => ({ up, down, uri: buildAnywhereLink({ ...linkInput, up, down }) })),
     vector: client === "anywhere" ? [] : carriers.map(([up, down]) => ({ up, down, uri: buildVectorLink({ ...linkInput, up, down }) })),
@@ -249,8 +221,8 @@ function planManagedNowhere(input = {}) {
     unitName, unitPath, environment, unit, links, certificateMode, certificatePath,
     privateKeyPath, certificateHost, certificateDays,
     clientLink: links.anywhere[0]?.uri || links.vector[0]?.uri || "",
-    summary: { name, publicHost, listenHost: listenHost || "全部地址", port, tcpPort, udpPort, tcpCarrier, udpCarrier, client, network, tls, version, protocolGeneration: capabilities.protocolGeneration, wireProtocol: capabilities.wireProtocol, alpn, morph, quicMemoryProfile, transportMemoryProfile, rate, etar, log, unitName, certificateMode, certificateHost, certificateDays },
-    safeguards: ["create-new-directory", "copy-or-download-private-binary", "managed-unit-prefix-only", "major-version-migration-required", "never-touch-existing-nowhere-service"],
+    summary: { name, publicHost, listenHost: listenHost || "全部地址", port, tcpPort, udpPort, tcpCarrier, udpCarrier, client, network, tls, version, protocolGeneration: capabilities.protocolGeneration, wireProtocol: capabilities.wireProtocol, alpn, morph, transportMemoryProfile, rate, etar, log, unitName, certificateMode, certificateHost, certificateDays },
+    safeguards: ["create-new-directory", "copy-or-download-private-binary", "managed-unit-prefix-only", "never-touch-existing-nowhere-service"],
   };
 }
 

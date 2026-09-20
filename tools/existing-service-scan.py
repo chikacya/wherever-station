@@ -343,37 +343,54 @@ def discover_nowhere(unit, candidates, reviews):
             if token.lstrip("v").split(".")[0].isdigit() and token.count(".") >= 2:
                 version = token.strip("(),")
                 break
-    version = version or "v1.8.0"
+    version = version or "v2.0.2"
     unit["adapter"] = "native-cli"
     unit["binaryVersion"] = clipped(version, 80)
     try:
-        numeric_port = int(port)
+        major_version = int(version.lstrip("v").split(".", 1)[0])
     except (TypeError, ValueError):
-        numeric_port = 0
-    if not key or not 1 <= numeric_port <= 65535 or not host:
+        major_version = 0
+    if major_version != 2:
+        reviews.append({"id": stable_id(unit["unit"], path, "unsupported-version"), "kind": "nowhere", "protocol": "nowhere", "name": f"{MACHINE_NAME} Nowhere", "source": path or "运行进程", "reason": "仅支持 Nowhere 2.x；请先在原部署方式中升级内核与配置", "evidence": [unit["unit"], f"version={version}", "adapter=unsupported"], "confidence": "draft", "repair": {"publicHost": host, "port": 0, "sni": "", "reality": False, "userNames": [], "certificate": None}})
+        return
+    tcp_port = values.get("NOWHERE_TCP_PORT_VALUE") or ""
+    udp_port = values.get("NOWHERE_UDP_PORT_VALUE") or ""
+    tcp_carrier = values.get("NOWHERE_TCP_CARRIER_VALUE") or "tcp"
+    udp_carrier = values.get("NOWHERE_UDP_CARRIER_VALUE") or "udp"
+    if portal:
+        if portal.port:
+            tcp_port = tcp_port or str(portal.port)
+            udp_port = udp_port or str(portal.port)
+        for segment in portal.path.split("/"):
+            carrier, separator, carrier_port = segment.partition(":")
+            if not separator or not carrier_port.isdigit():
+                continue
+            if carrier.startswith("tcp"):
+                tcp_carrier, tcp_port = carrier, carrier_port
+            elif carrier.startswith("udp"):
+                udp_carrier, udp_port = carrier, carrier_port
+    try:
+        tcp_port = int(tcp_port or 0)
+        udp_port = int(udp_port or 0)
+    except (TypeError, ValueError):
+        tcp_port = udp_port = 0
+    if not key or not host or not any(1 <= value <= 65535 for value in (tcp_port, udp_port)):
         missing = []
         if not key:
             missing.append("Shared Key")
         if not host:
             missing.append("公网地址")
-        if not numeric_port:
-            missing.append("监听端口")
-        reviews.append({"id": stable_id(unit["unit"], path, "incomplete"), "kind": "nowhere", "protocol": "nowhere", "name": f"{MACHINE_NAME} Nowhere", "source": path or "运行进程", "reason": "还需补充：" + "、".join(missing), "evidence": [unit["unit"], path or "已读取运行进程参数", "adapter=native-cli"], "confidence": "confirm" if numeric_port else "draft", "repair": {"publicHost": host, "port": numeric_port, "sni": "", "reality": False, "userNames": [], "certificate": None}})
+        if not tcp_port and not udp_port:
+            missing.append("Carrier 端口")
+        reviews.append({"id": stable_id(unit["unit"], path, "incomplete"), "kind": "nowhere", "protocol": "nowhere", "name": f"{MACHINE_NAME} Nowhere", "source": path or "运行进程", "reason": "还需补充：" + "、".join(missing), "evidence": [unit["unit"], path or "已读取运行进程参数", "adapter=native-cli"], "confidence": "confirm" if tcp_port or udp_port else "draft", "repair": {"publicHost": host, "port": tcp_port or udp_port, "sni": "", "reality": False, "userNames": [], "certificate": None}})
         return
-    up = "tcp" if network == "tcp" else "udp"
+    network = "mix" if tcp_port and udp_port else "tcp" if tcp_port else "udp"
+    up = "tcp" if tcp_port else "udp"
     down = up
-    params = {"up": up, "down": down}
-    try:
-        numbers = tuple(int(part) for part in version.lstrip("v").split(".")[:3])
-    except ValueError:
-        numbers = (1, 8, 0)
-    if numbers < (1, 8, 0) and up == "tcp":
-        params["pool"] = values.get("NOWHERE_POOL_VALUE") or "5"
-    alpn = values.get("NOWHERE_ALPN_VALUE") or portal_query.get("alpn") or "now/1"
-    if alpn != "now/1":
-        params["alpn"] = alpn
+    params = {"up": up, "down": down, "morph": values.get("NOWHERE_MORPH_VALUE") or portal_query.get("morph") or "0", "mux": values.get("NOWHERE_VECTOR_MUX_VALUE") or "0"}
     name = f"{MACHINE_NAME} Nowhere"
-    uri = f"nowhere://{quote(key)}@{url_host(host)}:{numeric_port}?{query_string(params)}#{quote(name)}"
+    endpoint = f"{url_host(host)}:{tcp_port}" if tcp_port and udp_port and tcp_port == udp_port and tcp_carrier == "tcp" and udp_carrier == "udp" else f"{url_host(host)}/" + "/".join(value for value in (f"{tcp_carrier}:{tcp_port}" if tcp_port else "", f"{udp_carrier}:{udp_port}" if udp_port else "") if value)
+    uri = f"nowhere://{quote(key)}@{endpoint}?{query_string(params)}#{quote(name)}"
     tls_mode = values.get("NOWHERE_TLS_VALUE") or portal_query.get("tls") or "1"
     certificate = None
     if str(tls_mode) == "2":

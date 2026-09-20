@@ -51,10 +51,9 @@ function nowhereCapabilities(version) {
     return {
       version: String(version || ""), known: false, supported: false,
       adapter: "", verified: false, compatibility: "invalid",
-      legacyPool: false, vectorPin: false, telemetryIpcV2: false,
-      vectorMux: false, quicMemoryProfile: false, isV2: false,
-      protocolGeneration: 0, wireProtocol: "", customAlpn: false,
-      carrierEndpoints: false, morph: false, transportMemoryProfile: false,
+      vectorPin: false, vectorMux: false, localTelemetry: false,
+      protocolGeneration: 0, wireProtocol: "", carrierEndpoints: false,
+      morph: false, transportMemoryProfile: false,
     };
   }
   const normalized = parsed.text;
@@ -63,29 +62,23 @@ function nowhereCapabilities(version) {
     return {
       version: normalized, known: true, supported: false,
       adapter: "", verified: false, compatibility: "unverified",
-      legacyPool: false, vectorPin: false, telemetryIpcV2: false,
-      vectorMux: false, quicMemoryProfile: false, isV2: false,
-      protocolGeneration: 0, wireProtocol: "", customAlpn: false,
-      carrierEndpoints: false, morph: false, transportMemoryProfile: false,
+      vectorPin: false, vectorMux: false, localTelemetry: false,
+      protocolGeneration: 0, wireProtocol: "", carrierEndpoints: false,
+      morph: false, transportMemoryProfile: false,
     };
   }
-  const isV2 = adapter.generation === 2;
   const verified = adapter.verifiedVersions.includes(normalized);
   return {
     version: normalized, known: true, supported: true,
     adapter: adapter.id, verified, compatibility: verified ? "verified" : "compatible-range",
-    legacyPool: !isV2 && atLeast(normalized, "v1.5.0") && !atLeast(normalized, "v1.8.0"),
-    vectorPin: atLeast(normalized, "v1.5.1"),
-    telemetryIpcV2: atLeast(normalized, "v1.6.0"),
-    vectorMux: atLeast(normalized, "v1.8.0"),
-    quicMemoryProfile: !isV2 && atLeast(normalized, "v1.8.0"),
-    isV2,
+    vectorPin: true,
+    vectorMux: true,
+    localTelemetry: atLeast(normalized, "v2.0.2"),
     protocolGeneration: adapter.generation,
-    wireProtocol: isV2 ? "nw2" : "now/1",
-    customAlpn: !isV2,
-    carrierEndpoints: isV2,
-    morph: isV2,
-    transportMemoryProfile: isV2,
+    wireProtocol: "nw2",
+    carrierEndpoints: true,
+    morph: true,
+    transportMemoryProfile: true,
   };
 }
 

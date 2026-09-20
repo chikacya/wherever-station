@@ -11,19 +11,22 @@ now += 16000;
 assert.equal(cache.get('host', ['one'])[0].stale, true);
 assert.equal(cache.get('other-host', ['one'])[0].state, 'unknown');
 assert.equal(cache.get('host', ['foreign'])[0].state, 'unknown');
+
 now = 200000;
-cache.record('host', ['one'], [{ instanceId: 'one', observedAt: new Date(now).toISOString(), state: 'active', pid: 20, loaded: true, telemetry: { source: 'ipc', lifecycle: 'READY', lifecycleReason: 'LISTENING', tcpLogicalUp: 1000, tcpLogicalDown: 2000, udpLogicalUp: 20, udpLogicalDown: 30, cpuPercent: 1.2, endpoint: 'secret' } }]);
+cache.record('host', ['one'], [{ instanceId: 'one', observedAt: new Date(now).toISOString(), state: 'active', pid: 20, loaded: true, telemetry: { source: 'local', lifecycle: 'READY', lifecycleReason: 'LISTENING', uptimeMs: 10000, tcpLogicalUp: '1000', tcpLogicalDown: '2000', udpLogicalUp: '20', udpLogicalDown: '30', cpuPercent: 1.2, version: '2.0.2', serviceEndpoint: '*:2077', configSummary: 'listen=*:2077 tls=1' } }]);
 now += 5000;
-cache.record('host', ['one'], [{ instanceId: 'one', observedAt: new Date(now).toISOString(), state: 'active', pid: 20, loaded: true, telemetry: { source: 'ipc', lifecycle: 'READY', tcpLogicalUp: 2020, tcpLogicalDown: 4030, udpLogicalUp: 0, udpLogicalDown: 0 } }]);
+cache.record('host', ['one'], [{ instanceId: 'one', observedAt: new Date(now).toISOString(), state: 'active', pid: 20, loaded: true, telemetry: { source: 'local', lifecycle: 'READY', uptimeMs: 15000, tcpLogicalUp: '2020', tcpLogicalDown: '4030', udpLogicalUp: '0', udpLogicalDown: '0', version: '2.0.2', serviceEndpoint: '*:2077', configSummary: 'listen=*:2077 tls=1' } }]);
 let sample = cache.get('host', ['one'])[0];
 assert.equal(sample.telemetry.upBytesPerSecond, 200);
 assert.equal(sample.telemetry.downBytesPerSecond, 400);
-assert.equal(sample.telemetry.endpoint, undefined);
+assert.equal(sample.telemetry.serviceEndpoint, '*:2077');
+assert.equal(sample.telemetry.tcpLogicalUp, '2020');
 now += 5000;
-cache.record('host', ['one'], [{ instanceId: 'one', observedAt: new Date(now).toISOString(), state: 'active', pid: 21, loaded: true, telemetry: { source: 'checkpoint', tcpLogicalUp: 50, tcpLogicalDown: 70, udpLogicalUp: 0, udpLogicalDown: 0 } }]);
+cache.record('host', ['one'], [{ instanceId: 'one', observedAt: new Date(now).toISOString(), state: 'active', pid: 21, loaded: true, telemetry: { source: 'unavailable' } }]);
 sample = cache.get('host', ['one'])[0];
 assert.equal(sample.telemetry.upBytesPerSecond, undefined);
-assert.equal(sample.telemetry.source, 'checkpoint');
+assert.equal(sample.telemetry.source, 'unavailable');
+
 now += 5000;
 cache.record('host', ['one'], [{ instanceId: 'one', observedAt: new Date(now).toISOString(), state: 'active', pid: 30, loaded: true, telemetry: { source: 'systemd', cpuUsageNs: 1000000000, rssBytes: 32000000 } }]);
 now += 5000;
@@ -31,4 +34,4 @@ cache.record('host', ['one'], [{ instanceId: 'one', observedAt: new Date(now).to
 sample = cache.get('host', ['one'])[0];
 assert.equal(sample.telemetry.cpuPercent, 5);
 assert.equal(sample.telemetry.rssBytes, 33000000);
-console.log('status cache stale / ordering / host isolation / telemetry rate reset passed');
+console.log('status cache stale / uptime-derived rates / lossless counters / reset passed');

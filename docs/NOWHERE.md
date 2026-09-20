@@ -2,7 +2,7 @@
 
 [简体中文](NOWHERE.zh-CN.md)
 
-Wherever Station manages Nowhere without requiring `nowhere-sh`. It owns installation, configuration, service lifecycle, telemetry, certificates, share URI generation, and supported migrations for instances created through the plugin.
+Wherever Station manages Nowhere without requiring `nowhere-sh`. It owns installation, configuration, service lifecycle, telemetry, certificates, and share URI generation for instances created through the plugin. Nowhere 2.0.0 or newer is required.
 
 ## Continuous compatibility
 
@@ -26,7 +26,7 @@ Downloads are verified against the checksum supplied by the official release whe
 
 Managed Nowhere instances can reference uploaded certificates or plugin-generated self-signed certificates. Certificate ownership, fingerprint, validity, and renewal state are shown with the instance. Publicly trusted ACME certificates should be issued by a dedicated certificate service or panel and then referenced here.
 
-Process state and traffic telemetry are collected independently of Komari host metrics. Availability depends on the selected Nowhere generation and the instance's telemetry configuration; a missing sample does not imply that the host is offline.
+Process state and traffic telemetry are collected independently of Komari host metrics. Since Nowhere 2.0.2, Wherever Station discovers the instance's protected registry and subscribes to summary snapshots through its local Unix socket; it does not open or reserve a TCP telemetry port. A missing sample does not imply that the host is offline.
 
 ## Existing installations
 

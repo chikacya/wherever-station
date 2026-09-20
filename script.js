@@ -227,30 +227,6 @@ function cleanNowhereExtensions(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value).filter(([key]) => /^NOW(?:HERE)?_[A-Z0-9_]{1,80}$/.test(key)).slice(0, 32).map(([key, item]) => [key, cleanText(item, 4096)]));
 }
-function cleanNowhereMigration(value) {
-  if (!value || typeof value !== "object" || !value.previous || typeof value.previous !== "object") return null;
-  const previous = value.previous;
-  const migratedAt = /^\d{4}-\d\d-\d\dT/.test(String(value.migratedAt || "")) ? String(value.migratedAt) : "";
-  const backupDirectory = cleanText(value.backupDirectory, 512);
-  if (!migratedAt || !backupDirectory.startsWith("/var/lib/proxy-console/instances/")) return null;
-  return {
-    fromVersion: cleanText(value.fromVersion, 64), toVersion: cleanText(value.toVersion, 64),
-    backupDirectory, migratedAt, previousUri: cleanText(value.previousUri, 8192),
-    previous: {
-      version: cleanText(previous.version, 64), publicHost: cleanText(previous.publicHost, 253), listenHost: cleanText(previous.listenHost, 253),
-      port: Math.min(65535, Math.max(1024, Number(previous.port) || 2077)), client: ["anywhere", "vector", "both"].includes(previous.client) ? previous.client : "anywhere",
-      network: ["mix", "tcp", "udp"].includes(previous.network) ? previous.network : "mix", tls: Number(previous.tls) === 2 ? 2 : 1,
-      alpn: cleanText(previous.alpn, 64) || "now/1", rate: Math.min(1000000, Math.max(0, Number(previous.rate) || 0)), etar: Math.min(1000000, Math.max(0, Number(previous.etar) || 0)),
-      dial: cleanText(previous.dial, 253) || "auto", socks: cleanText(previous.socks, 512) || "none", log: ["none", "debug", "info", "warn", "error", "event"].includes(previous.log) ? previous.log : "info",
-      telemetryInterval: cleanText(previous.telemetryInterval, 16) || "1s", pool: Math.min(256, Math.max(0, Number(previous.pool) || 0)),
-      vectorSocks: cleanText(previous.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(previous.vectorSni, 253) || "none", vectorPin: cleanText(previous.vectorPin, 64) || "none",
-      vectorMux: Number(previous.vectorMux) === 1 ? 1 : 0, quicMemoryProfile: ["memory", "balanced", "throughput"].includes(previous.quicMemoryProfile) ? previous.quicMemoryProfile : "balanced",
-      certificateMode: ["ephemeral", "managed", "existing"].includes(previous.certificateMode) ? previous.certificateMode : "ephemeral",
-      certificatePath: cleanText(previous.certificatePath, 512), privateKeyPath: cleanText(previous.privateKeyPath, 512), certificateHost: cleanText(previous.certificateHost, 253),
-      certificateDays: Math.min(3650, Math.max(1, Number(previous.certificateDays) || 825)), extensionEnvironment: cleanNowhereExtensions(previous.extensionEnvironment),
-    },
-  };
-}
 function cleanIsoDate(value) {
   const raw = String(value || "");
   return /^\d{4}-\d\d-\d\dT/.test(raw) && Number.isFinite(Date.parse(raw)) ? new Date(raw).toISOString() : "";
@@ -339,13 +315,12 @@ function cleanState(input) {
     udpCarrier: ["udp", "udp4", "udp6"].includes(item && item.udpCarrier) ? item.udpCarrier : "udp",
     client: ["anywhere", "vector", "both"].includes(item && item.client) ? item.client : "anywhere",
     network: ["mix", "tcp", "udp"].includes(item && item.network) ? item.network : "mix", tls: Number(item && item.tls) === 2 ? 2 : 1,
-    alpn: cleanText(item && item.alpn, 64) || "now/1", rate: Math.min(1000000, Math.max(0, Number(item && item.rate) || 0)),
+    alpn: item && item.kind === "nowhere" ? "nw2" : cleanText(item && item.alpn, 64), rate: Math.min(1000000, Math.max(0, Number(item && item.rate) || 0)),
     etar: Math.min(1000000, Math.max(0, Number(item && item.etar) || 0)), dial: cleanText(item && item.dial, 253) || "auto",
     socks: cleanText(item && item.socks, 512) || "none", log: ["none", "debug", "info", "warn", "error", "event"].includes(item && item.log) ? item.log : "info",
-    telemetryInterval: cleanText(item && item.telemetryInterval, 16) || "1s", pool: Math.min(256, Math.max(0, Number(item && item.pool) || 0)),
+    telemetryInterval: cleanText(item && item.telemetryInterval, 16) || "1s",
     vectorSocks: cleanText(item && item.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(item && item.vectorSni, 253) || "none",
     vectorPin: cleanText(item && item.vectorPin, 64) || "none", vectorMux: Number(item && item.vectorMux) === 1 ? 1 : 0,
-    quicMemoryProfile: ["memory", "balanced", "throughput"].includes(item && item.quicMemoryProfile) ? item.quicMemoryProfile : "balanced",
     morph: Number(item && item.morph) === 1 ? 1 : 0,
     transportMemoryProfile: ["memory", "balanced", "throughput"].includes(item && item.transportMemoryProfile) ? item.transportMemoryProfile : "throughput",
     certificateMode: ["ephemeral", "managed", "existing"].includes(item && item.certificateMode) ? item.certificateMode : Number(item && item.tls) === 2 ? "existing" : "ephemeral",
@@ -355,7 +330,7 @@ function cleanState(input) {
     createdAt: /^\d{4}-\d\d-\d\dT/.test(String(item && item.createdAt || "")) ? String(item.createdAt) : new Date().toISOString(),
     updatedAt: /^\d{4}-\d\d-\d\dT/.test(String(item && item.updatedAt || "")) ? String(item.updatedAt) : new Date().toISOString(),
     lastError: cleanText(item && item.lastError, 160), lastOperationId: cleanText(item && item.lastOperationId, 64),
-    migration: item && item.kind === "nowhere" ? cleanNowhereMigration(item.migration) : null, connectivity: cleanConnectivity(item && item.connectivity),
+    connectivity: cleanConnectivity(item && item.connectivity),
   })).filter((item) => item.id && item.kind && item.name && machineIds.has(item.machineId) && nodeIds.has(item.nodeId));
   if (Number(input.version || 0) < 13 && certificates.length === 0) {
     for (const instance of managedInstances) {
@@ -1126,17 +1101,13 @@ function parseExistingServiceDiscovery(params) {
   return result;
 }
 function newManagedNowhereValues() {
-  return { id: `nw-${randomId()}`, key: crypto.randomBytes(24).toString("hex"), version: "v2.0.0", port: 2077, tcpPort: 2077, udpPort: 2077, tcpCarrier: "tcp", udpCarrier: "udp", morph: 0, transportMemoryProfile: "throughput" };
+  return { id: `nw-${randomId()}`, key: crypto.randomBytes(24).toString("hex"), version: "v2.0.2", port: 2077, tcpPort: 2077, udpPort: 2077, tcpCarrier: "tcp", udpCarrier: "udp", morph: 0, transportMemoryProfile: "throughput" };
 }
 function managedNowherePorts(value) {
-  const port = Number(value && value.port) || 0;
-  const capabilities = nowhereCapabilities(value && value.version);
-  if (capabilities.isV2) return [
+  return [
     Number(value && value.tcpPort) ? `tcp:${Number(value.tcpPort)}` : "",
     Number(value && value.udpPort) ? `udp:${Number(value.udpPort)}` : "",
   ].filter(Boolean);
-  const network = value && value.network || "mix";
-  return [network !== "udp" && port ? `tcp:${port}` : "", network !== "tcp" && port ? `udp:${port}` : ""].filter(Boolean);
 }
 function hasManagedNowherePortConflict(instances, machineId, candidate, ignoredId = "") {
   const wanted = new Set(managedNowherePorts(candidate));
@@ -1181,19 +1152,9 @@ function createManagedNowhereDraft(params) {
   const nodeId = randomId(); const now = new Date().toISOString();
   const certificate = input.certificateAssetId ? { assetId: cleanText(input.certificateAssetId, 64), selfSigned: input.certificateSelfSigned === true, fingerprintSha256: cleanText(input.certificateFingerprintSha256, 64), publicKeySha256: cleanText(input.certificatePublicKeySha256, 64), expiresAt: cleanIsoDate(input.certificateExpiresAt) } : null;
   state.nodes.push({ id: nodeId, name: plan.name, protocol: "nowhere", machineId, uri: plan.links.anywhere[0].uri, enabled: true, tags: ["托管", "Nowhere"], source: "manual", sourceId: "", certificate });
-  state.managedInstances.push({ id: plan.id, kind: "nowhere", name: plan.name, machineId, nodeId, status: "draft", version: plan.version, publicHost: plan.summary.publicHost, listenHost: input.listenHost === undefined ? "127.0.0.1" : cleanText(input.listenHost, 253), port: plan.summary.port, tcpPort: plan.summary.tcpPort, udpPort: plan.summary.udpPort, tcpCarrier: plan.summary.tcpCarrier, udpCarrier: plan.summary.udpCarrier, client: plan.summary.client, network: plan.summary.network, tls: plan.summary.tls, alpn: plan.summary.alpn, rate: plan.summary.rate, etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", socks: cleanText(input.socks, 512) || "none", log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s", pool: Number(input.pool) || 5, vectorSocks: cleanText(input.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(input.vectorSni, 253) || "none", vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, quicMemoryProfile: cleanText(input.quicMemoryProfile, 32) || "balanced", morph: plan.summary.morph, transportMemoryProfile: plan.summary.transportMemoryProfile, certificateId: certificate?.assetId || "", certificateMode: plan.certificateMode, certificatePath: plan.certificatePath, privateKeyPath: plan.privateKeyPath, certificateHost: plan.certificateHost, certificateDays: plan.certificateDays, extensionEnvironment: cleanNowhereExtensions(input.extensionEnvironment), binarySource: input.binarySource === "copy" ? "copy" : "download", migration: null, createdAt: now, updatedAt: now, lastError: "", lastOperationId: "" });
-  state.managedInstances[state.managedInstances.length - 1].pool = Number(input.pool ?? 5);
+  state.managedInstances.push({ id: plan.id, kind: "nowhere", name: plan.name, machineId, nodeId, status: "draft", version: plan.version, publicHost: plan.summary.publicHost, listenHost: input.listenHost === undefined ? "127.0.0.1" : cleanText(input.listenHost, 253), port: plan.summary.port, tcpPort: plan.summary.tcpPort, udpPort: plan.summary.udpPort, tcpCarrier: plan.summary.tcpCarrier, udpCarrier: plan.summary.udpCarrier, client: plan.summary.client, network: plan.summary.network, tls: plan.summary.tls, alpn: plan.summary.alpn, rate: plan.summary.rate, etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", socks: cleanText(input.socks, 512) || "none", log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s", vectorSocks: cleanText(input.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(input.vectorSni, 253) || "none", vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph, transportMemoryProfile: plan.summary.transportMemoryProfile, certificateId: certificate?.assetId || "", certificateMode: plan.certificateMode, certificatePath: plan.certificatePath, privateKeyPath: plan.privateKeyPath, certificateHost: plan.certificateHost, certificateDays: plan.certificateDays, extensionEnvironment: cleanNowhereExtensions(input.extensionEnvironment), binarySource: input.binarySource === "copy" ? "copy" : "download", createdAt: now, updatedAt: now, lastError: "", lastOperationId: "" });
   state.revision += 1; writeState(cleanState(state));
   return { state: readState(), instanceId: plan.id, plan: publicManagedNowherePlan(plan) };
-}
-function managedNowhereV2Input(instance, node, targetVersion) {
-  const source = managedNowherePlanInput(instance, node);
-  const network = instance.network || "mix";
-  return {
-    ...source, version: targetVersion, alpn: "nw2", morph: 0, transportMemoryProfile: "throughput",
-    tcpPort: network === "udp" ? 0 : instance.port, udpPort: network === "tcp" ? 0 : instance.port,
-    tcpCarrier: "tcp", udpCarrier: "udp",
-  };
 }
 function managedNowhereMetadata(input, plan) {
   return {
@@ -1202,73 +1163,41 @@ function managedNowhereMetadata(input, plan) {
     tcpCarrier: plan.summary.tcpCarrier, udpCarrier: plan.summary.udpCarrier, client: plan.summary.client,
     network: plan.summary.network, tls: plan.summary.tls, alpn: plan.summary.alpn, rate: plan.summary.rate,
     etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", socks: cleanText(input.socks, 512) || "none",
-    log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s", pool: Number(input.pool ?? 5),
+    log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s",
     vectorSocks: cleanText(input.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(input.vectorSni, 253) || "none",
-    vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0,
-    quicMemoryProfile: cleanText(input.quicMemoryProfile, 32) || "balanced", morph: plan.summary.morph,
+    vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph,
     transportMemoryProfile: plan.summary.transportMemoryProfile, certificateMode: plan.certificateMode,
     certificatePath: plan.certificatePath, privateKeyPath: plan.privateKeyPath, certificateHost: plan.certificateHost,
     certificateDays: plan.certificateDays, extensionEnvironment: cleanNowhereExtensions(input.extensionEnvironment),
   };
 }
-function previewManagedNowhereMigration(params) {
-  const state = readState();
-  const instance = state.managedInstances.find((item) => item.id === cleanText(params && params.instanceId, 64) && item.kind === "nowhere");
-  const node = state.nodes.find((item) => item.id === instance?.nodeId && item.protocol === "nowhere");
-  if (!instance || !node) throw new Error("托管实例或节点不存在");
-  const current = nowhereCapabilities(instance.version);
-  const target = nowhereCapabilities(cleanText(params && params.targetVersion, 64));
-  if (!current.verified || current.protocolGeneration !== 1 || target.protocolGeneration !== 2 || !target.verified) throw new Error("请选择已验证的 Nowhere V2 版本");
-  const input = managedNowhereV2Input(instance, node, target.version);
-  const plan = planManagedNowhere(input);
-  if (hasManagedNowherePortConflict(state.managedInstances, instance.machineId, plan.summary, instance.id)) throw new Error("迁移后的 Carrier 端口与同宿主托管实例冲突");
-  return { from: publicManagedNowherePlan(planManagedNowhere(managedNowherePlanInput(instance, node))), to: publicManagedNowherePlan(plan), wireCompatible: false, rollbackAvailableAfterMigration: true };
-}
 function prepareManagedNowhereAction(params) {
   const instanceId = cleanText(params && params.instanceId, 64);
   const action = cleanText(params && params.action, 16);
-  if (!["preflight", "create", "start", "stop", "restart", "status", "logs", "delete", "read-config", "upgrade", "migrate-v2", "rollback-v1"].includes(action)) throw new Error("不支持的托管实例操作");
+  if (!["preflight", "create", "start", "stop", "restart", "status", "logs", "delete", "read-config", "upgrade"].includes(action)) throw new Error("不支持的托管实例操作");
   const state = readState(); const instance = state.managedInstances.find((item) => item.id === instanceId && item.kind === "nowhere");
   const machine = state.machines.find((item) => item.id === instance?.machineId && item.monitorClientId);
   const node = state.nodes.find((item) => item.id === instance?.nodeId && item.protocol === "nowhere");
   if (!instance || !machine || !node) throw new Error("托管实例、节点或宿主绑定已经不存在");
   const currentCapabilities = nowhereCapabilities(instance.version);
   if (!currentCapabilities.supported) throw new Error("该实例版本没有可用的适配器，只能保留记录，不能生成远程命令");
-  if (!currentCapabilities.verified && !["status", "logs", "read-config", "rollback-v1"].includes(action)) throw new Error("该实例版本尚未通过适配验证，目前仅允许读取状态与配置");
+  if (!currentCapabilities.verified && !["status", "logs", "read-config"].includes(action)) throw new Error("该实例版本尚未通过适配验证，目前仅允许读取状态与配置");
   if (action === "delete" && params.confirmation !== instance.id) throw new Error("删除托管实例需要确认实例编号");
   if (action === "create" && !["draft", "validated", "failed"].includes(instance.status)) throw new Error("该实例已经创建，不能重复下发");
-  if (["start", "stop", "restart", "logs", "upgrade", "migrate-v2", "rollback-v1"].includes(action) && ["draft", "validated"].includes(instance.status)) throw new Error("请先创建托管实例");
-  let plan = planManagedNowhere(managedNowherePlanInput(instance, node));
+  if (["start", "stop", "restart", "logs", "upgrade"].includes(action) && ["draft", "validated"].includes(instance.status)) throw new Error("请先创建托管实例");
+  const plan = planManagedNowhere(managedNowherePlanInput(instance, node));
   let targetVersion = "";
-  let metadata = null;
-  let previous = null;
-  let previousUri = "";
   if (action === "upgrade") {
     targetVersion = cleanText(params && params.targetVersion, 64);
     const capabilities = nowhereCapabilities(targetVersion);
     if (!capabilities.verified) throw new Error("请选择已通过适配验证的 Nowhere 版本");
     if (capabilities.version === nowhereCapabilities(instance.version).version) throw new Error("实例已经是所选版本");
-    if (capabilities.protocolGeneration !== nowhereCapabilities(instance.version).protocolGeneration) throw new Error("跨主版本需要使用迁移流程，不能直接替换二进制");
-  } else if (action === "migrate-v2") {
-    targetVersion = cleanText(params && params.targetVersion, 64);
-    const target = nowhereCapabilities(targetVersion);
-    if (!currentCapabilities.verified || currentCapabilities.protocolGeneration !== 1 || target.protocolGeneration !== 2 || !target.verified) throw new Error("只支持在已验证版本间从 Nowhere V1 迁移到 V2");
-    const input = managedNowhereV2Input(instance, node, target.version);
-    plan = planManagedNowhere(input);
-    if (hasManagedNowherePortConflict(state.managedInstances, machine.id, plan.summary, instance.id)) throw new Error("迁移后的 Carrier 端口与同宿主托管实例冲突");
-    metadata = managedNowhereMetadata(input, plan);
-    previous = clone(instance);
-    previousUri = node.uri;
-  } else if (action === "rollback-v1") {
-    if (nowhereCapabilities(instance.version).protocolGeneration !== 2 || !instance.migration) throw new Error("该实例没有可用的 V1 迁移备份");
-    targetVersion = instance.migration.fromVersion;
+    if (capabilities.protocolGeneration !== nowhereCapabilities(instance.version).protocolGeneration) throw new Error("不支持跨主版本直接替换二进制");
   }
   const operationId = requestOperationId(params); const expiresAt = Date.now() + MANAGED_OPERATION_TTL_MS;
-  retainOperation(MANAGED_OPERATIONS, operationId, { instanceId, machineId: machine.id, action, expiresAt, targetVersion, metadata, previous, previousUri, backupDirectory: instance.migration?.backupDirectory || "", uri: plan.links.anywhere[0]?.uri || "" });
+  retainOperation(MANAGED_OPERATIONS, operationId, { instanceId, machineId: machine.id, action, expiresAt, targetVersion, uri: plan.links.anywhere[0]?.uri || "" });
   for (const [id, operation] of MANAGED_OPERATIONS) if (operation.expiresAt < Date.now()) MANAGED_OPERATIONS.delete(id);
-  const commandInput = action === "migrate-v2" ? { ...plan, previousVersion: instance.version }
-    : action === "rollback-v1" ? { ...plan, backupDirectory: instance.migration.backupDirectory }
-      : targetVersion ? { ...plan, targetVersion } : plan;
+  const commandInput = targetVersion ? { ...plan, targetVersion } : plan;
   return MANAGED_TASKS.prepare("nowhere", { schema: 1, operationId, expiresAt: new Date(expiresAt).toISOString(), instanceId, machineId: machine.id, clientId: machine.monitorClientId, action, command: buildManagedNowhereCommand(action, commandInput, instance.binarySource), plan: publicManagedNowherePlan(plan) });
 }
 function prepareManagedNowhereUpdate(params) {
@@ -1378,28 +1307,10 @@ function recordManagedNowhereResult(params) {
         const linkedNode = state.nodes.find((item) => item.id === instance.nodeId);
         if (linkedNode) linkedNode.uri = planManagedNowhere(managedNowherePlanInput(instance, linkedNode)).links.anywhere[0].uri;
       }
-      else if (pending.action === "migrate-v2") {
-        if (!result.backupDirectory) throw new Error("远端迁移未返回 V1 备份位置");
-        Object.assign(instance, pending.metadata);
-        instance.migration = { fromVersion: pending.previous.version, toVersion: instance.version, backupDirectory: cleanText(result.backupDirectory, 512), migratedAt: now, previous: pending.previous, previousUri: pending.previousUri };
-        instance.status = result.state === "active" ? "running" : "stopped";
-        const linkedNode = state.nodes.find((item) => item.id === instance.nodeId);
-        if (linkedNode) linkedNode.uri = pending.uri;
-      }
-      else if (pending.action === "rollback-v1") {
-        const migration = instance.migration;
-        Object.assign(instance, migration.previous);
-        instance.migration = null;
-        instance.status = result.state === "active" ? "running" : "stopped";
-        const linkedNode = state.nodes.find((item) => item.id === instance.nodeId);
-        if (linkedNode) linkedNode.uri = migration.previousUri;
-      }
       else if (pending.action === "status") instance.status = result.state === "active" ? "running" : result.installed === false ? "failed" : "stopped";
       instance.lastError = "";
     } else {
-      const recovered = (pending.action === "upgrade" && result.rolledBack === true)
-        || (pending.action === "migrate-v2" && result.rolledBack === true)
-        || (pending.action === "rollback-v1" && result.restoredV2 === true);
+      const recovered = pending.action === "upgrade" && result.rolledBack === true;
       if (!recovered) instance.status = "failed";
       instance.lastError = cleanText(result.error, 160) || "operation-failed";
     }
@@ -1407,7 +1318,7 @@ function recordManagedNowhereResult(params) {
     instance.updatedAt = now; instance.lastOperationId = operationId;
   }
   state.revision += 1; writeState(cleanState(state));
-  const normalized = { ok: result.ok === true, state: cleanText(result.state, 24), error: cleanText(result.error, 160), binaryAvailable: result.binaryAvailable === true, binaryVersion: cleanText(result.binaryVersion, 240), portAvailable: result.portAvailable === true, portsAvailable: Array.isArray(result.portsAvailable) ? result.portsAvailable.slice(0, 4) : [], installed: result.installed === true, existingNowhere: cleanText(result.existingNowhere, 24), existingSingBox: cleanText(result.existingSingBox, 24), certificate: result.certificate && typeof result.certificate === "object" ? result.certificate : null, configurationHash: cleanText(result.configurationHash, 64), backupDirectory: cleanText(result.backupDirectory, 512), rolledBack: result.rolledBack === true, restoredV2: result.restoredV2 === true, recoveryPending: result.recoveryPending === true, logs: pending.action === "logs" ? cleanText(result.logs, 24000) : "" };
+  const normalized = { ok: result.ok === true, state: cleanText(result.state, 24), error: cleanText(result.error, 160), binaryAvailable: result.binaryAvailable === true, binaryVersion: cleanText(result.binaryVersion, 240), portAvailable: result.portAvailable === true, portsAvailable: Array.isArray(result.portsAvailable) ? result.portsAvailable.slice(0, 4) : [], installed: result.installed === true, existingNowhere: cleanText(result.existingNowhere, 24), existingSingBox: cleanText(result.existingSingBox, 24), certificate: result.certificate && typeof result.certificate === "object" ? result.certificate : null, configurationHash: cleanText(result.configurationHash, 64), rolledBack: result.rolledBack === true, recoveryPending: result.recoveryPending === true, logs: pending.action === "logs" ? cleanText(result.logs, 24000) : "" };
   MANAGED_OPERATIONS.set(operationId, { ...pending, completedResult: normalized });
   return { state: readState(), result: normalized };
 }
@@ -1744,5 +1655,5 @@ function load() {
   server.registerRPC("proxyConsole:deleteProvider", deleteProvider);
   server.registerRPC("proxyConsole:startProviderOperation", startProviderOperation);
   server.registerRPC("proxyConsole:getProviderOperation", getProviderOperation);
-readState(); server.route("GET", "/proxy/sub/:token", publicSubscription); server.route("GET", "/proxy/backup/:token", downloadPortableBackup); server.registerRPC("proxyConsole:getState", () => readState()); server.registerRPC("proxyConsole:exportPortableBackup", exportPortableBackup); server.registerRPC("proxyConsole:preparePortableBackupDownload", preparePortableBackupDownload); server.registerRPC("proxyConsole:previewPortableBackup", previewPortableBackup); server.registerRPC("proxyConsole:restorePortableBackup", restorePortableBackup); server.registerRPC("proxyConsole:getCompatibilityCatalog", () => ({ nowhere: compatibilityCatalog(), protocols: protocolCatalog() })); server.registerRPC("proxyConsole:saveState", (params) => saveState(params && params.state)); server.registerRPC("proxyConsole:validateNode", validateNode); server.registerRPC("proxyConsole:parseNodeUris", parseNodeUris); server.registerRPC("proxyConsole:newToken", () => ({ token: crypto.randomBytes(24).toString("hex") })); server.registerRPC("proxyConsole:getAccessStats", accessStats); server.registerRPC("proxyConsole:getSubscriptionHistory", subscriptionHistory); server.registerRPC("proxyConsole:previewSubscriptionChange", subscriptionChangePreview); server.registerRPC("proxyConsole:subscriptionPreflight", subscriptionPreflight); server.registerRPC("proxyConsole:syncExternalSource", syncExternalSource); server.registerRPC("proxyConsole:startExternalSourceOperation", startExternalSourceOperation); server.registerRPC("proxyConsole:getExternalSourceOperation", getExternalSourceOperation); server.registerRPC("proxyConsole:syncRuleSet", syncRuleSet); server.registerRPC("proxyConsole:deleteRuleSet", deleteRuleSet); server.registerRPC("proxyConsole:serviceCommand", serviceCommand); server.registerRPC("proxyConsole:statusCommand", statusCommand); server.registerRPC("proxyConsole:newManagedNowhereValues", newManagedNowhereValues); server.registerRPC("proxyConsole:previewManagedNowhere", previewManagedNowhere); server.registerRPC("proxyConsole:previewManagedNowhereMigration", previewManagedNowhereMigration); server.registerRPC("proxyConsole:createManagedNowhereDraft", createManagedNowhereDraft); server.registerRPC("proxyConsole:prepareManagedNowhereAction", prepareManagedNowhereAction); server.registerRPC("proxyConsole:recordManagedNowhereResult", recordManagedNowhereResult); server.registerRPC("proxyConsole:newManagedSingBoxValues", newManagedSingBoxValues); server.registerRPC("proxyConsole:previewManagedSingBox", previewManagedSingBox); server.registerRPC("proxyConsole:prepareManagedSingBoxCreate", prepareManagedSingBoxCreate); server.registerRPC("proxyConsole:prepareManagedSingBoxAction", prepareManagedSingBoxAction); server.registerRPC("proxyConsole:prepareManagedSingBoxUpdate", prepareManagedSingBoxUpdate); server.registerRPC("proxyConsole:recordManagedSingBoxResult", recordManagedSingBoxResult); if (typeof server.cron === "function") server.cron("17 * * * *", syncDueSources);
+readState(); server.route("GET", "/proxy/sub/:token", publicSubscription); server.route("GET", "/proxy/backup/:token", downloadPortableBackup); server.registerRPC("proxyConsole:getState", () => readState()); server.registerRPC("proxyConsole:exportPortableBackup", exportPortableBackup); server.registerRPC("proxyConsole:preparePortableBackupDownload", preparePortableBackupDownload); server.registerRPC("proxyConsole:previewPortableBackup", previewPortableBackup); server.registerRPC("proxyConsole:restorePortableBackup", restorePortableBackup); server.registerRPC("proxyConsole:getCompatibilityCatalog", () => ({ nowhere: compatibilityCatalog(), protocols: protocolCatalog() })); server.registerRPC("proxyConsole:saveState", (params) => saveState(params && params.state)); server.registerRPC("proxyConsole:validateNode", validateNode); server.registerRPC("proxyConsole:parseNodeUris", parseNodeUris); server.registerRPC("proxyConsole:newToken", () => ({ token: crypto.randomBytes(24).toString("hex") })); server.registerRPC("proxyConsole:getAccessStats", accessStats); server.registerRPC("proxyConsole:getSubscriptionHistory", subscriptionHistory); server.registerRPC("proxyConsole:previewSubscriptionChange", subscriptionChangePreview); server.registerRPC("proxyConsole:subscriptionPreflight", subscriptionPreflight); server.registerRPC("proxyConsole:syncExternalSource", syncExternalSource); server.registerRPC("proxyConsole:startExternalSourceOperation", startExternalSourceOperation); server.registerRPC("proxyConsole:getExternalSourceOperation", getExternalSourceOperation); server.registerRPC("proxyConsole:syncRuleSet", syncRuleSet); server.registerRPC("proxyConsole:deleteRuleSet", deleteRuleSet); server.registerRPC("proxyConsole:serviceCommand", serviceCommand); server.registerRPC("proxyConsole:statusCommand", statusCommand); server.registerRPC("proxyConsole:newManagedNowhereValues", newManagedNowhereValues); server.registerRPC("proxyConsole:previewManagedNowhere", previewManagedNowhere); server.registerRPC("proxyConsole:createManagedNowhereDraft", createManagedNowhereDraft); server.registerRPC("proxyConsole:prepareManagedNowhereAction", prepareManagedNowhereAction); server.registerRPC("proxyConsole:recordManagedNowhereResult", recordManagedNowhereResult); server.registerRPC("proxyConsole:newManagedSingBoxValues", newManagedSingBoxValues); server.registerRPC("proxyConsole:previewManagedSingBox", previewManagedSingBox); server.registerRPC("proxyConsole:prepareManagedSingBoxCreate", prepareManagedSingBoxCreate); server.registerRPC("proxyConsole:prepareManagedSingBoxAction", prepareManagedSingBoxAction); server.registerRPC("proxyConsole:prepareManagedSingBoxUpdate", prepareManagedSingBoxUpdate); server.registerRPC("proxyConsole:recordManagedSingBoxResult", recordManagedSingBoxResult); if (typeof server.cron === "function") server.cron("17 * * * *", syncDueSources);
 }

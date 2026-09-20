@@ -6,7 +6,7 @@ const fields = {
   certificatePath: 'CRT', privateKeyPath: 'TLS_KEY', rate: 'RATE', etar: 'ETAR',
   dial: 'DIAL', socks: 'SOCKS', log: 'LOG', telemetryInterval: 'TELEMETRY_INTERVAL',
   vectorSocks: 'VECTOR_SOCKS', vectorSni: 'VECTOR_SNI', vectorPin: 'VECTOR_PIN',
-  vectorMux: 'VECTOR_MUX', quicMemoryProfile: 'QUIC_MEMORY_PROFILE', pool: 'POOL',
+  vectorMux: 'VECTOR_MUX',
   morph: 'MORPH', transportMemoryProfile: 'TRANSPORT_MEMORY_PROFILE',
   certificateMode: 'CERTIFICATE_MODE', certificateHost: 'CERTIFICATE_HOST',
   certificateDays: 'CERTIFICATE_DAYS',
@@ -26,14 +26,14 @@ function decodeNowhereConfig(values) {
   input.certificateMode ||= Number(input.tls) === 2 ? 'existing' : 'ephemeral';
   input.certificateHost ||= input.publicHost;
   input.certificateDays ||= '825';
-  const isV2 = /^v?([2-9]|\d{2,})\./.test(input.version);
-  input.tcpPort ??= isV2 ? input.network === 'udp' ? '0' : input.port : '0';
-  input.udpPort ??= isV2 ? input.network === 'tcp' ? '0' : input.port : '0';
+  if (!/^v?2\./.test(input.version)) throw new Error('Wherever Station 仅管理 Nowhere 2.x 实例');
+  input.tcpPort ??= input.network === 'udp' ? '0' : input.port;
+  input.udpPort ??= input.network === 'tcp' ? '0' : input.port;
   input.tcpCarrier ||= 'tcp';
   input.udpCarrier ||= 'udp';
   input.morph ||= '0';
   input.transportMemoryProfile ||= 'throughput';
-  for (const field of ['port', 'tcpPort', 'udpPort', 'tls', 'rate', 'etar', 'vectorMux', 'pool', 'morph', 'certificateDays']) input[field] = Number(input[field]);
+  for (const field of ['port', 'tcpPort', 'udpPort', 'tls', 'rate', 'etar', 'vectorMux', 'morph', 'certificateDays']) input[field] = Number(input[field]);
   const managedNames = new Set(Object.values(fields).map((suffix) => 'NOWHERE_' + suffix + '_VALUE'));
   input.extensionEnvironment = Object.fromEntries(Object.entries(values).filter(([key]) => /^NOW(?:HERE)?_[A-Z0-9_]+$/.test(key) && !managedNames.has(key) && key !== 'NOWHERE_PORTAL'));
   return input;

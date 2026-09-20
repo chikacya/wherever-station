@@ -2,7 +2,7 @@
 
 [English](NOWHERE.md)
 
-Wherever Station 无需依赖 `nowhere-sh` 即可管理 Nowhere。对于由插件创建的实例，它负责安装、配置、服务生命周期、遥测、证书、分享 URI 和受支持的迁移。
+Wherever Station 无需依赖 `nowhere-sh` 即可管理 Nowhere。对于由插件创建的实例，它负责安装、配置、服务生命周期、遥测、证书和分享 URI。最低支持 Nowhere 2.0.0。
 
 ## 持续适配
 
@@ -26,7 +26,7 @@ Nowhere 的命令行、配置、传输或 URI 合同可能随版本变化。Wher
 
 托管 Nowhere 实例可以引用上传的证书，也可以使用插件生成的自签证书。实例会显示证书归属、指纹、有效期和更新状态。公网可信的 ACME 证书建议由专门证书服务或面板签发后在此引用。
 
-进程状态和流量遥测与 Komari 主机指标分别采集。可用性取决于 Nowhere 代际和实例遥测配置；暂时缺少采样不代表宿主离线。
+进程状态和流量遥测与 Komari 主机指标分别采集。从 Nowhere 2.0.2 开始，Wherever Station 会发现实例的受保护注册文件，并通过本地 Unix Socket 订阅 summary 快照；不会开放或占用 TCP 遥测端口。暂时缺少采样不代表宿主离线。
 
 ## 已有安装
 

@@ -3933,13 +3933,13 @@ function HostServiceControls({ machine, me, serviceStates, refreshServices, serv
           <div><span>↓ DOWNLOAD</span><strong>{bytes(telemetry?.downBytesPerSecond, true)}</strong></div>
           <div><span>↑ UPLOAD</span><strong>{bytes(telemetry?.upBytesPerSecond, true)}</strong></div>
         </div>
-        <div className="service-trend"><TelemetrySparkline points={history} /><span>{telemetry?.source === "ipc" ? "IPC V2" : telemetry?.source === "checkpoint" ? "CHECKPOINT" : "WAITING"}</span></div>
+        <div className="service-trend"><TelemetrySparkline points={history} /><span>{telemetry?.source === "local" ? "LOCAL" : "WAITING"}</span></div>
         <footer><div><Button icon={Play} onClick={() => action("nowhere", "start")} disabled={serviceBusy || nowhereService.state === "active"}>启动</Button><Button icon={Square} onClick={() => action("nowhere", "stop")} disabled={serviceBusy || nowhereService.state !== "active"}>停止</Button><Button icon={RotateCw} onClick={() => action("nowhere", "restart")} disabled={serviceBusy || nowhereService.state !== "active"}>重启</Button></div><Button icon={Activity} variant="primary" onClick={() => setTelemetryOpen(true)}>实时遥测</Button></footer>
       </article>
     </section>
     <Modal open={telemetryOpen} title={`${machine.name} · Nowhere 实时遥测`} eyebrow="宿主原有服务" onClose={() => setTelemetryOpen(false)} size="large">
       <div className="telemetry-toolbar"><p>详情打开时按所选间隔更新。</p><TelemetryRefreshControl value={sampleMs} onChange={setSampleMs} /></div>
-      {telemetry ? <><div className="telemetry-status"><div><span className={`telemetry-dot ${telemetry.lifecycle === "READY" ? "ready" : ""}`} /><strong>{NOWHERE_LIFECYCLE[telemetry.lifecycle] || (nowhere?.state === "active" ? "进程运行中" : "未运行")}</strong></div><p>{telemetry.source === "ipc" ? "Nowhere IPC v2" : telemetry.source === "checkpoint" ? "CHECK_POINT 兼容模式" : "当前内核未提供可读遥测"}</p></div><div className="telemetry-grid"><div><span>当前上传</span><strong>↑ {bytes(telemetry.upBytesPerSecond, true)}</strong></div><div><span>当前下载</span><strong>↓ {bytes(telemetry.downBytesPerSecond, true)}</strong></div><div><span>累计上传</span><strong>{bytes(telemetryTotal(telemetry, "Up"))}</strong></div><div><span>累计下载</span><strong>{bytes(telemetryTotal(telemetry, "Down"))}</strong></div><div><span>Nowhere CPU</span><strong>{Number.isFinite(telemetry.cpuPercent) ? `${telemetry.cpuPercent.toFixed(1)}%` : "—"}</strong></div><div><span>Nowhere RSS</span><strong>{Number.isFinite(telemetry.rssBytes) ? bytes(telemetry.rssBytes) : "—"}</strong></div><div><span>运行时间</span><strong>{Number.isFinite(telemetry.uptimeMs) ? duration(telemetry.uptimeMs) : "—"}</strong></div><div><span>进程 PID</span><strong>{nowhere?.pid || "—"}</strong></div></div><TelemetryTrend points={history} /></> : <div className="telemetry-empty">该服务还没有可用的遥测样本。</div>}
+      {telemetry ? <><div className="telemetry-status"><div><span className={`telemetry-dot ${telemetry.lifecycle === "READY" ? "ready" : ""}`} /><strong>{NOWHERE_LIFECYCLE[telemetry.lifecycle] || (nowhere?.state === "active" ? "进程运行中" : "未运行")}</strong></div><p>{telemetry.source === "local" ? `Nowhere 本地遥测${telemetry.version ? ` · ${telemetry.version}` : ""}` : "当前内核未提供可读遥测"}</p></div><div className="telemetry-grid"><div><span>当前上传</span><strong>↑ {bytes(telemetry.upBytesPerSecond, true)}</strong></div><div><span>当前下载</span><strong>↓ {bytes(telemetry.downBytesPerSecond, true)}</strong></div><div><span>累计上传</span><strong>{bytes(telemetryTotal(telemetry, "Up"))}</strong></div><div><span>累计下载</span><strong>{bytes(telemetryTotal(telemetry, "Down"))}</strong></div><div><span>Nowhere CPU</span><strong>{Number.isFinite(telemetry.cpuPercent) ? `${telemetry.cpuPercent.toFixed(1)}%` : "—"}</strong></div><div><span>Nowhere RSS</span><strong>{Number.isFinite(telemetry.rssBytes) ? bytes(telemetry.rssBytes) : "—"}</strong></div><div><span>运行时间</span><strong>{Number.isFinite(telemetry.uptimeMs) ? duration(telemetry.uptimeMs) : "—"}</strong></div><div><span>进程 PID</span><strong>{nowhere?.pid || "—"}</strong></div></div><TelemetryTrend points={history} /></> : <div className="telemetry-empty">该服务还没有可用的遥测样本。</div>}
       <div className="dialog-actions"><Button onClick={() => setTelemetryOpen(false)}>关闭</Button></div>
     </Modal>
   </>;
@@ -4492,14 +4492,6 @@ const MANAGED_ERROR = {
   "release-checksum-mismatch": "发行版校验失败，文件未安装",
   "binary-version-mismatch": "下载的内核版本与所选版本不一致",
   "upgrade-failed": "升级失败，旧内核已保留或恢复",
-  "invalid-major-migration": "这不是有效的 V1 到 V2 迁移",
-  "source-version-mismatch": "目标机实例不是可迁移的 V1 配置",
-  "migration-failed": "迁移失败，已尝试恢复 V1",
-  "migration-backup-missing": "找不到该实例的 V1 迁移备份",
-  "migration-backup-invalid": "V1 迁移备份不可用",
-  "invalid-backup-directory": "V1 迁移备份不属于当前实例",
-  "rollback-start-failed": "V1 备份恢复后未能通过启动检查",
-  "rollback-failed": "回退失败，已尝试恢复 V2",
   "configuration-changed": "目标机配置已变化，请重新打开编辑窗口",
   "configuration-invalid": "目标机配置格式无效",
   "update-in-progress": "该实例正在执行其他配置操作",
@@ -4569,8 +4561,15 @@ function PresetManager({ open, state, persist, notify, onClose }) {
     </>}
   </Modal>;
 }
+function telemetryCounterTotal(value, direction) {
+  const parse = (input) => {
+    try { return /^\d{1,20}$/.test(String(input ?? "")) ? BigInt(input) : 0n; }
+    catch { return 0n; }
+  };
+  return parse(value?.[`tcpLogical${direction}`]) + parse(value?.[`udpLogical${direction}`]);
+}
 function telemetryTotal(value, direction) {
-  return Number(value?.[`tcpLogical${direction}`] || 0) + Number(value?.[`udpLogical${direction}`] || 0);
+  return Number(telemetryCounterTotal(value, direction));
 }
 function duration(value) {
   const seconds = Math.max(0, Math.floor(Number(value || 0) / 1000));
@@ -4609,15 +4608,17 @@ function TelemetryRefreshControl({ value, onChange }) {
 }
 function withTelemetryRate(row, previous) {
   if (!row?.telemetry || !previous?.telemetry || row.pid !== previous.pid) return row;
-  const elapsed = (Date.parse(row.observedAt) - Date.parse(previous.observedAt)) / 1000;
+  const wallElapsed = (Date.parse(row.observedAt) - Date.parse(previous.observedAt)) / 1000;
   if (row.telemetry.source === "systemd") {
     const delta = Number(row.telemetry.cpuUsageNs || 0) - Number(previous.telemetry.cpuUsageNs || 0);
-    return { ...row, telemetry: { ...row.telemetry, cpuPercent: elapsed > 0 && delta >= 0 ? delta / (elapsed * 1e7) : undefined } };
+    return { ...row, telemetry: { ...row.telemetry, cpuPercent: wallElapsed > 0 && delta >= 0 ? delta / (wallElapsed * 1e7) : undefined } };
   }
-  const up = telemetryTotal(row.telemetry, "Up"); const down = telemetryTotal(row.telemetry, "Down");
-  const oldUp = telemetryTotal(previous.telemetry, "Up"); const oldDown = telemetryTotal(previous.telemetry, "Down");
+  const elapsed = Number.isFinite(row.telemetry.uptimeMs) && Number.isFinite(previous.telemetry.uptimeMs)
+    ? (row.telemetry.uptimeMs - previous.telemetry.uptimeMs) / 1000 : 0;
+  const up = telemetryCounterTotal(row.telemetry, "Up"); const down = telemetryCounterTotal(row.telemetry, "Down");
+  const oldUp = telemetryCounterTotal(previous.telemetry, "Up"); const oldDown = telemetryCounterTotal(previous.telemetry, "Down");
   if (!(elapsed > 0 && elapsed <= 90 && up >= oldUp && down >= oldDown)) return row;
-  return { ...row, telemetry: { ...row.telemetry, upBytesPerSecond: Math.round((up - oldUp) / elapsed), downBytesPerSecond: Math.round((down - oldDown) / elapsed) } };
+  return { ...row, telemetry: { ...row.telemetry, upBytesPerSecond: Math.round(Number(up - oldUp) / elapsed), downBytesPerSecond: Math.round(Number(down - oldDown) / elapsed) } };
 }
 
 function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, onNavigate }) {
@@ -4822,19 +4823,6 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
     catch (_) { notify("复制失败", true); }
   };
   const update = (key, value) => { setForm((old) => ({ ...old, [key]: value })); setPreview(null); };
-  const selectNowhereGeneration = (generation) => {
-    setForm((old) => {
-      const targetVersion = nowhereReleases.releases.find((release) => {
-        const capabilities = nowhereVersionCapabilities(release.tag);
-        return capabilities.verified && capabilities.protocolGeneration === generation;
-      })?.tag || (generation === 2 ? "v2.0.0" : "v1.8.3");
-      const port = Number(old.port) || Number(old.tcpPort) || Number(old.udpPort) || 2077;
-      return generation === 2
-        ? { ...old, version: targetVersion, alpn: "nw2", tcpPort: old.network === "udp" ? 0 : port, udpPort: old.network === "tcp" ? 0 : port, tcpCarrier: "tcp", udpCarrier: "udp", morph: 0, transportMemoryProfile: old.transportMemoryProfile || "throughput" }
-        : { ...old, version: targetVersion, alpn: "now/1", port, network: old.tcpPort && old.udpPort ? "mix" : old.tcpPort ? "tcp" : "udp" };
-    });
-    setPreview(null);
-  };
   const updateSing = (key, value) => { setSingForm((old) => {
     const next = { ...old, [key]: value };
     if ((key === "protocol" && value === "shadowsocks") || (key === "method" && next.protocol === "shadowsocks")) {
@@ -4907,7 +4895,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       binarySource: "download",
       version: releases.some((release) => release.tag === current.version)
         ? current.version
-        : releases.find((release) => { const capabilities = nowhereVersionCapabilities(release.tag); return capabilities.verified && capabilities.protocolGeneration === (nowhereVersionCapabilities(current.version).protocolGeneration || 1); })?.tag || current.version || "v1.8.3",
+        : releases.find((release) => nowhereVersionCapabilities(release.tag).verified)?.tag || current.version || "v2.0.2",
     }));
   };
   const executeManaged = async (kind, instanceId, action, otp, confirmation = "", extra = {}) => {
@@ -4923,8 +4911,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
     try {
       const defaults = await rpc("proxyConsole:newManagedNowhereValues");
       const first = boundMachines[0];
-      const defaultCapabilities = nowhereVersionCapabilities(defaults.version);
-      const initial = { ...defaults, name: `${machineNamePrefix(first)} | Nowhere`.trim(), machineId: first?.id || "", publicHost: autoHost(first), listenHost: "0.0.0.0", client: "anywhere", network: "mix", tls: 1, certificateMode: "ephemeral", certificateHost: autoHost(first), certificateDays: 825, alpn: defaultCapabilities.isV2 ? "nw2" : "now/1", rate: 0, etar: 0, dial: "auto", socks: "none", log: "info", telemetryInterval: "1s", pool: 5, vectorSocks: "127.0.0.1:1080", vectorSni: "none", vectorPin: "none", vectorMux: 0, quicMemoryProfile: "balanced", morph: 0, transportMemoryProfile: "throughput", binarySource: "download" };
+      const initial = { ...defaults, name: `${machineNamePrefix(first)} | Nowhere`.trim(), machineId: first?.id || "", publicHost: autoHost(first), listenHost: "0.0.0.0", client: "anywhere", network: "mix", tls: 1, certificateMode: "ephemeral", certificateHost: autoHost(first), certificateDays: 825, alpn: "nw2", rate: 0, etar: 0, dial: "auto", socks: "none", log: "info", telemetryInterval: "1s", vectorSocks: "127.0.0.1:1080", vectorSni: "none", vectorPin: "none", vectorMux: 0, morph: 0, transportMemoryProfile: "throughput", binarySource: "download" };
       const draft = readSessionDraft("deploy:nowhere")?.value;
       setForm(draft ? { ...initial, ...draft } : initial);
       setPreview(null); setEditor(true);
@@ -5047,24 +5034,8 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
     if (!nowhereManager?.instance || nowhereManager.loading) return;
     const { instance, targetVersion } = nowhereManager;
     if (targetVersion === instance.version) return notify("实例已经是所选版本");
-    const currentGeneration = nowhereVersionCapabilities(instance.version).protocolGeneration;
-    const targetGeneration = nowhereVersionCapabilities(targetVersion).protocolGeneration;
-    let action = "upgrade";
-    let message = `将“${instance.name}”切换到 ${targetVersion}？\n\n仅替换此托管实例的私有内核；运行实例会短暂停止，失败自动恢复旧版本。`;
-    if (currentGeneration === 1 && targetGeneration === 2) {
-      try {
-        const migrationPreview = await rpc("proxyConsole:previewManagedNowhereMigration", { instanceId: instance.id, targetVersion });
-        setNowhereManager((current) => ({ ...current, migrationPreview }));
-      } catch (error) { return notify(error.message, true); }
-      action = "migrate-v2";
-      message = `将“${instance.name}”从 V1 迁移到 ${targetVersion}？\n\nV2 与 V1 不兼容，客户端也要使用支持 Nowhere V2 的正式版 Anywhere。系统会保留 V1 内核和配置，失败自动恢复，迁移后可一键回退。`;
-    } else if (currentGeneration === 2 && targetGeneration === 1) {
-      if (!instance.migration || targetVersion !== instance.migration.fromVersion) return notify("V2 只能回退到这次迁移保留的 V1 版本", true);
-      action = "rollback-v1";
-      message = `从迁移备份把“${instance.name}”回退到 ${targetVersion}？\n\n将恢复迁移前的 V1 内核、监听参数和客户端链接。`;
-    } else if (!currentGeneration || currentGeneration !== targetGeneration) {
-      return notify("不支持这条版本切换路径", true);
-    }
+    const action = "upgrade";
+    const message = `将“${instance.name}”切换到 ${targetVersion}？\n\n仅替换此托管实例的私有内核；运行实例会短暂停止，失败自动恢复旧版本。`;
     if (!confirm(message)) return;
     const otp = operationOtp(); if (otp === null) return;
     const busyKey = `nowhere:${instance.id}:${action}`; beginBusy(busyKey);
@@ -5073,7 +5044,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       const done = await executeManaged("nowhere", instance.id, action, otp, "", { targetVersion });
       const updated = done.state.managedInstances.find((item) => item.id === instance.id) || { ...instance, version: targetVersion };
       setNowhereManager((current) => ({ ...current, instance: updated, loading: false, result: { ...current.result, ...done.result } }));
-      notify(action === "migrate-v2" ? `${instance.name} 已迁移到 ${targetVersion}，V1 备份已保留` : action === "rollback-v1" ? `${instance.name} 已回退到 ${targetVersion}` : `${instance.name} 已切换到 ${targetVersion}`);
+      notify(`${instance.name} 已切换到 ${targetVersion}`);
     } catch (error) {
       setNowhereManager((current) => current ? { ...current, loading: false } : current);
       notify(error.message, true);
@@ -5171,16 +5142,9 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
   const nowhereSaving = Boolean(configEdit && hasBusy(`update:${configEdit.instanceId}`));
   const singSaving = Boolean(singConfigEdit && hasBusy(`update:${singConfigEdit.instanceId}`));
   const formCapabilities = nowhereVersionCapabilities(form.version);
-  const editCapabilities = nowhereVersionCapabilities(configEdit?.values?.version);
   const managerCurrentCapabilities = nowhereVersionCapabilities(nowhereManager?.instance?.version);
   const managerTargetCapabilities = nowhereVersionCapabilities(nowhereManager?.targetVersion);
-  const managerVersionAction = managerCurrentCapabilities.protocolGeneration === 1 && managerTargetCapabilities.protocolGeneration === 2
-    ? "迁移到 V2"
-    : managerCurrentCapabilities.protocolGeneration === 2 && managerTargetCapabilities.protocolGeneration === 1
-      ? "从备份回退 V1"
-      : "切换此实例";
-  const nowhereV2Releases = nowhereReleases.releases.filter((release) => { const capabilities = nowhereVersionCapabilities(release.tag); return capabilities.verified && capabilities.protocolGeneration === 2; });
-  const nowhereV1Releases = nowhereReleases.releases.filter((release) => { const capabilities = nowhereVersionCapabilities(release.tag); return capabilities.verified && capabilities.protocolGeneration === 1; });
+  const nowhereV2Releases = nowhereReleases.releases.filter((release) => nowhereVersionCapabilities(release.tag).verified);
   const nowhereUnverifiedReleases = nowhereReleases.releases.filter((release) => !nowhereVersionCapabilities(release.tag).verified);
   const managedCard = (instance, kind) => {
     const observed = liveStates.find(item => item.instanceId === instance.id);
@@ -5190,14 +5154,12 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
     }
     const machine = machineFor(instance); const node = nodeFor(instance); const status = MANAGED_STATUS[instance.status] || [instance.status || "未知", ""]; const connection = instance.connectivity; const telemetry = observed?.telemetry;
     const instanceCapabilities = kind === "nowhere" ? nowhereVersionCapabilities(instance.version) : null;
-    const listenSummary = instanceCapabilities?.isV2
-      ? [instance.tcpPort ? `TCP ${instance.tcpPort}` : "", instance.udpPort ? `UDP ${instance.udpPort}` : ""].filter(Boolean).join(" · ")
-      : `${instance.listenHost || "0.0.0.0"}:${instance.port}`;
+    const listenSummary = [instance.tcpPort ? `TCP ${instance.tcpPort}` : "", instance.udpPort ? `UDP ${instance.udpPort}` : ""].filter(Boolean).join(" · ");
     const canStart = instance.status === "stopped" || instance.status === "failed";
     const instanceBusy = [...busy].some(key => key.split(":").includes(instance.id));
     return <article className={`managed-card ${recentInstanceId === instance.id ? "recent" : ""}`} data-instance-id={instance.id} key={instance.id}>
       <header><div className="managed-title"><span>{flag(machine?.countryCode) || (kind === "nowhere" ? "N" : "S")}</span><div><h3>{instance.name}</h3><p>{machine?.name || "宿主已删除"} · {instance.publicHost}:{instance.port}</p></div></div><Status tone={status[1]}>{status[0]}</Status></header>
-      <dl><div><dt>内核 / 协议</dt><dd>{kind === "nowhere" ? `Nowhere ${instance.version || ""} · ${instanceCapabilities?.isV2 ? "NW2" : "V1"}` : instance.protocol || "sing-box"}</dd></div><div><dt>监听</dt><dd>{listenSummary}</dd></div><div><dt>{kind === "nowhere" ? "传输" : "版本"}</dt><dd>{kind === "nowhere" ? (instance.network === "mix" ? "TCP + UDP" : String(instance.network || "mix").toUpperCase()) : instance.version || "跟随宿主"}</dd></div><div><dt>归属</dt><dd>Wherever Station</dd></div></dl>
+      <dl><div><dt>内核 / 协议</dt><dd>{kind === "nowhere" ? `Nowhere ${instance.version || ""} · NW2` : instance.protocol || "sing-box"}</dd></div><div><dt>监听</dt><dd>{listenSummary}</dd></div><div><dt>{kind === "nowhere" ? "传输" : "版本"}</dt><dd>{kind === "nowhere" ? (instance.network === "mix" ? "TCP + UDP" : String(instance.network || "mix").toUpperCase()) : instance.version || "跟随宿主"}</dd></div><div><dt>归属</dt><dd>Wherever Station</dd></div></dl>
       {instance.lastError && <p className="managed-error">{MANAGED_ERROR[instance.lastError] || instance.lastError}</p>}
       <p className="muted">进程采样：{observed?.observedAt ? `${observed.state} · ${new Date(observed.observedAt).toLocaleTimeString()}${Date.now() - Date.parse(observed.observedAt) > 15000 ? '（旧数据）' : ''}` : '尚未采样'}{me?.two_factor_enabled ? ' · 两步验证已开启，自动远程采样暂停' : ''}</p>
       {kind === "nowhere" && <div className="telemetry-glance"><div><span>Nowhere</span><strong>{telemetry?.lifecycle ? NOWHERE_LIFECYCLE[telemetry.lifecycle] || telemetry.lifecycle : observed?.state === "active" ? "遥测不可用" : "未运行"}</strong></div><div><span>当前速率</span><strong>↑ {bytes(telemetry?.upBytesPerSecond, true)}　↓ {bytes(telemetry?.downBytesPerSecond, true)}</strong></div><TelemetrySparkline points={telemetryHistory[instance.id] || []} /><Button icon={Activity} onClick={() => setTelemetryDetail(instance.id)}>实时遥测</Button></div>}
@@ -5245,11 +5207,11 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       const instance = instances.find((item) => item.id === telemetryDetail); const observed = liveStates.find((item) => item.instanceId === telemetryDetail); const telemetry = observed?.telemetry;
       return <Modal open={!!telemetryDetail} title={`${instance?.name || "Nowhere"} · 实时遥测`} eyebrow="Nowhere 遥测" onClose={() => setTelemetryDetail("")} size="large">
         <div className="telemetry-toolbar"><p>详情打开时按所选间隔更新。</p><TelemetryRefreshControl value={telemetrySampleMs} onChange={setTelemetrySampleMs} /></div>
-        {telemetry && <><div className="telemetry-status"><div><span className={`telemetry-dot ${telemetry.lifecycle === "READY" ? "ready" : ""}`} /> <strong>{NOWHERE_LIFECYCLE[telemetry.lifecycle] || (observed?.state === "active" ? "进程运行中" : "未运行")}</strong>{telemetry.lifecycleReason && <small>{telemetry.lifecycleReason}</small>}</div><p>{telemetry.source === "ipc" ? "Nowhere IPC v2" : telemetry.source === "checkpoint" ? "CHECK_POINT 兼容模式" : "当前内核未提供可读遥测"} · {observed?.observedAt ? new Date(observed.observedAt).toLocaleTimeString() : "尚未采样"}{observed?.stale ? " · 已过期" : ""}</p></div><div className="telemetry-grid">
+        {telemetry && <><div className="telemetry-status"><div><span className={`telemetry-dot ${telemetry.lifecycle === "READY" ? "ready" : ""}`} /> <strong>{NOWHERE_LIFECYCLE[telemetry.lifecycle] || (observed?.state === "active" ? "进程运行中" : "未运行")}</strong>{telemetry.lifecycleReason && <small>{telemetry.lifecycleReason}</small>}</div><p>{telemetry.source === "local" ? `本地遥测${telemetry.version ? ` · ${telemetry.version}` : ""}` : "当前内核未提供可读遥测"} · {observed?.observedAt ? new Date(observed.observedAt).toLocaleTimeString() : "尚未采样"}{observed?.stale ? " · 已过期" : ""}</p></div><div className="telemetry-grid">
           <div><span>当前上传</span><strong>↑ {bytes(telemetry.upBytesPerSecond, true)}</strong></div><div><span>当前下载</span><strong>↓ {bytes(telemetry.downBytesPerSecond, true)}</strong></div><div><span>累计上传</span><strong>{bytes(telemetryTotal(telemetry, "Up"))}</strong></div><div><span>累计下载</span><strong>{bytes(telemetryTotal(telemetry, "Down"))}</strong></div>
           <div><span>TCP / UDP</span><strong>{telemetry.tcpActive ?? "—"} / {telemetry.udpActive ?? "—"}</strong></div><div><span>TLS / QUIC carrier</span><strong>{telemetry.tlsCarriersActive ?? "—"} / {telemetry.quicCarriersActive ?? "—"}</strong></div><div><span>探测延迟</span><strong>{Number.isFinite(telemetry.pingMs) ? `${telemetry.pingMs} ms` : "—"}</strong></div><div><span>运行时间</span><strong>{Number.isFinite(telemetry.uptimeMs) ? duration(telemetry.uptimeMs) : "—"}</strong></div>
           <div><span>Nowhere CPU</span><strong>{Number.isFinite(telemetry.cpuPercent) ? `${telemetry.cpuPercent.toFixed(1)}%` : "—"}</strong></div><div><span>Nowhere RSS</span><strong>{Number.isFinite(telemetry.rssBytes) ? bytes(telemetry.rssBytes) : "—"}</strong></div><div><span>文件描述符</span><strong>{telemetry.openFds ?? "—"}</strong></div><div><span>进程 PID</span><strong>{observed?.pid || "—"}</strong></div>
-        </div><TelemetryTrend points={telemetryHistory[telemetryDetail] || []} />{telemetry.source === "checkpoint" && <p className="telemetry-note">当前使用兼容遥测，部分进程指标暂不可用。</p>}</>}
+        </div>{(telemetry.serviceEndpoint || telemetry.configSummary) && <div className="telemetry-note">{telemetry.serviceEndpoint && <span>实例端点：{telemetry.serviceEndpoint}</span>}{telemetry.configSummary && <code>{telemetry.configSummary}</code>}</div>}<TelemetryTrend points={telemetryHistory[telemetryDetail] || []} /></>}
         {!telemetry && <div className="telemetry-empty">尚无遥测样本。实例运行后会自动获取。</div>}
         <div className="dialog-actions"><Button onClick={() => setTelemetryDetail("")}>关闭</Button></div>
       </Modal>;
@@ -5304,14 +5266,13 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
     <Modal open={!!nowhereManager} title={`${nowhereManager?.instance?.name || "Nowhere"} · 版本与证书`} eyebrow="Nowhere 控制面" onClose={() => !nowhereManager?.loading && setNowhereManager(null)} size="large">
       {nowhereManager?.loading ? <div className="boot"><span className="spinner" />正在读取目标机状态</div> : nowhereManager && <>
         <div className="nowhere-control-summary">
-          <div><span>当前版本</span><strong>{nowhereManager.instance.version || "未知"} · {managerCurrentCapabilities.isV2 ? "NW2" : "V1"}</strong><small>{nowhereManager.result?.binaryVersion || "尚未读取内核输出"}</small></div>
+          <div><span>当前版本</span><strong>{nowhereManager.instance.version || "未知"} · NW2</strong><small>{nowhereManager.result?.binaryVersion || "尚未读取内核输出"}</small></div>
           <div><span>证书模式</span><strong>{{ ephemeral: "临时自签", managed: "稳定自签", existing: "已有证书" }[nowhereManager.result?.certificate?.mode || nowhereManager.instance.certificateMode] || "未知"}</strong><small>{nowhereManager.result?.certificate?.fingerprint && nowhereManager.result.certificate.ephemeral ? "已读取当前指纹；重启后会变化" : nowhereManager.result?.certificate?.mode === "ephemeral" ? "实例启动后可读取当前指纹" : nowhereManager.result?.certificate?.valid ? "证书有效，且与私钥匹配" : nowhereManager.result?.certificate?.error ? MANAGED_ERROR[nowhereManager.result.certificate.error] || nowhereManager.result.certificate.error : "尚未检查"}</small></div>
           <div><span>运行状态</span><strong>{nowhereManager.result?.state === "active" ? "运行中" : nowhereManager.result?.state === "inactive" ? "已停止" : nowhereManager.result?.state || "未知"}</strong><small>仅管理此实例的私有内核</small></div>
         </div>
         {nowhereManager.result?.certificate?.fingerprint && <div className="certificate-fingerprint"><span>SHA256 指纹</span><code>{nowhereManager.result.certificate.fingerprint}</code>{nowhereManager.result.certificate.expiresAt && <small>到期：{nowhereManager.result.certificate.expiresAt}</small>}{!!nowhereManager.result.certificate.sans?.length && <small>SAN：{nowhereManager.result.certificate.sans.join("、")}</small>}<Button icon={Copy} onClick={() => navigator.clipboard.writeText(nowhereManager.result.certificate.fingerprint).then(() => notify("证书指纹已复制"))}>复制指纹</Button></div>}
-        {managerCurrentCapabilities.protocolGeneration !== managerTargetCapabilities.protocolGeneration && <div className="warning"><Activity size={17} /><span>{managerCurrentCapabilities.isV2 ? "跨代回退只会使用迁移时保留的 V1 快照。" : "V2 与 V1 不互通；迁移会生成新客户端链接，并保留可回退的 V1 快照。"}</span></div>}
         {nowhereManager.instance.migration && <div className="managed-strip"><Check size={15} /><span>已保留迁移前的 {nowhereManager.instance.migration.fromVersion} 快照，可回退。</span></div>}
-        <div className="nowhere-upgrade-row"><Field label="目标版本" hint="只允许切换到适配清单中已验证的版本；新 Release 会先出现为只读待验证。"><select value={nowhereManager.targetVersion || nowhereManager.instance.version} onChange={(event) => setNowhereManager((current) => ({ ...current, targetVersion: event.target.value, migrationPreview: null }))}>{!managerCurrentCapabilities.verified && <option value={nowhereManager.instance.version}>{nowhereManager.instance.version} · 当前未验证</option>}{!!nowhereV2Releases.length && <optgroup label="V2 · 已验证">{nowhereV2Releases.map((release, index) => <option key={release.tag} value={release.tag}>{release.tag}{index === 0 ? " · V2 最新" : ""}</option>)}</optgroup>}{!!nowhereV1Releases.length && <optgroup label="V1 · 已验证">{nowhereV1Releases.map((release, index) => <option key={release.tag} value={release.tag}>{release.tag}{index === 0 ? " · V1 最新" : ""}</option>)}</optgroup>}{!!nowhereUnverifiedReleases.length && <optgroup label="发现但尚未适配">{nowhereUnverifiedReleases.map((release) => <option key={release.tag} value={release.tag} disabled>{release.tag} · 只读</option>)}</optgroup>}</select></Field><Button icon={RefreshCw} onClick={() => loadNowhereReleases(true)} disabled={nowhereReleases.loading}>{nowhereReleases.loading ? "获取中" : "刷新列表"}</Button><Button icon={Upload} variant="primary" onClick={upgradeNowhere} disabled={!managerCurrentCapabilities.verified || !managerTargetCapabilities.verified || !nowhereManager.targetVersion || nowhereManager.targetVersion === nowhereManager.instance.version || (managerCurrentCapabilities.isV2 && managerTargetCapabilities.protocolGeneration === 1 && (!nowhereManager.instance.migration || nowhereManager.targetVersion !== nowhereManager.instance.migration.fromVersion))}>{managerVersionAction}</Button></div>
+        <div className="nowhere-upgrade-row"><Field label="目标版本" hint="只允许切换到适配清单中已验证的 2.x 版本；新 Release 会先出现为只读待验证。"><select value={nowhereManager.targetVersion || nowhereManager.instance.version} onChange={(event) => setNowhereManager((current) => ({ ...current, targetVersion: event.target.value }))}>{!managerCurrentCapabilities.verified && <option value={nowhereManager.instance.version}>{nowhereManager.instance.version} · 当前未验证</option>}{!!nowhereV2Releases.length && <optgroup label="已验证">{nowhereV2Releases.map((release, index) => <option key={release.tag} value={release.tag}>{release.tag}{index === 0 ? " · 最新" : ""}</option>)}</optgroup>}{!!nowhereUnverifiedReleases.length && <optgroup label="发现但尚未适配">{nowhereUnverifiedReleases.map((release) => <option key={release.tag} value={release.tag} disabled>{release.tag} · 只读</option>)}</optgroup>}</select></Field><Button icon={RefreshCw} onClick={() => loadNowhereReleases(true)} disabled={nowhereReleases.loading}>{nowhereReleases.loading ? "获取中" : "刷新列表"}</Button><Button icon={Upload} variant="primary" onClick={upgradeNowhere} disabled={!managerCurrentCapabilities.verified || !managerTargetCapabilities.verified || !nowhereManager.targetVersion || nowhereManager.targetVersion === nowhereManager.instance.version}>切换此实例</Button></div>
       </>}
       <div className="dialog-actions"><Button onClick={() => setNowhereManager(null)} disabled={nowhereManager?.loading}>关闭</Button></div>
     </Modal>
@@ -5320,10 +5281,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       {configEdit && <div className="form-grid">
         <Field label="节点名称" wide><input autoFocus value={configEdit.values.name || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, name: event.target.value } }))} /></Field>
         {[["publicHost", "公网域名或 IP"], ["listenHost", "监听地址"], ["key", "共享密钥", "password"], ["rate", "上传限速 Mbps", "number"], ["etar", "下载限速 Mbps", "number"]].map(([key, label, type]) => <Field key={key} label={label}><input type={type || "text"} value={configEdit.values[key] ?? ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, [key]: type === "number" ? Number(event.target.value) : event.target.value } }))} /></Field>)}
-        {!editCapabilities.isV2 && <><Field label="监听端口"><input type="number" min="1024" max="65535" value={configEdit.values.port ?? 2077} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, port: Number(event.target.value) } }))} /></Field><Field label="ALPN"><input value={configEdit.values.alpn || "now/1"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, alpn: event.target.value } }))} /></Field></>}
-        {editCapabilities.isV2 && <><Field label="TCP Carrier 端口"><input type="number" min="0" max="65535" value={configEdit.values.tcpPort || 0} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, tcpPort: Number(event.target.value) } }))} /></Field><Field label="UDP Carrier 端口"><input type="number" min="0" max="65535" value={configEdit.values.udpPort || 0} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, udpPort: Number(event.target.value) } }))} /></Field><Field label="TCP Carrier"><select value={configEdit.values.tcpCarrier || "tcp"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, tcpCarrier: event.target.value } }))}><option value="tcp">TCP · 自动地址族</option><option value="tcp4">TCP · IPv4</option><option value="tcp6">TCP · IPv6</option></select></Field><Field label="UDP Carrier"><select value={configEdit.values.udpCarrier || "udp"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, udpCarrier: event.target.value } }))}><option value="udp">UDP · 自动地址族</option><option value="udp4">UDP · IPv4</option><option value="udp6">UDP · IPv6</option></select></Field><Field label="Morph"><select value={configEdit.values.morph || 0} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, morph: Number(event.target.value) } }))}><option value={0}>关闭</option><option value={1}>开启（两端必须一致）</option></select></Field><Field label="Transport 内存策略"><select value={configEdit.values.transportMemoryProfile || "throughput"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, transportMemoryProfile: event.target.value } }))}><option value="memory">节省内存</option><option value="balanced">平衡</option><option value="throughput">吞吐优先</option></select></Field></>}
-        {editCapabilities.legacyPool && <Field label="连接池"><input type="number" min="0" max="9" value={configEdit.values.pool ?? 5} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, pool: Number(event.target.value) } }))} /></Field>}
-        {!editCapabilities.isV2 && <Field label="传输"><select value={configEdit.values.network} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, network: event.target.value } }))}><option value="mix">TCP + UDP</option><option value="tcp">仅 TCP</option><option value="udp">仅 UDP</option></select></Field>}
+        <Field label="TCP Carrier 端口"><input type="number" min="0" max="65535" value={configEdit.values.tcpPort || 0} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, tcpPort: Number(event.target.value) } }))} /></Field><Field label="UDP Carrier 端口"><input type="number" min="0" max="65535" value={configEdit.values.udpPort || 0} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, udpPort: Number(event.target.value) } }))} /></Field><Field label="TCP Carrier"><select value={configEdit.values.tcpCarrier || "tcp"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, tcpCarrier: event.target.value } }))}><option value="tcp">TCP · 自动地址族</option><option value="tcp4">TCP · IPv4</option><option value="tcp6">TCP · IPv6</option></select></Field><Field label="UDP Carrier"><select value={configEdit.values.udpCarrier || "udp"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, udpCarrier: event.target.value } }))}><option value="udp">UDP · 自动地址族</option><option value="udp4">UDP · IPv4</option><option value="udp6">UDP · IPv6</option></select></Field><Field label="Morph"><select value={configEdit.values.morph || 0} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, morph: Number(event.target.value) } }))}><option value={0}>关闭</option><option value={1}>开启（两端必须一致）</option></select></Field><Field label="Transport 内存策略"><select value={configEdit.values.transportMemoryProfile || "throughput"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, transportMemoryProfile: event.target.value } }))}><option value="memory">节省内存</option><option value="balanced">平衡</option><option value="throughput">吞吐优先</option></select></Field>
         <Field label="TLS 与证书"><select value={certificateSelection(configEdit.values, "ephemeral")} onChange={event => selectCertificate((updater) => setConfigEdit((old) => ({ ...old, values: updater(old.values) })), event.target.value, "nowhere")}><option value="ephemeral">临时自签</option><option value="managed">为此实例生成稳定自签</option><option value="existing">手动填写已有 PEM</option>{!!usableCertificates(configEdit.values.machineId).length && <optgroup label="证书工作台">{certificateAssetOptions(configEdit.values.machineId)}</optgroup>}</select></Field>
         {!configEdit.values.certificateAssetId && configEdit.values.certificateMode === "managed" && <><Field label="证书名称"><input value={configEdit.values.certificateHost || configEdit.values.publicHost || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, certificateHost: event.target.value } }))} /></Field><Field label="有效天数"><input type="number" min="1" max="3650" value={configEdit.values.certificateDays || 825} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, certificateDays: Number(event.target.value) } }))} /></Field></>}
         {!configEdit.values.certificateAssetId && configEdit.values.certificateMode === "existing" && <><Field label="证书链路径"><input value={configEdit.values.certificatePath || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, certificatePath: event.target.value } }))} /></Field><Field label="私钥路径"><input value={configEdit.values.privateKeyPath || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, privateKeyPath: event.target.value } }))} /></Field></>}
@@ -5355,39 +5313,35 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       <div className="deploy-intro"><strong>配置 Nowhere 节点</strong><p>选择宿主、连接方式和内核版本，确认后创建。</p></div>
       <div className="form-grid deploy-form">
         <Field label="节点名称" wide><input value={form.name || ""} onChange={(event) => update("name", event.target.value)} /></Field>
-        <Field label="协议代际" hint={formCapabilities.isV2 ? "NW2 · 当前默认，适配正式版 Anywhere" : "V1 · 仅用于旧实例兼容与迁移"}><select value={formCapabilities.isV2 ? "2" : "1"} onChange={(event) => selectNowhereGeneration(Number(event.target.value))}><option value="2">V2 · 默认</option><option value="1">V1 · 兼容旧实例</option></select></Field>
+        <Field label="协议"><input value="NW2" disabled /></Field>
         <Field label="服务器"><select value={form.machineId || ""} onChange={(event) => { selectMachine(setForm, event.target.value, "Nowhere"); setPreview(null); }}><option value="">请选择</option>{boundMachines.map((machine) => <option key={machine.id} value={machine.id}>{flag(machine.countryCode)} {machine.name}</option>)}</select></Field>
         <Field label="公网域名或 IP" hint={form.publicHost ? "已从 Komari 自动带出，可手动覆盖" : "Komari 未提供公网地址，请手动填写"}><input value={form.publicHost || ""} onChange={(event) => update("publicHost", event.target.value)} placeholder="example.com 或公网 IP" /></Field>
-        {!formCapabilities.isV2 && <Field label="监听端口"><input type="number" min="1024" max="65535" value={form.port || 2077} onChange={(event) => update("port", Number(event.target.value))} /></Field>}
-        {formCapabilities.isV2 && <><Field label="TCP Carrier 端口" hint="填 0 关闭 TCP"><input type="number" min="0" max="65535" value={form.tcpPort ?? form.port ?? 2077} onChange={(event) => { const value = Number(event.target.value); setForm((old) => ({ ...old, tcpPort: value, port: value || old.udpPort || old.port, network: value ? old.udpPort ? "mix" : "tcp" : "udp" })); setPreview(null); }} /></Field><Field label="UDP Carrier 端口" hint="填 0 关闭 UDP"><input type="number" min="0" max="65535" value={form.udpPort ?? form.port ?? 2077} onChange={(event) => { const value = Number(event.target.value); setForm((old) => ({ ...old, udpPort: value, port: old.tcpPort || value || old.port, network: value ? old.tcpPort ? "mix" : "udp" : "tcp" })); setPreview(null); }} /></Field></>}
+        <Field label="TCP Carrier 端口" hint="填 0 关闭 TCP"><input type="number" min="0" max="65535" value={form.tcpPort ?? form.port ?? 2077} onChange={(event) => { const value = Number(event.target.value); setForm((old) => ({ ...old, tcpPort: value, port: value || old.udpPort || old.port, network: value ? old.udpPort ? "mix" : "tcp" : "udp" })); setPreview(null); }} /></Field><Field label="UDP Carrier 端口" hint="填 0 关闭 UDP"><input type="number" min="0" max="65535" value={form.udpPort ?? form.port ?? 2077} onChange={(event) => { const value = Number(event.target.value); setForm((old) => ({ ...old, udpPort: value, port: old.tcpPort || value || old.port, network: value ? old.tcpPort ? "mix" : "udp" : "tcp" })); setPreview(null); }} /></Field>
         <Field label="监听地址"><input value={form.listenHost || "0.0.0.0"} onChange={(event) => update("listenHost", event.target.value)} /></Field>
         <Field label="客户端输出"><select value={form.client || "anywhere"} onChange={(event) => update("client", event.target.value)}><option value="anywhere">Anywhere</option><option value="both">Anywhere + Vector</option></select></Field>
-        {!formCapabilities.isV2 && <Field label="传输"><select value={form.network || "mix"} onChange={(event) => update("network", event.target.value)}><option value="mix">TCP + UDP</option><option value="tcp">仅 TCP</option><option value="udp">仅 UDP</option></select></Field>}
         <Field label="TLS 与证书" hint={form.certificateAssetId ? "复用证书工作台资产，并输出固定 Pin" : form.certificateMode === "ephemeral" ? "每次启动由 Nowhere 生成临时证书" : form.certificateMode === "managed" ? "为此实例生成并长期保留" : "手动填写目标机 PEM 路径"}><select value={certificateSelection(form, "ephemeral")} onChange={(event) => { selectCertificate(setForm, event.target.value, "nowhere"); setPreview(null); }}><option value="ephemeral">临时自签</option><option value="managed">为此实例生成稳定自签</option><option value="existing">手动填写已有 PEM</option>{!!usableCertificates(form.machineId).length && <optgroup label="证书工作台">{certificateAssetOptions(form.machineId)}</optgroup>}</select></Field>
         <Field label="共享密钥" wide><input type="password" value={form.key || ""} onChange={(event) => update("key", event.target.value)} /></Field>
         {!form.certificateAssetId && form.certificateMode === "managed" && <><Field label="证书名称"><input value={form.certificateHost || form.publicHost || ""} onChange={(event) => update("certificateHost", event.target.value)} /></Field><Field label="有效天数"><input type="number" min="1" max="3650" value={form.certificateDays || 825} onChange={(event) => update("certificateDays", Number(event.target.value))} /></Field></>}
         {!form.certificateAssetId && form.certificateMode === "existing" && <><Field label="证书链路径"><input value={form.certificatePath || ""} onChange={(event) => update("certificatePath", event.target.value)} /></Field><Field label="私钥路径"><input value={form.privateKeyPath || ""} onChange={(event) => update("privateKeyPath", event.target.value)} /></Field></>}
       </div>
       <details className="deploy-advanced"><summary>高级参数</summary><div className="form-grid">
-        {formCapabilities.customAlpn ? <Field label="ALPN"><input value={form.alpn || "now/1"} onChange={(event) => update("alpn", event.target.value)} /></Field> : <Field label="Wire protocol"><input value="nw2（固定）" disabled /></Field>}
+        <Field label="Wire protocol"><input value="nw2（固定）" disabled /></Field>
         <Field label="上传限速 Mbps"><input type="number" min="0" value={form.rate || 0} onChange={(event) => update("rate", Number(event.target.value))} /></Field>
         <Field label="下载限速 Mbps"><input type="number" min="0" value={form.etar || 0} onChange={(event) => update("etar", Number(event.target.value))} /></Field>
         <Field label="拨号地址"><input value={form.dial || "auto"} onChange={(event) => update("dial", event.target.value)} /></Field>
         <Field label="SOCKS"><input value={form.socks || "none"} onChange={(event) => update("socks", event.target.value)} /></Field>
         <Field label="日志级别"><select value={form.log || "info"} onChange={(event) => update("log", event.target.value)}>{["none", "debug", "info", "warn", "error", "event"].map((value) => <option key={value}>{value}</option>)}</select></Field>
         <Field label="遥测间隔"><input value={form.telemetryInterval || "1s"} onChange={(event) => update("telemetryInterval", event.target.value)} placeholder="250ms–60s" /></Field>
-        {formCapabilities.legacyPool && <Field label="连接池"><input type="number" min="0" max="9" value={form.pool ?? 5} onChange={(event) => update("pool", Number(event.target.value))} /></Field>}
         <Field label="Vector SOCKS"><input value={form.vectorSocks || "127.0.0.1:1080"} onChange={(event) => update("vectorSocks", event.target.value)} /></Field>
         <Field label="Vector SNI"><input value={form.vectorSni || "none"} onChange={(event) => update("vectorSni", event.target.value)} /></Field>
         {formCapabilities.vectorPin && <Field label="Vector Pin"><input value={form.vectorPin || "none"} onChange={(event) => update("vectorPin", event.target.value)} /></Field>}
         {formCapabilities.vectorMux && <Field label="Vector Mux"><select value={form.vectorMux || 0} onChange={(event) => update("vectorMux", Number(event.target.value))}><option value={0}>关闭</option><option value={1}>开启</option></select></Field>}
-        {formCapabilities.quicMemoryProfile && <Field label="QUIC 内存策略"><select value={form.quicMemoryProfile || "balanced"} onChange={(event) => update("quicMemoryProfile", event.target.value)}><option value="memory">节省内存</option><option value="balanced">平衡</option><option value="throughput">吞吐优先</option></select></Field>}
         {formCapabilities.morph && <Field label="Morph"><select value={form.morph || 0} onChange={(event) => update("morph", Number(event.target.value))}><option value={0}>关闭</option><option value={1}>开启（两端必须一致）</option></select></Field>}
         {formCapabilities.transportMemoryProfile && <Field label="Transport 内存策略"><select value={form.transportMemoryProfile || "throughput"} onChange={(event) => update("transportMemoryProfile", event.target.value)}><option value="memory">节省内存</option><option value="balanced">平衡</option><option value="throughput">吞吐优先</option></select></Field>}
         <Field label="内核来源"><select value={form.binarySource || "download"} onChange={(event) => selectNowhereBinarySource(event.target.value)}><option value="download">下载并校验官方发行版</option><option value="copy">复制目标机现有内核</option></select></Field>
-        {form.binarySource === "download" && <Field label="下载版本" hint={nowhereReleases.loading ? "正在获取 Nowhere 官方 Release…" : nowhereReleases.error ? "官方列表暂时不可用，可使用已验证缓存版本" : "新 Release 会被发现，但通过适配测试前不能下发"}><div className="release-picker"><select aria-label="Nowhere 下载版本" value={nowhereReleases.releases.some((release) => release.tag === form.version) ? form.version : "custom"} onChange={(event) => update("version", event.target.value === "custom" ? "" : event.target.value)}>{!!nowhereV2Releases.length && <optgroup label="V2 · 已验证">{nowhereV2Releases.map((release, index) => <option key={release.tag} value={release.tag}>{release.tag}{index === 0 ? " · V2 最新" : ""}{release.publishedAt ? ` · ${new Date(release.publishedAt).toLocaleDateString("zh-CN")}` : ""}</option>)}</optgroup>}{!!nowhereV1Releases.length && <optgroup label="V1 · 已验证">{nowhereV1Releases.map((release, index) => <option key={release.tag} value={release.tag}>{release.tag}{index === 0 ? " · V1 最新" : ""}{release.publishedAt ? ` · ${new Date(release.publishedAt).toLocaleDateString("zh-CN")}` : ""}</option>)}</optgroup>}{!!nowhereUnverifiedReleases.length && <optgroup label="发现但尚未适配">{nowhereUnverifiedReleases.map((release) => <option key={release.tag} value={release.tag} disabled>{release.tag} · 只读待验证</option>)}</optgroup>}<option value="custom">手动检查版本…</option></select><Button icon={RefreshCw} onClick={() => loadNowhereReleases(true)} disabled={nowhereReleases.loading}>{nowhereReleases.loading ? "获取中" : "刷新"}</Button></div>{!nowhereReleases.releases.some((release) => release.tag === form.version) && <input aria-label="手动指定 Nowhere 版本" value={form.version || ""} onChange={(event) => update("version", event.target.value)} placeholder="例如 v2.0.0" />}{!formCapabilities.verified && <small className="warning-text">此版本尚未进入已验证适配清单，只能识别，不能创建实例。</small>}</Field>}
+        {form.binarySource === "download" && <Field label="下载版本" hint={nowhereReleases.loading ? "正在获取 Nowhere 官方 Release…" : nowhereReleases.error ? "官方列表暂时不可用，可使用已验证缓存版本" : "新 Release 会被发现，但通过适配测试前不能下发"}><div className="release-picker"><select aria-label="Nowhere 下载版本" value={nowhereReleases.releases.some((release) => release.tag === form.version) ? form.version : "custom"} onChange={(event) => update("version", event.target.value === "custom" ? "" : event.target.value)}>{!!nowhereV2Releases.length && <optgroup label="已验证">{nowhereV2Releases.map((release, index) => <option key={release.tag} value={release.tag}>{release.tag}{index === 0 ? " · 最新" : ""}{release.publishedAt ? ` · ${new Date(release.publishedAt).toLocaleDateString("zh-CN")}` : ""}</option>)}</optgroup>}{!!nowhereUnverifiedReleases.length && <optgroup label="发现但尚未适配">{nowhereUnverifiedReleases.map((release) => <option key={release.tag} value={release.tag} disabled>{release.tag} · 只读待验证</option>)}</optgroup>}<option value="custom">手动检查版本…</option></select><Button icon={RefreshCw} onClick={() => loadNowhereReleases(true)} disabled={nowhereReleases.loading}>{nowhereReleases.loading ? "获取中" : "刷新"}</Button></div>{!nowhereReleases.releases.some((release) => release.tag === form.version) && <input aria-label="手动指定 Nowhere 版本" value={form.version || ""} onChange={(event) => update("version", event.target.value)} placeholder="例如 v2.0.2" />}{!formCapabilities.verified && <small className="warning-text">此版本尚未进入已验证适配清单，只能识别，不能创建实例。</small>}</Field>}
       </div></details>
-      {preview && <div className="deploy-preview"><Check size={17} /><div><strong>参数可生成 · {preview.capabilities.isV2 ? "NW2" : "V1"}</strong><p>{preview.capabilities.isV2 ? [preview.summary.tcpPort ? `TCP ${preview.summary.tcpPort}` : "", preview.summary.udpPort ? `UDP ${preview.summary.udpPort}` : ""].filter(Boolean).join(" · ") : `${preview.summary.publicHost}:${preview.summary.port} · ${preview.summary.network.toUpperCase()}`} · TLS {preview.summary.tls} · {preview.links.anywhere.length} 条 Anywhere 链接</p></div></div>}
+      {preview && <div className="deploy-preview"><Check size={17} /><div><strong>参数可生成 · NW2</strong><p>{[preview.summary.tcpPort ? `TCP ${preview.summary.tcpPort}` : "", preview.summary.udpPort ? `UDP ${preview.summary.udpPort}` : ""].filter(Boolean).join(" · ")} · TLS {preview.summary.tls} · {preview.links.anywhere.length} 条 Anywhere 链接</p></div></div>}
       <div className="dialog-actions"><DraftStatus onDiscard={() => { clearSessionDraft("deploy:nowhere"); setEditor(false); }} /><Button onClick={() => setEditor(false)} disabled={nowhereCreating}>取消</Button><Button icon={Search} onClick={previewForm} disabled={nowhereCreating || !formCapabilities.verified}>预览</Button><Button icon={Download} variant="primary" onClick={create} disabled={nowhereCreating || !formCapabilities.verified || !form.machineId || !form.publicHost || !form.name}>{nowhereCreating ? "检查并创建中…" : "检查并创建（不启动）"}</Button></div>
     </Modal>
     <Modal open={singEditor} title="新建 sing-box 节点" eyebrow="快捷部署" onClose={() => !singCreating && setSingEditor(false)} size="large">

@@ -7,7 +7,7 @@ const { planManagedNowhere } = require('../tools/managed-nowhere');
 const { decodeNowhereConfig } = require('../tools/nowhere-config');
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'wherever-read-'));
 try {
-  const plan = planManagedNowhere({ id: 'nw-readtest', name: '测试', key: 'test-only-key', publicHost: 'example.com', port: 32077, network: 'tcp', pool: 0 });
+  const plan = planManagedNowhere({ id: 'nw-readtest', name: '测试', key: 'test-only-key', publicHost: 'example.com', port: 32077, network: 'tcp' });
   const filename = path.join(directory, 'nowhere.env');
   fs.writeFileSync(filename, plan.environment, { mode: 0o600 });
   const prelude = `import json,os,sys\nP=json.loads(sys.argv[1])\nos.geteuid=lambda:0\nactive=lambda unit:'inactive'\nemit=lambda value:print(json.dumps(value))\ndef stop(error): raise RuntimeError(error)\n`;
@@ -19,8 +19,7 @@ try {
   const decoded = decodeNowhereConfig(read.configuration);
   const restored = planManagedNowhere({ ...decoded, id: plan.id, name: '测试' });
   assert.equal(restored.environment, plan.environment);
-  assert.equal(decoded.pool, 0);
-  const v2Plan = planManagedNowhere({ id: 'nw-read-v2', version: 'v2.0.0', name: 'V2', key: 'test-only-v2-key', publicHost: 'example.com', port: 32078, tcpPort: 32078, udpPort: 32079, tcpCarrier: 'tcp4', udpCarrier: 'udp6', morph: 1, transportMemoryProfile: 'memory' });
+  const v2Plan = planManagedNowhere({ id: 'nw-read-v2', version: 'v2.0.2', name: 'V2', key: 'test-only-v2-key', publicHost: 'example.com', port: 32078, tcpPort: 32078, udpPort: 32079, tcpCarrier: 'tcp4', udpCarrier: 'udp6', morph: 1, transportMemoryProfile: 'memory' });
   const v2Values = Object.fromEntries(v2Plan.environment.trim().split('\n').map(line => { const index = line.indexOf('='); return [line.slice(0, index), JSON.parse(line.slice(index + 1))]; }));
   const v2Decoded = decodeNowhereConfig(v2Values);
   const v2Restored = planManagedNowhere({ ...v2Decoded, id: v2Plan.id, name: 'V2' });

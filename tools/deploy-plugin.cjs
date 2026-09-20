@@ -27,8 +27,8 @@ async function main() {
       if (!chunk.ok()) throw new Error(`Upload chunk ${index} failed (${chunk.status()})`);
     }
     const merged = await api.post('/api/admin/upload/merge', { data: { upload_id: data.upload_id } });
-    if (!merged.ok()) throw new Error(`Plugin install failed (${merged.status()})`);
     const mergeResult = await merged.text();
+    if (!merged.ok()) throw new Error(`Plugin install failed (${merged.status()}): ${mergeResult.slice(0, 500)}`);
     const rpc = async (method, params = {}) => {
       const response = await api.post('/api/rpc2', { data: { jsonrpc: '2.0', id: Date.now(), method, params } });
       const body = await response.json();

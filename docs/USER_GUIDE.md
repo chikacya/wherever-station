@@ -25,6 +25,8 @@ Server traffic plans and subscription quotas are separate:
 
 Use **Discover nodes** to inspect existing sing-box or Nowhere services. Discovery never changes their configuration. A candidate with incomplete public address, credentials, TLS, or Reality data remains a repair draft. A complete Nowhere result can first create a stopped adoption copy, followed by an explicit switch from the deployment page; staging the copy does not stop the original service.
 
+The optional **IP quality / service access** check runs a pinned, checksum-verified diagnostic on the selected Agent. Its country, ASN, risk, and streaming results are a point-in-time observation, not a permanent property of the server.
+
 ## Node library
 
 The import dialog accepts:
@@ -56,7 +58,7 @@ Source URLs are credentials. Avoid screenshots, logs, or issue reports that reve
 5. Preview changes and format compatibility.
 6. Save, then copy the URL or QR code for the intended client.
 
-Proxy groups and rules apply to structured Mihomo, Surge, and sing-box output. Anywhere and other URI-list clients receive nodes without those structures.
+Proxy groups and rules apply to structured Mihomo, Surge, Loon, and sing-box output. Anywhere and other URI-list clients receive nodes without those structures.
 
 Subscription availability can be unlimited, manually metered, linked to one external source, or linked to one provider client. Expiry or quota exhaustion disables only the public subscription response. Stored nodes and proxy processes keep running.
 
@@ -95,6 +97,8 @@ Wherever Station does not issue public ACME certificates. Use an ACME client or 
 Create an API token in the remote panel, then add its HTTPS base URL, panel path, type, and token under **Providers**. Connection checks and synchronization use `/apiv2` and are read-only.
 
 Wherever Station imports the share links exposed by panel clients. An inbound without a client/share link is not a complete node. Finish the client assignment in the original panel, then synchronize again.
+
+Provider nodes can be assigned a display region without assigning a VPS. **Identify regions** resolves each node hostname and sends only the resulting public IP addresses to the geolocation service; the ISO country and ASN are stored as node metadata and do not modify the share URI.
 
 When a previously synchronized remote node disappears, choose whether to disable and retain it, delete the local record, or detach it as a manual node. Remote protocol, user, route, and certificate changes still belong in the original panel.
 

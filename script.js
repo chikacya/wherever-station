@@ -7,7 +7,7 @@ const yaml = require("js-yaml");
 const { isIP } = require("net");
 const { cleanManagedState, planManagedNowhere } = require(path.join(__dirname, "tools/managed-nowhere"));
 const { compatibilityCatalog, nowhereCapabilities } = require(path.join(__dirname, "tools/nowhere-capabilities"));
-const { CONVERTED_PROTOCOLS, NAME_REWRITE_PROTOCOLS, SEMANTIC_PROTOCOLS, protocolCapability, protocolCatalog } = require(path.join(__dirname, "tools/protocol-capabilities"));
+const { CLIENT_URI_PROTOCOLS, CONVERTED_PROTOCOLS, NAME_REWRITE_PROTOCOLS, SEMANTIC_PROTOCOLS, protocolCapability, protocolCatalog } = require(path.join(__dirname, "tools/protocol-capabilities"));
 const { assertConversion, assertClashFields } = require(path.join(__dirname, "tools/conversion-contract"));
 const { buildManagedNowhereCommand } = require(path.join(__dirname, "tools/managed-nowhere-remote"));
 const { planManagedSingBox, randomCredentials: randomSingBoxCredentials } = require(path.join(__dirname, "tools/managed-sing-box"));
@@ -21,6 +21,7 @@ const { buildInstanceStatus, buildServiceStatus } = require(path.join(__dirname,
 const { buildConnectivityCommand, parseConnectivityOutput } = require(path.join(__dirname, "tools/connectivity-check"));
 const { createSuiProvider, normalizeSuiBaseUrl } = require(path.join(__dirname, "tools/provider-s-ui"));
 const { buildExistingServiceDiscoveryCommand, parseExistingServiceDiscoveryOutput } = require(path.join(__dirname, "tools/existing-service-discovery"));
+const { buildIpProfileCommand, parseIpProfileOutput } = require(path.join(__dirname, "tools/ip-profile-check"));
 const { parseRuleSetText } = require(path.join(__dirname, "tools/rule-set"));
 const STATUS_CACHE = require(path.join(__dirname, "tools/instance-status-cache")).instanceStatusCache();
 const PROVIDER_OPERATIONS = new Map();
@@ -36,7 +37,10 @@ const SERVICE_UNITS = Object.freeze({ "sing-box": "sing-box.service", nowhere: "
 const SERVICE_ACTIONS = new Set(["start", "stop", "restart"]);
 const GROUP_TYPES = new Set(["select", "url-test", "fallback", "load-balance"]);
 const POLICY_MODES = new Set(["proxy-all", "private-direct", "cn-direct"]);
-const SUPPORT = Object.freeze(Object.fromEntries(Object.entries(CONVERTED_PROTOCOLS).map(([format, protocols]) => [format, new Set(protocols)])));
+const SUPPORT = Object.freeze({
+  ...Object.fromEntries(Object.entries(CONVERTED_PROTOCOLS).map(([format, protocols]) => [format, new Set(protocols)])),
+  loon: new Set(CLIENT_URI_PROTOCOLS.loon),
+});
 const SEMANTIC_PROTOCOL_SET = new Set(SEMANTIC_PROTOCOLS);
 const NAME_REWRITE_PROTOCOL_SET = new Set(NAME_REWRITE_PROTOCOLS);
 const DEFAULT_TEST_URL = "https://www.gstatic.com/generate_204";
@@ -90,6 +94,13 @@ function cleanTrafficMetadata(value) {
     observedAt: /^\d{4}-\d\d-\d\dT/.test(String(value.observedAt || "")) ? String(value.observedAt) : "",
   };
   return traffic.upload || traffic.download || traffic.total || traffic.expire ? traffic : null;
+}
+function cleanIpProfile(value) {
+  if (!value || typeof value !== "object" || value.ok !== true) return null;
+  return {
+    ok: true, version: cleanText(value.version, 32), publicIp: cleanText(value.publicIp, 64), geo: cleanText(value.geo, 240), risk: cleanText(value.risk, 240), checkedAt: cleanIsoDate(value.checkedAt),
+    results: (Array.isArray(value.results) ? value.results : []).slice(0, 80).map((item) => ({ category: cleanText(item.category, 24), name: cleanText(item.name, 80), status: cleanText(item.status, 24), region: cleanText(item.region, 24), detail: cleanText(item.detail, 160) })),
+  };
 }
 function parseSubscriptionUserinfo(value, observedAt = new Date().toISOString()) {
   const fields = {};
@@ -285,14 +296,14 @@ function cleanState(input) {
     ? { enabled: true, limitBytes: Math.round(legacyTrafficGB * 1024 ** 3), accounting: "sum", resetDay: 1, warningLevels: [70, 90, 100] }
     : null;
   const machines = (Array.isArray(input.machines) ? input.machines : []).map((item) => ({
-    id: cleanText(item.id, 64), name: cleanText(item.name), provider: cleanText(item.provider, 80), region: cleanText(item.region || item.city, 80), country: cleanText(item.country, 80), countryCode: cleanText(item.countryCode || (String(item.region || "").length === 2 ? item.region : ""), 8).toUpperCase(), tags: cleanTags(item.tags), monitorClientId: cleanText(item.monitorClientId, 64), trafficPlan: cleanTrafficPlan(item.trafficPlan || legacyTrafficPlan),
+    id: cleanText(item.id, 64), name: cleanText(item.name), provider: cleanText(item.provider, 80), region: cleanText(item.region || item.city, 80), country: cleanText(item.country, 80), countryCode: cleanText(item.countryCode || (String(item.region || "").length === 2 ? item.region : ""), 8).toUpperCase(), tags: cleanTags(item.tags), monitorClientId: cleanText(item.monitorClientId, 64), trafficPlan: cleanTrafficPlan(item.trafficPlan || legacyTrafficPlan), ipProfile: cleanIpProfile(item.ipProfile),
   })).filter((item) => item.id && item.name);
   const machineIds = new Set(machines.map((item) => item.id));
   const certificates = (Array.isArray(input.certificates) ? input.certificates : []).map((item) => cleanCertificateAsset(item, machineIds)).filter(Boolean);
   const providers = (Array.isArray(input.providers) ? input.providers : []).map(cleanProvider).filter((item) => item.id && item.name && item.type && item.baseUrl);
   const providerIds = new Set(providers.map((item) => item.id));
   const nodes = (Array.isArray(input.nodes) ? input.nodes : []).map((item) => ({
-    id: cleanText(item.id, 64), name: normalizeNodeName(item.name), protocol: cleanText(item.protocol || String(item.uri || "").split(":", 1)[0], 24).toLowerCase(), machineId: cleanText(item.machineId, 64), uri: cleanText(item.uri, 8192), enabled: item.enabled !== false, tags: cleanTags(item.tags), source: ["manual", "import", "external", "provider"].includes(item.source) ? item.source : "manual", sourceId: cleanText(item.sourceId, 64), remoteId: cleanText(item.remoteId, 240), remoteName: normalizeNodeName(item.remoteName), remoteClientName: cleanText(item.remoteClientName, 160), remoteInboundName: cleanText(item.remoteInboundName, 160), providerMissing: item.providerMissing === true, connectivity: cleanConnectivity(item.connectivity), certificate: cleanCertificateReference(item.certificate),
+    id: cleanText(item.id, 64), name: normalizeNodeName(item.name), protocol: cleanText(item.protocol || String(item.uri || "").split(":", 1)[0], 24).toLowerCase(), machineId: cleanText(item.machineId, 64), uri: cleanText(item.uri, 8192), enabled: item.enabled !== false, tags: cleanTags(item.tags), source: ["manual", "import", "external", "provider"].includes(item.source) ? item.source : "manual", sourceId: cleanText(item.sourceId, 64), remoteId: cleanText(item.remoteId, 240), remoteName: normalizeNodeName(item.remoteName), remoteClientName: cleanText(item.remoteClientName, 160), remoteInboundName: cleanText(item.remoteInboundName, 160), providerMissing: item.providerMissing === true, countryCode: /^[A-Za-z]{2}$/.test(String(item.countryCode || "")) ? String(item.countryCode).toUpperCase() : "", geo: item.geo && typeof item.geo === "object" ? { countryCode: /^[A-Za-z]{2}$/.test(String(item.geo.countryCode || "")) ? String(item.geo.countryCode).toUpperCase() : "", city: cleanText(item.geo.city, 120), asn: cleanText(item.geo.asn, 32), organization: cleanText(item.geo.organization, 160), checkedAt: cleanIsoDate(item.geo.checkedAt) } : null, connectivity: cleanConnectivity(item.connectivity), certificate: cleanCertificateReference(item.certificate),
   })).filter((item) => item.id && item.name && /^[a-z][a-z0-9+.-]*:\/\//i.test(item.uri) && (!item.machineId || machineIds.has(item.machineId)));
   const nodeDrafts = (Array.isArray(input.nodeDrafts) ? input.nodeDrafts : []).map((item) => {
     const rawRepair = item && item.repair && typeof item.repair === "object" ? item.repair : {};
@@ -606,13 +617,22 @@ function validateGeneratedOutput(format, body) {
     const config = JSON.parse(body); names = (config.outbounds || []).map((outbound) => outbound.tag);
     for (const outbound of config.outbounds || []) if (["selector", "urltest"].includes(outbound.type)) { if (!Array.isArray(outbound.outbounds) || !outbound.outbounds.length) throw new Error("存在空代理组"); references.push(...outbound.outbounds); }
     if (config.route && config.route.final) references.push(config.route.final);
-  } else if (format === "surge") {
+  } else if (format === "surge" || format === "loon") {
     builtins = ['DIRECT', 'REJECT']; let section = '';
     for (const line of body.split('\n')) {
       if (line.startsWith('[')) { section = line; continue; }
       if (!line.trim()) continue;
-      if (section === '[Proxy]' || section === '[Proxy Group]') {
-        const split = line.indexOf(' = '); if (split < 1) throw new Error('Surge 条目格式无效');
+      if (section === '[Proxy]') {
+        if (format === "loon" && /^[a-z][a-z0-9+.-]*:\/\//i.test(line)) {
+          const protocol = cleanText(line.split(":", 1)[0], 24).toLowerCase();
+          names.push(decodedNodeName(protocol, line));
+          continue;
+        }
+        const split = line.indexOf(' = '); if (split < 1) throw new Error(`${format === "loon" ? "Loon" : "Surge"} 节点条目格式无效`);
+        names.push(line.slice(0, split));
+      }
+      if (section === '[Proxy Group]') {
+        const split = line.indexOf(' = '); if (split < 1) throw new Error(`${format === "loon" ? "Loon" : "Surge"} 代理组条目格式无效`);
         names.push(line.slice(0, split));
         if (section === '[Proxy Group]') { const members = line.slice(split + 3).split(',').slice(1).map(v => v.trim()).filter(v => !v.includes('=')); if (!members.length || members.some(v => !v)) throw new Error('存在空代理组'); references.push(...members); }
       }
@@ -680,9 +700,14 @@ function conversionFailure(format, node) {
 function canRenderNode(format, node) {
   const supported = SUPPORT[format]; if (!supported || !supported.has(node.protocol)) return false;
   try {
+    if (format === "loon") {
+      if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(String(node.uri || ""))) return false;
+      return !/[,=\r\n]/.test(String(node.name || decodedNodeName(node.protocol, node.uri)));
+    }
     assertConversion(format, node);
     const n = parseNode(node); if (!n.host || !Number.isInteger(n.port) || n.port < 1 || n.port > 65535) return false;
-    if (format === 'surge' && [n.name, n.host, n.password, n.uuid, n.username, n.path, n.wsHost, n.sni, n.cipher].some(value => /[,\r\n=|"#]/.test(String(value || '')))) return false;
+    if (format === "surge" && /[,=\r\n\[\]]/.test(String(n.name || ""))) return false;
+    if (format === "surge" && [n.host, n.password, n.uuid, n.username, n.path, n.wsHost, n.sni, n.cipher].some(value => /[,\r\n|"#]/.test(String(value || "")))) return false;
     if (format === 'surge' && n.password && !n.username && ['http', 'https', 'socks', 'socks5'].includes(n.protocol)) return false;
     if (["vless", "vmess"].includes(n.protocol) && (!n.uuid || !["tcp", "ws"].includes(n.transport))) return false;
     if (n.protocol === "trojan" && (!n.password || n.transport !== "tcp")) return false;
@@ -852,6 +877,22 @@ function renderSurge(nodes, subscription) {
   const rules = policyRules("surge", subscription, groupLines[0].split(" = ")[0]);
   return `[General]\nloglevel = notify\n\n[Proxy]\n${lines.join("\n")}\n\n[Proxy Group]\n${groupLines.join("\n")}\n\n[Rule]\n${rules.join("\n")}\n`;
 }
+function renderLoon(nodes, subscription) {
+  if ((subscription.groups || []).some(group => /[,=\r\n\[\]]/.test(group.name) || /[,\r\n]/.test(group.url || ""))) throw new Error("Loon 代理组参数不能无损表达");
+  const supportedNodes = nodes.filter((node) => canRenderNode("loon", node));
+  const groupLines = [];
+  for (const group of subscription.groups || []) {
+    const names = groupNames(group, subscription, supportedNodes, SUPPORT.loon); if (!names.length) continue;
+    groupLines.push(`${group.name} = ${group.type}, ${names.join(", ")}${group.type === "select" ? "" : `, url=${group.url || DEFAULT_TEST_URL}, interval=${group.interval || 3600}`}`);
+  }
+  if (!groupLines.length) {
+    const names = supportedNodes.map((node) => node.name);
+    groupLines.push(`PROXY = select, AUTO, ${names.join(", ")}`, `AUTO = url-test, ${names.join(", ")}, url=${DEFAULT_TEST_URL}, interval=3600`);
+  }
+  const finalGroup = (subscription.groups || []).find((group) => groupLines.some((line) => line.startsWith(`${group.name} = `)))?.name || "PROXY";
+  const rules = policyRules("loon", subscription, finalGroup);
+  return `[Proxy]\n${supportedNodes.map((node) => node.uri).join("\n")}\n\n[Proxy Group]\n${groupLines.join("\n")}\n\n[Rule]\n${rules.join("\n")}\n`;
+}
 function render(nodes, subscription, format) {
   if (SUPPORT[format]) {
     const groups = subscription.groups || []; const byId = new Map(groups.map(group => [group.id, group]));
@@ -869,7 +910,8 @@ function render(nodes, subscription, format) {
   }
   const raw = nodes.map((node) => node.uri).join("\n") + "\n";
   if (format === "raw") return { body: raw, type: "text/plain; charset=utf-8" };
-  if (["base64", "anywhere", "loon"].includes(format)) return { body: Buffer.from(raw, "utf8").toString("base64"), type: "text/plain; charset=utf-8" };
+  if (["base64", "anywhere"].includes(format)) return { body: Buffer.from(raw, "utf8").toString("base64"), type: "text/plain; charset=utf-8" };
+  if (format === "loon") return { body: renderLoon(nodes, subscription), type: "text/plain; charset=utf-8" };
   if (format === "mihomo") return { body: renderMihomo(nodes, subscription), type: "text/yaml; charset=utf-8" };
   if (format === "sing-box") return { body: renderSingBox(nodes, subscription), type: "application/json; charset=utf-8" };
   if (format === "surge") return { body: renderSurge(nodes, subscription), type: "text/plain; charset=utf-8" };
@@ -1041,6 +1083,52 @@ async function applyProviderSync(params) {
   const now = new Date().toISOString(); Object.assign(currentProvider, { lastSyncAt: now, lastSuccessAt: now, lastError: "", status: discovery.status ? (discovery.status.running ? `running:${discovery.status.version || "unknown"}` : `stopped:${discovery.status.version || "unknown"}`) : currentProvider.status, inboundCount: discovery.inbounds.length, clientCount: discovery.clients.length, linkCount: discovery.candidates.length, clients: discovery.clients });
   state.revision += 1; writeState(cleanState(state)); return { state: readState(), created, updated, unchanged, disabled, deleted, detached, unsupported: preview.unsupported.length };
 }
+async function geolocateProviderNodes(params) {
+  const providerId = cleanText(params && params.providerId, 64); const state = readState();
+  if (!state.providers.some((item) => item.id === providerId)) throw new Error("外部面板不存在");
+  const nodes = state.nodes.filter((item) => item.source === "provider" && item.sourceId === providerId && !item.providerMissing).slice(0, 100);
+  if (!nodes.length) throw new Error("该面板还没有可识别的节点");
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), 12000) : null;
+  const resolveHost = async (host) => {
+    if (isIP(host)) return host;
+    for (const type of ["A", "AAAA"]) {
+      try {
+        const response = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=${type}`, { signal: controller && controller.signal, headers: { Accept: "application/dns-json", "User-Agent": "Wherever-Station/0.69" } });
+        if (!response.ok) continue;
+        const payload = await response.json();
+        const answer = (Array.isArray(payload && payload.Answer) ? payload.Answer : []).find((item) => isIP(String(item && item.data || "")));
+        if (answer) return String(answer.data);
+      } catch (_) {}
+    }
+    return "";
+  };
+  try {
+    const resolved = [];
+    for (const node of nodes) {
+      const host = parseNode(node).host; if (!host) continue;
+      const address = await resolveHost(host);
+      if (isIP(address)) resolved.push({ node, address });
+    }
+    const addresses = [...new Set(resolved.map((item) => item.address))];
+    if (!addresses.length) throw new Error("没有解析到可查询的节点 IP");
+    const response = await fetch("https://api.country.is/?fields=city,asn", { method: "POST", redirect: "follow", signal: controller && controller.signal, headers: { "Content-Type": "application/json", "User-Agent": "Wherever-Station/0.69" }, body: JSON.stringify(addresses) });
+    if (!response.ok) throw new Error(`地区服务返回 HTTP ${response.status}`);
+    const records = await response.json();
+    const byIp = new Map((Array.isArray(records) ? records : [records]).map((item) => [String(item && item.ip || ""), item]));
+    const checkedAt = new Date().toISOString(); let updated = 0;
+    for (const { node, address } of resolved) {
+      const record = byIp.get(address); const code = cleanText(record && record.country, 2).toUpperCase();
+      if (!/^[A-Z]{2}$/.test(code)) continue;
+      node.countryCode = code;
+      node.geo = { countryCode: code, city: cleanText(record.city, 120), asn: record.asn && record.asn.number ? `AS${record.asn.number}` : "", organization: cleanText(record.asn && record.asn.organization, 160), checkedAt };
+      updated += 1;
+    }
+    if (updated) { state.revision += 1; writeState(cleanState(state)); }
+    return { state: readState(), updated, unresolved: nodes.length - updated, checkedAt };
+  } catch (error) { throw new Error(`地区识别失败：${cleanText(error.message, 120)}`); }
+  finally { if (timer) clearTimeout(timer); }
+}
 function startProviderOperation(params) {
   const action = cleanText(params && params.action, 24); const runners = { test: testProvider, preview: previewProviderSync, apply: applyProviderSync };
   if (!runners[action]) throw new Error("不支持的外部面板操作");
@@ -1137,6 +1225,19 @@ async function syncDueSources() {
   for (const source of state.externalSources.filter((item) => item.enabled)) { const last = Date.parse(source.lastSyncAt || "") || 0; if (now - last >= source.refreshIntervalHours * 3600000) { try { await syncExternalSource({ sourceId: source.id }); } catch (error) { console.error(`external source ${source.id} sync failed`, error); } } }
   for (const source of state.ruleSets.filter((item) => item.enabled)) { const last = Date.parse(source.lastSyncAt || "") || 0; if (now - last >= 24 * 3600000) { try { await syncRuleSet({ ruleSetId: source.id }); } catch (error) { console.error(`rule set ${source.id} sync failed`, error); } } }
 }
+function prepareMachineIpProfile(params) {
+  const state = readState(); const machine = state.machines.find((item) => item.id === cleanText(params && params.machineId, 64) && item.monitorClientId);
+  if (!machine) throw new Error("请选择已绑定 Agent 的服务器");
+  return { machineId: machine.id, clientId: machine.monitorClientId, command: buildIpProfileCommand() };
+}
+function recordMachineIpProfile(params) {
+  const machineId = cleanText(params && params.machineId, 64); const parsed = parseIpProfileOutput(params && params.output);
+  if (!parsed.ok) throw new Error(parsed.error || "IP 检测失败");
+  const state = readState(); const machine = state.machines.find((item) => item.id === machineId);
+  if (!machine) throw new Error("服务器已经不存在");
+  machine.ipProfile = cleanIpProfile({ ...parsed, checkedAt: new Date().toISOString() });
+  state.revision += 1; writeState(cleanState(state)); return { state: readState(), profile: machine.ipProfile };
+}
 function serviceCommand(params) { const service = cleanText(params && params.service, 32); const action = cleanText(params && params.action, 16); if (!SERVICE_UNITS[service] || !SERVICE_ACTIONS.has(action)) throw new Error("服务或操作不在允许列表"); return { command: `/usr/bin/systemctl ${action} ${SERVICE_UNITS[service]}`, service, action }; }
 function statusCommand() { return { command: buildServiceStatus() }; }
 function prepareExistingServiceDiscovery(params) {
@@ -1207,6 +1308,16 @@ function createManagedNowhereDraft(params) {
   state.managedInstances.push({ id: plan.id, kind: "nowhere", name: plan.name, machineId, nodeId, status: "draft", version: plan.version, publicHost: plan.summary.publicHost, listenHost: input.listenHost === undefined ? "127.0.0.1" : cleanText(input.listenHost, 253), port: plan.summary.port, tcpPort: plan.summary.tcpPort, udpPort: plan.summary.udpPort, tcpCarrier: plan.summary.tcpCarrier, udpCarrier: plan.summary.udpCarrier, client: plan.summary.client, network: plan.summary.network, tls: plan.summary.tls, alpn: plan.summary.alpn, rate: plan.summary.rate, etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", socks: cleanText(input.socks, 512) || "none", log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s", vectorSocks: cleanText(input.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(input.vectorSni, 253) || "none", vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph, transportMemoryProfile: plan.summary.transportMemoryProfile, certificateId: certificate?.assetId || "", certificateMode: plan.certificateMode, certificatePath: plan.certificatePath, privateKeyPath: plan.privateKeyPath, certificateHost: plan.certificateHost, certificateDays: plan.certificateDays, extensionEnvironment: cleanNowhereExtensions(input.extensionEnvironment), binarySource: input.binarySource === "copy" ? "copy" : "download", createdAt: now, updatedAt: now, lastError: "", lastOperationId: "" });
   state.revision += 1; writeState(cleanState(state));
   return { state: readState(), instanceId: plan.id, plan: publicManagedNowherePlan(plan) };
+}
+function discardManagedNowhereDraft(params) {
+  const instanceId = cleanText(params && params.instanceId, 64); const state = readState();
+  const instance = state.managedInstances.find((item) => item.id === instanceId && item.kind === "nowhere");
+  if (!instance) return readState();
+  if (!['draft', 'validated', 'failed'].includes(instance.status) || instance.adoptionState) throw new Error("该实例已进入运行生命周期，不能作为失败草稿清理");
+  state.managedInstances = state.managedInstances.filter((item) => item.id !== instance.id);
+  state.nodes = state.nodes.filter((item) => item.id !== instance.nodeId);
+  state.subscriptions = state.subscriptions.map((subscription) => ({ ...subscription, nodeIds: (subscription.nodeIds || []).filter((id) => id !== instance.nodeId), groups: (subscription.groups || []).map((group) => ({ ...group, entries: (group.entries || []).filter((entry) => entry.kind !== "node" || entry.id !== instance.nodeId) })) }));
+  state.revision += 1; writeState(cleanState(state)); return readState();
 }
 function createManagedNowhereAdoptionDraft(params) {
   const stateBefore = readState();
@@ -1752,7 +1863,11 @@ function load() {
   MANAGED_TASKS.resume();
   server.registerRPC("proxyConsole:previewPolicy", previewPolicy);
   server.registerRPC("proxyConsole:saveProvider", saveProvider);
+  server.registerRPC("proxyConsole:geolocateProviderNodes", geolocateProviderNodes);
   server.registerRPC("proxyConsole:saveMachineTrafficPlan", saveMachineTrafficPlan);
+  server.registerRPC("proxyConsole:prepareMachineIpProfile", prepareMachineIpProfile);
+  server.registerRPC("proxyConsole:recordMachineIpProfile", recordMachineIpProfile);
+  server.registerRPC("proxyConsole:discardManagedNowhereDraft", discardManagedNowhereDraft);
   server.registerRPC("proxyConsole:deleteProvider", deleteProvider);
   server.registerRPC("proxyConsole:startProviderOperation", startProviderOperation);
   server.registerRPC("proxyConsole:getProviderOperation", getProviderOperation);

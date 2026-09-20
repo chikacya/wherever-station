@@ -116,7 +116,7 @@ class ExistingServiceScanTests(unittest.TestCase):
             config.write_text(json.dumps({"inbounds": [{
                 "type": "vless", "tag": "Reality", "listen_port": 443,
                 "users": [{"uuid": "00000000-0000-4000-8000-000000000001", "flow": "xtls-rprx-vision"}],
-                "tls": {"enabled": True, "reality": {"enabled": True, "handshake": {"server": "www.example.com:443"}, "private_key": private_key, "short_id": ["0123456789abcdef"]}},
+                "tls": {"enabled": True, "server_name": "203.0.113.8", "reality": {"enabled": True, "handshake": {"server": "www.example.com:443"}, "private_key": private_key, "short_id": ["0123456789abcdef"]}},
             }]}), encoding="utf-8")
             unit = root / "sing-box.service"
             unit.write_text(f"[Service]\nExecStart=/missing/sing-box run -c {config}\n", encoding="utf-8")

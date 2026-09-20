@@ -203,7 +203,7 @@ th:first-child, td:first-child { width: 42px; text-align: center; }
 .telemetry-grid > div:nth-child(4n) { border-right: 0; }
 .telemetry-grid > div:nth-last-child(-n+4) { border-bottom: 0; }
 .telemetry-grid strong { overflow: hidden; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; }
-.telemetry-chart { min-width: 0; margin-top: 10px; padding: 10px 12px 6px; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; }
+.telemetry-chart { min-width: 0; margin-top: 10px; padding: 10px 12px 6px; position: relative; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; }
 .telemetry-legend { min-width: 0; display: flex; align-items: center; gap: 7px 12px; flex-wrap: wrap; color: var(--muted); font-size: 10px; }
 .telemetry-legend small { margin-left: auto; }
 .telemetry-legend span { display: inline-flex; align-items: center; gap: 5px; }
@@ -216,9 +216,14 @@ th:first-child, td:first-child { width: 42px; text-align: center; }
 .telemetry-chart polyline.up { stroke: var(--success); }
 .telemetry-chart polyline.down { stroke: var(--primary); stroke-dasharray: 5 4; }
 .telemetry-chart line.grid { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.telemetry-chart line.cursor, .telemetry-sparkline line.cursor { stroke: currentColor; stroke-width: 1; opacity: .45; vector-effect: non-scaling-stroke; }
 .telemetry-chart circle.up { fill: var(--success); }
 .telemetry-chart circle.down { fill: var(--primary); }
 .telemetry-chart text { fill: var(--muted); font-size: 9px; }
+.telemetry-tooltip { min-width: 104px; padding: 7px 8px; position: absolute; top: 40px; z-index: 2; display: grid; gap: 2px; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); box-shadow: var(--shadow); font: 9px/1.35 var(--mono); pointer-events: none; transform: translateX(-50%); }
+.telemetry-tooltip b { font-weight: 700; }
+.telemetry-spark-wrap { min-width: 0; position: relative; display: block; }
+.telemetry-spark-wrap > output { min-width: 112px; padding: 5px 7px; position: absolute; left: 50%; bottom: calc(100% + 5px); z-index: 4; display: grid; gap: 2px; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); box-shadow: var(--shadow); font: 8px/1.3 var(--mono); pointer-events: none; transform: translateX(-50%); }
 .telemetry-sparkline { width: 112px; height: 28px; display: block; overflow: visible; }
 .telemetry-sparkline polyline { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .telemetry-sparkline polyline.up { stroke: var(--success); }
@@ -410,11 +415,12 @@ th:first-child, td:first-child { width: 42px; text-align: center; }
 .discovery-intro > div { display: grid; gap: 2px; }
 .discovery-intro strong { color: var(--text); }
 .discovery-intro span { font-size: 11px; }
-.discovery-controls { margin: 0 20px 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 9px; }
+.discovery-controls { margin: 0 20px 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 9px; }
 .discovery-controls label { margin: 0; }
+.discovery-controls > .button { min-height: 42px; margin-top: 22px; }
 .discovery-results { margin: 0 20px; display: grid; gap: 10px; }
 .discovery-summary { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-.discovery-summary span { min-height: 46px; display: flex; align-items: baseline; justify-content: center; gap: 5px; color: var(--muted); border-right: 1px solid var(--border); font-size: 10px; }
+.discovery-summary span { min-height: 46px; display: flex; align-items: center; justify-content: center; gap: 5px; line-height: 1; color: var(--muted); border-right: 1px solid var(--border); font-size: 10px; }
 .discovery-summary span:last-child { border-right: 0; }
 .discovery-summary strong { color: var(--text); font-size: 16px; font-variant-numeric: tabular-nums; }
 .discovery-units, .discovery-review { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
@@ -513,6 +519,13 @@ textarea { resize: vertical; min-height: 96px; }
 input:hover, select:hover, textarea:hover { border-color: var(--muted); }
 input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent); }
 .helper { color: var(--muted); font-size: 11px; font-weight: 400; }
+.field-error { color: var(--danger); font-size: 11px; font-weight: 500; }
+.deploy-field-error { margin: 8px 16px 0; }
+.field-invalid :is(input, select, .secret-input) { border-color: var(--danger); }
+.secret-input { min-width: 0; position: relative; display: block; }
+.secret-input input { padding-right: 46px; }
+.secret-input button { width: 42px; height: 40px; position: absolute; top: 1px; right: 1px; display: grid; place-items: center; color: var(--muted); background: transparent; border: 0; border-left: 1px solid var(--border); }
+.secret-input button:hover { color: var(--text); background: var(--surface-2); }
 .dialog-actions { margin-top: 18px; padding-top: 13px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .subscription-switches { display: flex; align-items: center; justify-content: flex-end; gap: 14px; flex-wrap: wrap; }
 .subscription-switches .check-line { white-space: nowrap; }
@@ -925,7 +938,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
   .onboarding-next .button { grid-column: 1 / -1; }
   .discovery-intro, .discovery-controls, .discovery-results, .discovery-empty { margin-inline: 12px; }
   .discovery-controls { grid-template-columns: 1fr; }
-  .discovery-controls .button { width: 100%; }
+  .discovery-controls .button { width: 100%; margin-top: 0; }
   .discovery-units > div { grid-template-columns: auto minmax(0, 1fr); }
   .discovery-units small { grid-column: 1 / -1; }
   .discovery-units code { grid-column: 1 / -1; }
@@ -1177,6 +1190,23 @@ tbody tr:hover { background: var(--hover); }
 .selected-server-actions .icon-button { width: 32px; height: 32px; }
 
 .monthly-traffic-card { display: flex; flex-direction: column; }
+.ip-profile-card { grid-column: 1 / -1; min-height: 210px; display: flex; flex-direction: column; }
+.ip-profile-main { margin-top: 18px; display: grid; grid-template-columns: minmax(220px, .8fr) minmax(0, 2.2fr); gap: 24px; }
+.ip-profile-main > div:first-child { min-width: 0; display: grid; align-content: start; gap: 7px; }
+.ip-profile-main > div:first-child > span { color: var(--faint); font: 600 8px/1 var(--mono); letter-spacing: .09em; text-transform: uppercase; }
+.ip-profile-main > div:first-child > strong { font-size: 16px; overflow-wrap: anywhere; }
+.ip-profile-main > div:first-child > small { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.ip-profile-services { min-width: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--border); }
+.ip-profile-services > span { min-width: 0; min-height: 52px; padding: 9px 10px; display: grid; align-content: center; gap: 4px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.ip-profile-services > span:nth-child(4n) { border-right: 0; }
+.ip-profile-services > span:nth-last-child(-n + 4) { border-bottom: 0; }
+.ip-profile-services b { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.ip-profile-services small { color: var(--muted); font: 8px/1.2 var(--mono); }
+.ip-profile-services > p { grid-column: 1 / -1; margin: 0; padding: 22px; align-self: center; color: var(--muted); font-size: 10px; text-align: center; }
+.ip-profile-services .profile-ok small, .ip-profile-services .profile-full small, .ip-profile-services .profile-unlocked small, .ip-profile-services .profile-reachable small { color: var(--success); }
+.ip-profile-services .profile-blocked small, .ip-profile-services .profile-error small, .ip-profile-services .profile-failed small { color: var(--danger); }
+.ip-profile-card > footer { margin-top: auto; padding-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ip-profile-card > footer > span { color: var(--faint); font: 8px/1.3 var(--mono); }
 .monthly-total { margin-top: 24px; font: 450 clamp(27px, 3vw, 39px)/1 var(--mono); letter-spacing: -.055em; }
 .host-bars { min-height: 240px; margin-top: auto; display: flex; align-items: stretch; gap: 7px; }
 .host-bars > button { min-width: 0; flex: 1 1 0; padding: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; gap: 6px; color: var(--muted); background: transparent; border: 0; }
@@ -1223,6 +1253,13 @@ tbody tr:hover { background: var(--hover); }
   .server-index-list > button:nth-child(2n) { border-right: 0; }
   .server-index-list > button:nth-last-child(-n + 2) { border-bottom: 0; }
   .monthly-traffic-card { grid-column: auto; }
+  .ip-profile-card { grid-column: auto; }
+  .ip-profile-main { grid-template-columns: 1fr; }
+  .ip-profile-services { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ip-profile-services > span:nth-child(4n) { border-right: 1px solid var(--border); }
+  .ip-profile-services > span:nth-child(2n) { border-right: 0; }
+  .ip-profile-services > span:nth-last-child(-n + 4) { border-bottom: 1px solid var(--border); }
+  .ip-profile-services > span:nth-last-child(-n + 2) { border-bottom: 0; }
   .operation-card { grid-column: span 6; }
   .quick-operation { grid-column: 1 / -1; min-height: 184px; }
 }
@@ -1570,7 +1607,8 @@ body, button, input, select, textarea { font-family: var(--sans); }
 .service-throughput-pair > div + div { padding-left: 22px; border-left: 1px solid color-mix(in srgb, var(--focus-text) 30%, transparent); }
 .service-throughput-pair strong { font: 450 clamp(22px, 3vw, 36px)/1 var(--mono); letter-spacing: -.06em; white-space: nowrap; }
 .service-trend { min-height: 34px; margin-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.service-trend .telemetry-sparkline { width: min(230px, 70%); height: 34px; }
+.service-trend .telemetry-spark-wrap { width: min(360px, 82%); }
+.service-trend .telemetry-sparkline { width: 100%; height: 46px; }
 .service-trend > span { font: 600 8px/1 var(--mono); letter-spacing: .09em; }
 .service-observatory > footer { min-height: 40px; margin-top: auto; padding-top: 14px; display: flex; align-items: end; justify-content: space-between; gap: 12px; }
 .service-observatory > footer > div { display: flex; gap: 6px; flex-wrap: wrap; }

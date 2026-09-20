@@ -272,16 +272,26 @@ def reality_public_key(binary, private_key):
 
 
 def reality_server_name(tls, reality):
-    value = tls.get("server_name")
-    if isinstance(value, list):
-        value = value[0] if value else ""
-    if not value:
-        handshake = reality.get("handshake") if isinstance(reality.get("handshake"), dict) else {}
-        value = handshake.get("server") or handshake.get("server_name") or ""
-    value = clipped(value, 253).strip("[]")
-    if value.count(":") == 1 and value.rsplit(":", 1)[1].isdigit():
-        value = value.rsplit(":", 1)[0]
-    return value
+    # Prefer an explicit domain-valued TLS server name. Some generated server
+    # configs incorrectly put the public IP there; only then derive the SNI
+    # from Reality's handshake target instead of publishing that IP as SNI.
+    handshake = reality.get("handshake") if isinstance(reality.get("handshake"), dict) else {}
+    values = [tls.get("server_name"), handshake.get("server_name"), handshake.get("server")]
+    for value in values:
+        if isinstance(value, list):
+            value = value[0] if value else ""
+        value = clipped(value, 512)
+        if not value:
+            continue
+        try:
+            parsed = urllib.parse.urlsplit(value if "://" in value else "//" + value)
+            host = parsed.hostname or ""
+        except ValueError:
+            host = ""
+        host = clipped(host, 253).strip("[]").rstrip(".")
+        if host and not host.replace(".", "").isdigit() and ":" not in host:
+            return host
+    return ""
 
 
 def sing_box_candidates(unit, source, config, candidates, reviews):

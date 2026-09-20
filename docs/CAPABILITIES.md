@@ -40,6 +40,7 @@ The projects have separate licenses and release artifacts. Komari's MIT license 
 | Read S-UI/2S-UI provider links | No | No |
 | Show Komari server metrics | Yes | No |
 | Discover existing proxy services | Yes | No |
+| Inspect IP quality and service access | Yes | Temporary diagnostic files/process only |
 | Check a node with a temporary client | Yes | Temporary files/process only |
 | Start/stop a recognized existing service | Yes | systemd action after explicit click |
 | Create or edit a managed instance | Yes | Isolated instance directory and unit |
@@ -67,6 +68,7 @@ Managed files stay under `/var/lib/proxy-console/`. Existing service names and c
 - Process status is not proof of client connectivity.
 - Nowhere protocol telemetry is shown only for a known instance and a supported interface.
 - Per-node traffic is not claimed when no reliable per-node data source exists.
+- Provider-node geography is inferred from the resolved endpoint IP and stored as display metadata; it does not rewrite the connection.
 
 ## Intentional limits
 

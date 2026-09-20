@@ -10,7 +10,7 @@ files = [root / name for name in ('komari-plugin.json', 'icon.svg', 'script.js',
 files += [path for path in (root / 'pages').rglob('*') if path.is_file()]
 runtime_tools = (
     'certificate-manager.js', 'connectivity-check.js', 'conversion-contract.js', 'existing-service-discovery.js',
-    'existing-service-scan.py', 'instance-status-cache.js', 'instance-status.js',
+    'existing-service-scan.py', 'instance-status-cache.js', 'instance-status.js', 'ip-profile-check.js',
     'instance-status.py', 'managed-nowhere-remote.js', 'managed-nowhere.js',
     'managed-sing-box-config.js', 'managed-sing-box-remote.js', 'managed-sing-box.js',
     'managed-task-tracker.js', 'nowhere-action.py', 'nowhere-binary-upgrade.py',

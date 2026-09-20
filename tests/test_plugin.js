@@ -78,6 +78,12 @@ const managedPreview = methods.get("proxyConsole:previewManagedNowhere")({ input
 assert.equal(managedPreview.summary.port, 52077); assert(managedPreview.links.anywhere[0].uri.startsWith("nowhere://")); assert(!JSON.stringify(managedPreview.summary).includes(managedDefaults.key));
 const managedCreated = methods.get("proxyConsole:createManagedNowhereDraft")({ input: managedInput }); state = managedCreated.state;
 assert.equal(state.managedInstances.at(-1).status, "draft"); assert(state.nodes.some((item) => item.id === state.managedInstances.at(-1).nodeId && item.protocol === "nowhere"));
+const disposableDefaults = methods.get("proxyConsole:newManagedNowhereValues")();
+const disposable = methods.get("proxyConsole:createManagedNowhereDraft")({ input: { ...managedInput, ...disposableDefaults, machineId, publicHost: "managed.example.com", port: 52079, tcpPort: 52079, udpPort: 52079 } });
+assert(disposable.state.managedInstances.some((item) => item.id === disposableDefaults.id && item.status === "draft"));
+state = methods.get("proxyConsole:discardManagedNowhereDraft")({ instanceId: disposableDefaults.id });
+assert(!state.managedInstances.some((item) => item.id === disposableDefaults.id));
+assert(!state.nodes.some((item) => item.id === disposable.state.managedInstances.find((entry) => entry.id === disposableDefaults.id).nodeId));
 const managedPreflight = methods.get("proxyConsole:prepareManagedNowhereAction")({ instanceId: managedDefaults.id, action: "preflight" });
 assert.equal(managedPreflight.clientId, "test-client"); assert(!managedPreflight.command.includes("systemctl restart nowhere.service"));
 const managedChecked = methods.get("proxyConsole:recordManagedNowhereResult")({ operationId: managedPreflight.operationId, result: { ok: true, portAvailable: true, binaryAvailable: true, existingNowhere: "active", existingSingBox: "active" } }); state = managedChecked.state;
@@ -178,6 +184,7 @@ const httpNode = { ...httpParsed.nodes[0], id: "http-node", enabled: true, machi
 assert.match(sandbox.render([httpNode], httpSub, "mihomo").body, /type: http/);
 assert.equal(JSON.parse(sandbox.render([httpNode], httpSub, "sing-box").body).outbounds[0].type, "http");
 assert.match(sandbox.render([httpNode], httpSub, "surge").body, /HTTP Proxy = http, proxy\.example\.com, 8080/);
+assert.equal(sandbox.canRenderNode("loon", httpNode), false, "Loon URI subscriptions only claim the schemes documented by Loon");
 const opaqueInput = [
   "snell://secret@snell.example.com:443?version=4&obfs=http#Snell%20Original",
   "sudoku://opaque%2Fcredential@sudoku.example.com:443?future=%252Fkeep#Sudoku%20Original",
@@ -191,11 +198,11 @@ const opaqueOutputNodes = sandbox.uniqueNodes(opaqueSub, { machines: [], nodes: 
 assert.deepEqual(opaqueOutputNodes.map((node) => node.uri), opaqueInput, "opaque protocols must remain byte-for-byte unchanged even when display names differ");
 assert.equal(sandbox.render(opaqueOutputNodes, opaqueSub, "raw").body, opaqueInput.join("\n") + "\n");
 assert.equal(Buffer.from(sandbox.render(opaqueOutputNodes, opaqueSub, "anywhere").body, "base64").toString("utf8"), opaqueInput.join("\n") + "\n");
-assert.equal(Buffer.from(sandbox.render(opaqueOutputNodes, opaqueSub, "loon").body, "base64").toString("utf8"), opaqueInput.join("\n") + "\n");
+assert.throws(() => sandbox.validateGeneratedOutput("loon", sandbox.render(opaqueOutputNodes, opaqueSub, "loon").body), /引用|空代理组/);
 state.nodes.push(...opaqueNodes); state.subscriptions.push(opaqueSub); state = methods.get("proxyConsole:saveState")({ state });
 const opaquePreflight = methods.get("proxyConsole:subscriptionPreflight")({ subscriptionId: opaqueSub.id });
 assert.equal(opaquePreflight.formats.find((item) => item.format === "anywhere").included, 3);
-assert.equal(opaquePreflight.formats.find((item) => item.format === "loon").included, 3);
+assert.equal(opaquePreflight.formats.find((item) => item.format === "loon").included, 0);
 assert.equal(opaquePreflight.formats.find((item) => item.format === "mihomo").skipped, 3);
 assert.equal(opaquePreflight.formats.find((item) => item.format === "anywhere").nodes.find((node) => node.protocol === "sudoku").clientSupport, "native");
 const clashYaml = `proxies:
@@ -269,6 +276,13 @@ assert(androidYaml.includes(`name: ${JSON.stringify(androidNode.name)}`), "YAML 
 assert(!androidYaml.includes(encodeURIComponent(androidNode.name)), "Android YAML should not percent-encode display names");
 const singbox = JSON.parse(request("sing-box")); assert(!singbox.outbounds.some((o) => o.tag === nowhere.name)); assert(singbox.outbounds.some((o) => o.tag === vmess.name)); assert(singbox.outbounds.some((o) => o.tag === "自动测速" && o.type === "urltest"));
 const surge = request("surge"); assert(!surge.includes(nowhere.name)); assert(surge.includes("自动测速 = url-test"));
+const ss2022Password = Buffer.alloc(16, 7).toString("base64");
+const ss2022Node = { id: "ss2022", name: "SS 2022", protocol: "ss", uri: `ss://${Buffer.from(`2022-blake3-aes-128-gcm:${ss2022Password}`).toString("base64")}@ss2022.example.com:443#SS%202022`, enabled: true };
+assert.equal(sandbox.canRenderNode("surge", ss2022Node), true, "Surge accepts Base64 padding in Shadowsocks 2022 passwords");
+assert(sandbox.renderSurge([ss2022Node], { groups: [], policyMode: "proxy-all" }).includes(`password=${ss2022Password}`));
+const loonSub = { ...state.subscriptions.find((item) => item.id === "test-mixed"), groups: [{ id: "loon-auto", name: "Loon 自动测速", type: "url-test", entries: [{ kind: "node", id: vmess.id }] }] };
+const loon = sandbox.render(sandbox.uniqueNodes(loonSub, state), loonSub, "loon").body;
+assert(loon.includes("[Proxy]\n")); assert(loon.includes("[Proxy Group]\nLoon 自动测速 = url-test")); assert(loon.includes("[Rule]\nFINAL,Loon 自动测速")); sandbox.validateGeneratedOutput("loon", loon);
 const emptyBranchSub = { ...state.subscriptions.find((item) => item.id === "test-mixed"), groups: [
   { id: "empty-parent", name: "空父组", type: "select", entries: [{ kind: "group", id: "empty-child" }] },
   { id: "empty-child", name: "仅 Nowhere", type: "select", entries: [{ kind: "node", id: nowhere.id }] },
@@ -317,7 +331,7 @@ for (const rule of [
 ]) assert.throws(() => sandbox.cleanCustomRules([rule]), /第 1 条规则/);
 assert.throws(() => sandbox.cleanCustomRules(Array(201).fill(customRules[0])), /200/);
 assert.deepEqual(sandbox.cleanCustomRules(undefined), []);
-const preflight = methods.get("proxyConsole:subscriptionPreflight")({ subscriptionId: "test-mixed" }); assert.equal(preflight.formats.length, 5); assert(preflight.formats.every((item) => item.bytes > 0)); assert(preflight.formats.find((item) => item.format === "mihomo").skipped >= 1); assert.equal(preflight.formats.find((item) => item.format === "loon").skipped, 0); assert(!JSON.stringify(preflight).includes("sample-key"));
+const preflight = methods.get("proxyConsole:subscriptionPreflight")({ subscriptionId: "test-mixed" }); assert.equal(preflight.formats.length, 5); assert(preflight.formats.every((item) => item.bytes > 0)); assert(preflight.formats.find((item) => item.format === "mihomo").skipped >= 1); assert(preflight.formats.find((item) => item.format === "loon").skipped >= 1); assert(!JSON.stringify(preflight).includes("sample-key"));
 for (const result of preflight.formats) {
   assert.equal(result.nodes.filter((node) => node.included).length, result.included);
   assert.equal(result.nodes.filter((node) => !node.included).length, result.skipped);

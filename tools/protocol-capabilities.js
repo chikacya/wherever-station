@@ -11,7 +11,10 @@ const PASSTHROUGH_FORMATS = Object.freeze(["raw", "base64", "anywhere", "loon"])
 // newer client can consume it before Wherever Station gains a semantic adapter.
 const CLIENT_URI_PROTOCOLS = Object.freeze({
   anywhere: Object.freeze(["nowhere", "vless", "hysteria2", "hy2", "trojan", "anytls", "ss", "socks5", "socks", "sudoku", "http", "https", "quic", "naive"]),
-  loon: Object.freeze(["ss", "ssr", "vmess", "vless", "trojan", "http", "https", "socks5", "socks", "wireguard", "hysteria2", "hy2", "anytls"]),
+  // Keep this list aligned with Loon's documented URI subscription schemes.
+  // Other proxy types require Loon's native key/value syntax rather than a
+  // byte-for-byte URI passthrough, so they must not be claimed here.
+  loon: Object.freeze(["ss", "ssr", "vmess", "vless", "trojan", "hysteria2", "hy2", "anytls"]),
 });
 
 // Rewriting a fragment is a protocol operation. Unknown schemes remain byte-for-byte

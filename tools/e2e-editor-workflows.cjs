@@ -135,17 +135,26 @@ async function main() {
     await page.mouse.move(cardText.x + cardText.width / 2, cardText.y + cardText.height / 2);
     await page.mouse.down();
     await page.mouse.move(cardText.x + cardText.width / 2 + 12, cardText.y + cardText.height / 2 + 12, { steps: 4 });
-    let dropPointer;
-    for (let attempt = 0; attempt < 4 && !(await groupDrop.getAttribute('class')).includes('over'); attempt++) {
+    const initialTarget = await groupDrop.boundingBox();
+    let dropPointer = { x: initialTarget.x + initialTarget.width / 2, y: initialTarget.y + initialTarget.height / 2 };
+    for (let attempt = 0; attempt < 4; attempt++) {
       const target = await groupDrop.boundingBox();
       dropPointer = { x: target.x + target.width / 2, y: target.y + target.height / 2 };
       await page.mouse.move(dropPointer.x, dropPointer.y, { steps: 12 });
       await page.waitForTimeout(60);
+      if ((await groupDrop.getAttribute('class')).includes('over')) break;
     }
     const groupDropActive = await groupDrop.getAttribute('class');
     const draggedBox = await overlay.boundingBox();
     const dragOffset = Math.hypot(draggedBox.x + draggedBox.width / 2 - dropPointer.x, draggedBox.y + draggedBox.height / 2 - dropPointer.y);
-    if (dragOffset > 12) throw new Error(`Cross-column drag overlay drifted ${dragOffset.toFixed(1)}px from the pointer`);
+    if (dragOffset > 12) {
+      const overlayDebug = await overlay.evaluate((element) => ({
+        self: element.getAttribute('style'),
+        parent: element.parentElement?.getAttribute('style'),
+        parentRect: element.parentElement?.getBoundingClientRect().toJSON(),
+      }));
+      throw new Error(`Cross-column drag overlay drifted ${dragOffset.toFixed(1)}px from the pointer (overlay=${JSON.stringify(draggedBox)}, pointer=${JSON.stringify(dropPointer)}, target=${JSON.stringify(await groupDrop.boundingBox())}, class=${groupDropActive}, style=${JSON.stringify(overlayDebug)})`);
+    }
     await page.mouse.up();
     if (!(await dialog.locator('.group-entry').count())) throw new Error(`Dragging a node card into a proxy group failed (drop=${groupDropActive})`);
     await page.waitForTimeout(220);

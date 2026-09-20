@@ -124,7 +124,7 @@ const DEVICE_CLIENTS = {
   mihomo: { label: "Mihomo / Clash", format: "mihomo", note: "支持代理组与规则；不支持 Nowhere。" },
   surge: { label: "Surge", format: "surge", note: "支持代理组与规则；VLESS 和 Nowhere 会跳过。" },
   "sing-box": { label: "sing-box", format: "sing-box", note: "输出完整客户端配置；不支持 Nowhere。" },
-  loon: { label: "Loon", format: "loon", note: "使用 URI 订阅并保留原始协议参数；由 Loon 判断协议兼容性。" },
+  loon: { label: "Loon", format: "loon", note: "按 Loon Section 格式输出原始 URI、代理组与规则。" },
   generic: { label: "通用 URI 客户端", format: "base64", note: "Base64 URI 列表；是否支持各协议取决于客户端。" },
 };
 const EMPTY_STATE = {
@@ -336,14 +336,19 @@ function DraftStatus({ onDiscard, children = "草稿已自动保留" }) {
     </span>
   );
 }
-function Field({ label, hint, wide, children }) {
+function Field({ label, hint, error, wide, children }) {
   return (
-    <label className={wide ? "wide" : ""}>
+    <label className={`${wide ? "wide" : ""} ${error ? "field-invalid" : ""}`}>
       <span>{label}</span>
       {children}
       {hint && <small className="helper">{hint}</small>}
+      {error && <small className="field-error" role="alert">{error}</small>}
     </label>
   );
+}
+function SecretInput({ value, onChange, ...props }) {
+  const [revealed, setRevealed] = useState(false);
+  return <span className="secret-input"><input {...props} type={revealed ? "text" : "password"} value={value} onChange={onChange} /><button type="button" aria-label={revealed ? "隐藏内容" : "显示内容"} title={revealed ? "隐藏内容" : "显示内容"} onClick={() => setRevealed((current) => !current)}>{revealed ? <EyeOff size={16} /> : <Eye size={16} />}</button></span>;
 }
 function Modal({ open, title, eyebrow, onClose, children, size = "normal" }) {
   const ref = useRef(null);
@@ -1288,7 +1293,7 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
       </Modal>
       <Modal open={!!draftRepair} title={`补全 · ${draftRepair?.draft?.name || "发现节点"}`} eyebrow="发现修复" onClose={() => setDraftRepair(null)} size="large">
         <p className="editor-note">优先粘贴从原面板或客户端导出的完整 URI；也可按发现证据补齐常见协议参数。这里不会写回 VPS。</p>
-        <div className="form-grid"><Field label="节点名称" wide><input value={draftRepair?.name || ""} onChange={(event) => setDraftRepair((current) => ({ ...current, name: event.target.value }))} /></Field><Field label="协议"><select value={draftRepair?.protocol || "unknown"} onChange={(event) => setDraftRepair((current) => ({ ...current, protocol: event.target.value }))}>{["vless", "vmess", "trojan", "hysteria2", "anytls", "ss", "nowhere", "unknown"].map((value) => <option key={value} value={value}>{value}</option>)}</select></Field><Field label="公网地址"><input value={draftRepair?.publicHost || ""} onChange={(event) => setDraftRepair((current) => ({ ...current, publicHost: event.target.value }))} /></Field><Field label="端口"><input type="number" min="1" max="65535" value={draftRepair?.port || ""} onChange={(event) => setDraftRepair((current) => ({ ...current, port: Number(event.target.value) }))} /></Field><Field label="用户凭据" hint="UUID、密码或 Nowhere Shared Key。"><input type="password" autoComplete="off" value={draftRepair?.credential || ""} onChange={(event) => setDraftRepair((current) => ({ ...current, credential: event.target.value }))} /></Field><Field label="SNI / 证书域名"><input value={draftRepair?.sni || ""} onChange={(event) => setDraftRepair((current) => ({ ...current, sni: event.target.value }))} /></Field>{draftRepair?.protocol === "vless" && draftRepair?.draft?.repair?.reality && <><Field label="Reality 公钥"><input value={draftRepair?.realityPublicKey || ""} onChange={(event) => setDraftRepair((current) => ({ ...current, realityPublicKey: event.target.value }))} /></Field><Field label="Reality Short ID"><input value={draftRepair?.shortId || ""} onChange={(event) => setDraftRepair((current) => ({ ...current, shortId: event.target.value }))} /></Field></>}{["trojan", "hysteria2", "anytls"].includes(draftRepair?.protocol) && <label className="check-line"><input type="checkbox" checked={draftRepair?.insecure || false} onChange={(event) => setDraftRepair((current) => ({ ...current, insecure: event.target.checked }))} />客户端允许不安全证书</label>}<Field label="完整客户端 URI（推荐）" wide hint="填写后优先使用，并忽略上方连接参数。"><textarea rows={4} spellCheck="false" value={draftRepair?.uri || ""} onChange={(event) => { setDraftError(""); setDraftRepair((current) => ({ ...current, uri: event.target.value })); }} placeholder="vless://… / vmess://… / nowhere://…" /></Field></div>
+        <div className="form-grid"><Field label="节点名称" wide><input value={draftRepair?.name || ""} onChange={(event) => setDraftRepair((current) => ({ ...current, name: event.target.value }))} /></Field><Field label="协议"><select value={draftRepair?.protocol || "unknown"} onChange={(event) => setDraftRepair((current) => ({ ...current, protocol: event.target.value }))}>{["vless", "vmess", "trojan", "hysteria2", "anytls", "ss", "nowhere", "unknown"].map((value) => <option key={value} value={value}>{value}</option>)}</select></Field><Field label="公网地址"><input value={draftRepair?.publicHost || ""} onChange={(event) => setDraftRepair((current) => ({ ...current, publicHost: event.target.value }))} /></Field><Field label="端口"><input type="number" min="1" max="65535" value={draftRepair?.port || ""} onChange={(event) => setDraftRepair((current) => ({ ...current, port: Number(event.target.value) }))} /></Field><Field label="用户凭据" hint="UUID、密码或 Nowhere Shared Key。"><SecretInput autoComplete="off" value={draftRepair?.credential || ""} onChange={(event) => setDraftRepair((current) => ({ ...current, credential: event.target.value }))} /></Field><Field label="SNI / 证书域名"><input value={draftRepair?.sni || ""} onChange={(event) => setDraftRepair((current) => ({ ...current, sni: event.target.value }))} /></Field>{draftRepair?.protocol === "vless" && draftRepair?.draft?.repair?.reality && <><Field label="Reality 公钥"><input value={draftRepair?.realityPublicKey || ""} onChange={(event) => setDraftRepair((current) => ({ ...current, realityPublicKey: event.target.value }))} /></Field><Field label="Reality Short ID"><input value={draftRepair?.shortId || ""} onChange={(event) => setDraftRepair((current) => ({ ...current, shortId: event.target.value }))} /></Field></>}{["trojan", "hysteria2", "anytls"].includes(draftRepair?.protocol) && <label className="check-line"><input type="checkbox" checked={draftRepair?.insecure || false} onChange={(event) => setDraftRepair((current) => ({ ...current, insecure: event.target.checked }))} />客户端允许不安全证书</label>}<Field label="完整客户端 URI（推荐）" wide hint="填写后优先使用，并忽略上方连接参数。"><textarea rows={4} spellCheck="false" value={draftRepair?.uri || ""} onChange={(event) => { setDraftError(""); setDraftRepair((current) => ({ ...current, uri: event.target.value })); }} placeholder="vless://… / vmess://… / nowhere://…" /></Field></div>
         {draftRepair?.draft?.repair?.certificate && <div className="certificate-readiness"><strong>证书只读检查</strong><span>{draftRepair.draft.repair.certificate.readable ? "证书可读" : "未能读取证书"}</span><span>{draftRepair.draft.repair.certificate.keyMatch === true ? "证书与私钥匹配" : draftRepair.draft.repair.certificate.keyMatch === false ? "证书与私钥不匹配" : "未确认密钥匹配"}</span>{draftRepair.draft.repair.certificate.validTo && <span>有效至 {draftRepair.draft.repair.certificate.validTo}</span>}{draftRepair.draft.repair.certificate.sans?.length ? <span>SAN：{draftRepair.draft.repair.certificate.sans.join("、")}</span> : null}</div>}
         {draftError && <p className="form-error" role="alert">{draftError}</p>}<div className="dialog-actions"><Button onClick={() => setDraftRepair(null)}>取消</Button><Button icon={Save} variant="primary" onClick={resolveDraft} disabled={!draftRepair?.name?.trim()}>验证并加入节点库</Button></div>
       </Modal>
@@ -2542,8 +2547,6 @@ function SubscriptionEditor({
   const [form, setForm] = useState(null);
   const [search, setSearch] = useState("");
   const [activeDrag, setActiveDrag] = useState(null);
-  const dragPointer = useRef(null);
-  const dragScrollOrigin = useRef(0);
   const [handleOnly, setHandleOnly] = useState(() => window.matchMedia("(max-width: 760px), (pointer: coarse)").matches);
   const [recentNodeId, setRecentNodeId] = useState("");
   const [review, setReview] = useState(null);
@@ -2558,12 +2561,6 @@ function SubscriptionEditor({
     update();
     return () => media.removeEventListener("change", update);
   }, []);
-  useEffect(() => {
-    if (!open) return undefined;
-    const trackPointer = (event) => { dragPointer.current = { x: event.clientX, y: event.clientY }; };
-    document.addEventListener("pointermove", trackPointer, { capture: true, passive: true });
-    return () => document.removeEventListener("pointermove", trackPointer, true);
-  }, [open]);
   useEffect(() => {
     if (!open) return;
     setStage("nodes");
@@ -3028,8 +3025,6 @@ function SubscriptionEditor({
         sensors={sensors}
         collisionDetection={collisionDetection}
         onDragStart={({ active, activatorEvent }) => {
-          if (activatorEvent && "clientX" in activatorEvent) dragPointer.current = { x: activatorEvent.clientX, y: activatorEvent.clientY };
-          dragScrollOrigin.current = document.querySelector("dialog[open]")?.scrollTop || 0;
           setActiveDrag(active.data.current || null);
         }}
         onDragCancel={() => setActiveDrag(null)}
@@ -3221,12 +3216,10 @@ function SubscriptionEditor({
               ? activatorEvent
               : activatorEvent.touches?.[0] || activatorEvent.changedTouches?.[0];
             if (!start) return transform;
-            const point = dragPointer.current || { x: start.clientX + transform.x, y: start.clientY + transform.y };
-            const scrollDelta = (document.querySelector("dialog[open]")?.scrollTop || 0) - dragScrollOrigin.current;
             return {
               ...transform,
-              x: point.x - draggingNodeRect.left - overlayNodeRect.width / 2,
-              y: point.y - draggingNodeRect.top - overlayNodeRect.height / 2 + scrollDelta,
+              x: transform.x + start.clientX - draggingNodeRect.left - overlayNodeRect.width / 2,
+              y: transform.y + start.clientY - draggingNodeRect.top - overlayNodeRect.height / 2,
             };
           }]}
           dropAnimation={{ duration: 160, easing: "ease-out" }}
@@ -3810,6 +3803,15 @@ function Providers({ state, setState, notify, onNavigate }) {
       setMissingActions(Object.fromEntries(result.missing.map((item) => [item.localId, "retain"])));
     } catch (error) { notify(error.message, true); } finally { setBusy(""); }
   };
+  const identifyRegions = async (provider) => {
+    setBusy(`geo:${provider.id}`);
+    try {
+      const result = await rpc("proxyConsole:geolocateProviderNodes", { providerId: provider.id });
+      setState(result.state);
+      notify(`地区识别完成：更新 ${result.updated} 个${result.unresolved ? `，${result.unresolved} 个未识别` : ""}`);
+    } catch (error) { notify(error.message, true); }
+    finally { setBusy(""); }
+  };
   const apply = async () => {
     setBusy("apply");
     try {
@@ -3845,6 +3847,7 @@ function Providers({ state, setState, notify, onNavigate }) {
         <header><button className="provider-expand" type="button" aria-label={`${isExpanded ? "收起" : "展开"} ${provider.name} 节点`} aria-expanded={isExpanded} onClick={() => setExpanded((value) => ({ ...value, [provider.id]: !isExpanded }))}>{isExpanded ? <ChevronUp size={17} /> : <ChevronDown size={17} />}</button><div><h3>{provider.name}</h3><p>{provider.type === "2s-ui" ? "2S-UI" : "S-UI"} · <span className="sensitive-value">{provider.baseUrl}</span></p><div className="provider-meta"><span>{providerNodes.length} 个节点</span><span>{provider.inboundCount} 入站</span><span>{provider.clientCount} 客户端</span>{provider.status && <span>{provider.status.startsWith("running:") ? `sing-box 运行中 · ${provider.status.slice(8)}` : provider.status.startsWith("stopped:") ? `sing-box 已停止 · ${provider.status.slice(8)}` : provider.status}</span>}<span>{provider.lastSyncAt ? `同步于 ${new Date(provider.lastSyncAt).toLocaleString("zh-CN", { hour12: false })}` : "尚未同步"}</span></div></div><Status tone={provider.lastError ? "bad" : provider.lastSuccessAt ? "ok" : "warning"}>{provider.lastError ? "连接异常" : provider.lastSuccessAt ? "连接正常" : "待检查"}</Status><div className="provider-head-actions">
           <Button icon={RefreshCw} onClick={() => test(provider)} disabled={!!busy}>{busy === `test:${provider.id}` ? "检查中…" : "检查"}</Button>
           <Button icon={RefreshCw} variant="primary" onClick={() => inspect(provider)} disabled={!!busy}>{busy === `sync:${provider.id}` ? "正在读取…" : "同步"}</Button>
+          <Button icon={Globe2} onClick={() => identifyRegions(provider)} disabled={!!busy || !providerNodes.length}>{busy === `geo:${provider.id}` ? "识别中…" : "识别地区"}</Button>
           <a className="icon-button" aria-label="打开原面板" title="打开原面板" href={provider.baseUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} /></a>
           <IconButton label="编辑连接" onClick={() => setEditor(provider)}><Edit3 size={16} /></IconButton>
           <IconButton label="删除连接" onClick={() => remove(provider)}><Trash2 size={16} /></IconButton>
@@ -3854,7 +3857,7 @@ function Providers({ state, setState, notify, onNavigate }) {
         {isExpanded && <div className="provider-node-list" role="region" aria-label={`${provider.name} 已同步节点`}>
           <div className="provider-node-head"><span>节点</span><span>协议 / 地址</span><span>远端来源</span><span>状态</span><span /></div>
           {providerNodes.map((node) => <div className="provider-node-row" key={node.id}>
-            <div><strong>{node.name}</strong>{node.remoteName && node.remoteName !== node.name && <small>远端：{node.remoteName}</small>}</div>
+            <div><strong>{flag(inferNodeCountryCode(node))} {inferNodeCountryCode(node) || "--"} · {node.name}</strong>{node.remoteName && node.remoteName !== node.name && <small>远端：{node.remoteName}</small>}{node.geo?.organization && <small>{node.geo.asn} · {node.geo.organization}</small>}</div>
             <div><span className={`protocol ${node.protocol === "nowhere" ? "special" : ""}`}>{node.protocol}</span><small>{hostFromUri(node)}</small></div>
             <div><span>{node.remoteClientName || `${provider.type === "2s-ui" ? "2S-UI" : "S-UI"} 客户端`}</span><small>{node.remoteInboundName || "分享链接"}</small></div>
             <div><Status tone={node.providerMissing ? "bad" : node.enabled ? "ok" : "warning"}>{node.providerMissing ? "远端已移除" : node.enabled ? "可输出" : "已停用"}</Status></div>
@@ -3867,7 +3870,7 @@ function Providers({ state, setState, notify, onNavigate }) {
       {!!state.providers?.length && !visibleProviders.length && <Empty icon={Search} title="没有匹配结果">换一个面板、节点或协议关键词。</Empty>}
     </div>
     <Modal open={!!editor} title={editor?.id ? "编辑面板连接" : "连接专业面板"} eyebrow="面板连接" onClose={() => !busy && setEditor(null)}>
-      <div className="form-grid"><Field label="显示名称"><input value={form.name || ""} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="例如：东京 2S-UI" /></Field><Field label="面板类型"><select value={form.type || "2s-ui"} onChange={(event) => setForm({ ...form, type: event.target.value })}><option value="2s-ui">2S-UI（推荐）</option><option value="s-ui">S-UI（兼容）</option></select></Field><Field label="面板根地址" wide hint="填写浏览器中打开面板的根地址，可包含面板路径；末尾不要手动添加 /apiv2。"><input type="url" value={form.baseUrl || ""} onChange={(event) => setForm({ ...form, baseUrl: event.target.value })} placeholder="https://panel.example.com/app" /></Field><Field label={form.hasToken ? "替换 API Token（可留空）" : "API Token"} wide hint="在面板设置中创建；这里只保存到服务端私有文件。"><input type="password" autoComplete="new-password" value={form.token || ""} onChange={(event) => setForm({ ...form, token: event.target.value })} placeholder={form.hasToken ? "留空保留现有 Token" : "Token"} /></Field></div>
+      <div className="form-grid"><Field label="显示名称"><input value={form.name || ""} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="例如：东京 2S-UI" /></Field><Field label="面板类型"><select value={form.type || "2s-ui"} onChange={(event) => setForm({ ...form, type: event.target.value })}><option value="2s-ui">2S-UI（推荐）</option><option value="s-ui">S-UI（兼容）</option></select></Field><Field label="面板根地址" wide hint="填写浏览器中打开面板的根地址，可包含面板路径；末尾不要手动添加 /apiv2。"><input type="url" value={form.baseUrl || ""} onChange={(event) => setForm({ ...form, baseUrl: event.target.value })} placeholder="https://panel.example.com/app" /></Field><Field label={form.hasToken ? "替换 API Token（可留空）" : "API Token"} wide hint="在面板设置中创建；这里只保存到服务端私有文件。"><SecretInput autoComplete="new-password" value={form.token || ""} onChange={(event) => setForm({ ...form, token: event.target.value })} placeholder={form.hasToken ? "留空保留现有 Token" : "Token"} /></Field></div>
       <div className="dialog-actions"><DraftStatus onDiscard={() => { clearSessionDraft(providerDraftKey); setEditor(null); }}>草稿已保留（Token 除外）</DraftStatus><Button onClick={() => setEditor(null)}>取消</Button><Button icon={Save} variant="primary" onClick={save} disabled={busy === "save" || !form.name?.trim() || !form.baseUrl?.trim() || (!form.hasToken && !form.token?.trim())}>{busy === "save" ? "保存中…" : "保存连接"}</Button></div>
     </Modal>
     <Modal open={!!preview} title={`同步预览 · ${preview?.provider.name || ""}`} eyebrow="同步确认" onClose={() => !busy && setPreview(null)} size="large">
@@ -4147,6 +4150,7 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
   const [onboardingEndpoint, setOnboardingEndpoint] = useState("");
   const [onboardingPlatform, setOnboardingPlatform] = useState("linux");
   const [onboardingResetDay, setOnboardingResetDay] = useState(1);
+  const [profileBusy, setProfileBusy] = useState(false);
   const boundClientIds = new Set(state.machines.map((machine) => machine.monitorClientId).filter(Boolean));
   const unboundClients = Object.values(clients).filter((client) => !boundClientIds.has(client.uuid));
   const machineModels = state.machines.map((machine) => {
@@ -4223,6 +4227,20 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
         },
         "服务器已删除",
       );
+  };
+  const inspectIpProfile = async () => {
+    if (!selectedModel?.client || profileBusy) return;
+    setProfileBusy(true);
+    try {
+      const otp = me?.two_factor_enabled ? prompt("请输入本次目标机检测的两步验证码") || "" : "";
+      if (me?.two_factor_enabled && !otp) return;
+      const spec = await rpc("proxyConsole:prepareMachineIpProfile", { machineId: selectedMachine.id });
+      const task = await executeTask(spec.clientId, spec.command, otp);
+      if (Number(task.exit_code) !== 0) throw new Error(task.result || "IP 检测未完成");
+      await rpc("proxyConsole:recordMachineIpProfile", { machineId: selectedMachine.id, output: task.result });
+      await onRefresh(); notify("IP 与服务可用性检测已更新");
+    } catch (error) { notify(error.message, true); }
+    finally { setProfileBusy(false); }
   };
   return (
     <section className="machines-panel">
@@ -4301,6 +4319,14 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
               })}
             </div>
           </article>
+          <article className="ip-profile-card dashboard-card">
+            <header><span>IP QUALITY / SERVICE ACCESS</span><b>{selectedMachine?.ipProfile?.checkedAt ? new Date(selectedMachine.ipProfile.checkedAt).toLocaleDateString("zh-CN") : "NOT TESTED"}</b></header>
+            <div className="ip-profile-main">
+              <div><span>出口位置</span><strong>{selectedMachine?.ipProfile?.geo || `${flag(selectedMachine?.countryCode)} ${selectedMachine?.countryCode || "待检测"}`}</strong><small>{selectedMachine?.ipProfile?.risk || "在目标 VPS 上运行固定版本的检测器"}</small></div>
+              <div className="ip-profile-services">{(selectedMachine?.ipProfile?.results || []).filter((item) => ["STREAM", "AI"].includes(item.category)).slice(0, 8).map((item) => <span key={`${item.category}:${item.name}`} className={`profile-${String(item.status).toLowerCase()}`}><b>{item.name}</b><small>{item.status}{item.region ? ` · ${item.region}` : ""}</small></span>)}{!selectedMachine?.ipProfile?.results?.some((item) => ["STREAM", "AI"].includes(item.category)) && <p>运行一次检测后，在这里汇总流媒体与 AI 服务可用性。</p>}</div>
+            </div>
+            <footer><Button icon={ShieldCheck} variant="primary" onClick={inspectIpProfile} disabled={profileBusy || !selectedModel?.client}>{profileBusy ? "检测中，可能需要约一分钟…" : selectedMachine?.ipProfile ? "重新检测" : "运行检测"}</Button><span>结果仅代表当前出口与检测时刻</span></footer>
+          </article>
         </div>
         {selectedModel?.client && <HostServiceControls machine={selectedMachine} me={me} serviceStates={serviceStates} refreshServices={refreshServices} serviceBusy={serviceBusy} notify={notify} />}
         <div className="operation-grid">
@@ -4358,7 +4384,7 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
       />
       <Modal open={onboarding} title="接入新 VPS" eyebrow="Agent 自动注册" onClose={() => setOnboarding(false)} size="large">
         <ol className="onboarding-steps"><li className="active"><strong>1</strong><span>生成命令</span></li><li><strong>2</strong><span>在 VPS 执行</span></li><li><strong>3</strong><span>等待上线</span></li><li><strong>4</strong><span>完善资料</span></li></ol>
-        <div className="form-grid onboarding-form"><Field label="Komari 地址" wide hint="已自动使用当前站点；若 Agent 访问的是另一个公网域名，可在这里修改。"><input type="url" value={onboardingEndpoint} onChange={(event) => setOnboardingEndpoint(event.target.value)} /></Field><Field label="系统"><select value={onboardingPlatform} onChange={(event) => setOnboardingPlatform(event.target.value)}><option value="linux">Linux / macOS</option><option value="windows">Windows</option></select></Field><Field label="流量重置日" hint="Agent 按此日期重新累计服务器月流量。"><input type="number" min="1" max="31" value={onboardingResetDay} onChange={(event) => setOnboardingResetDay(Math.min(31, Math.max(1, Number(event.target.value) || 1)))} /></Field><Field label="自动发现密钥" wide hint="从 Komari 的 Agent 自动发现设置复制；仅用于生成下方命令，不会保存。"><input type="password" autoComplete="off" value={onboardingKey} onChange={(event) => setOnboardingKey(event.target.value)} placeholder="粘贴 Auto Discovery Key" /></Field></div>
+        <div className="form-grid onboarding-form"><Field label="Komari 地址" wide hint="已自动使用当前站点；若 Agent 访问的是另一个公网域名，可在这里修改。"><input type="url" value={onboardingEndpoint} onChange={(event) => setOnboardingEndpoint(event.target.value)} /></Field><Field label="系统"><select value={onboardingPlatform} onChange={(event) => setOnboardingPlatform(event.target.value)}><option value="linux">Linux / macOS</option><option value="windows">Windows</option></select></Field><Field label="流量重置日" hint="Agent 按此日期重新累计服务器月流量。"><input type="number" min="1" max="31" value={onboardingResetDay} onChange={(event) => setOnboardingResetDay(Math.min(31, Math.max(1, Number(event.target.value) || 1)))} /></Field><Field label="自动发现密钥" wide hint="从 Komari 的 Agent 自动发现设置复制；仅用于生成下方命令，不会保存。"><SecretInput autoComplete="off" value={onboardingKey} onChange={(event) => setOnboardingKey(event.target.value)} placeholder="粘贴 Auto Discovery Key" /></Field></div>
         <div className="onboarding-command"><div><strong>安装命令</strong><span>复制后在目标 VPS 的管理员终端执行</span></div><textarea readOnly value={onboardingKey.trim() && onboardingEndpoint.trim() ? onboardingCommand : "填写 Komari 地址和自动发现密钥后生成"} aria-label="Agent 安装命令" /><div><a href="https://komari-document.pages.dev/install/agent-ad" target="_blank" rel="noreferrer">查看 Komari 官方说明 <ExternalLink size={13} /></a><Button icon={Copy} variant="primary" disabled={!onboardingKey.trim() || !onboardingEndpoint.trim()} onClick={() => { navigator.clipboard.writeText(onboardingCommand); notify("Agent 安装命令已复制"); }}>复制命令</Button></div></div>
         <div className="onboarding-next"><Activity size={17} /><div><strong>命令执行后等待 Agent 上线</strong><span>刷新后可直接补充地区与服务商，无需切换页面。</span></div><Button icon={RefreshCw} onClick={onRefresh}>刷新 Agent</Button></div>
         <div className="dialog-actions"><Button onClick={() => setOnboarding(false)}>完成</Button></div>
@@ -4623,6 +4649,7 @@ function duration(value) {
   return days ? `${days} 天 ${hours} 小时` : hours ? `${hours} 小时 ${minutes} 分` : `${minutes} 分钟`;
 }
 function TelemetryTrend({ points }) {
+  const [activeIndex, setActiveIndex] = useState(-1);
   if (points.length < 2) return <div className="telemetry-empty">等待下一次采样后显示速率趋势</div>;
   const width = 640; const height = 150; const padX = 10; const padTop = 16; const padBottom = 24;
   const maximum = Math.max(1, ...points.flatMap((point) => [point.up, point.down]));
@@ -4630,24 +4657,35 @@ function TelemetryTrend({ points }) {
   const line = (key) => points.map((point, index) => `${padX + index * (width - padX * 2) / Math.max(1, points.length - 1)},${padTop + chartHeight - point[key] / maximum * chartHeight}`).join(" ");
   const firstTime = new Date(points[0].observedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const lastTime = new Date(points.at(-1).observedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const active = points[activeIndex];
+  const selectPoint = (event) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / Math.max(1, bounds.width)));
+    setActiveIndex(Math.round(ratio * (points.length - 1)));
+  };
   return <div className="telemetry-chart">
     <div className="telemetry-legend"><span className="up"><i />上传 {bytes(points.at(-1).up, true)}</span><span className="down"><i />下载 {bytes(points.at(-1).down, true)}</span><small>峰值 {bytes(maximum, true)}</small></div>
-    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Nowhere 最近上传和下载速率趋势">
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Nowhere 最近上传和下载速率趋势" onPointerMove={selectPoint} onPointerDown={selectPoint} onPointerLeave={(event) => { if (event.pointerType !== "touch") setActiveIndex(-1); }}>
       {[0, .5, 1].map((ratio) => <line className="grid" key={ratio} x1={padX} x2={width - padX} y1={padTop + chartHeight * ratio} y2={padTop + chartHeight * ratio} />)}
       <polyline className="up" points={line("up")} />
       <polyline className="down" points={line("down")} />
       <circle className="up" cx={width - padX} cy={padTop + chartHeight - points.at(-1).up / maximum * chartHeight} r="3" />
       <circle className="down" cx={width - padX} cy={padTop + chartHeight - points.at(-1).down / maximum * chartHeight} r="3" />
+      {active && <line className="cursor" x1={padX + activeIndex * (width - padX * 2) / Math.max(1, points.length - 1)} x2={padX + activeIndex * (width - padX * 2) / Math.max(1, points.length - 1)} y1={padTop} y2={padTop + chartHeight} />}
       <text x={padX} y={height - 5}>{firstTime}</text><text textAnchor="end" x={width - padX} y={height - 5}>{lastTime}</text>
     </svg>
+    {active && <output className="telemetry-tooltip" style={{ left: `${(activeIndex / Math.max(1, points.length - 1)) * 100}%` }}><b>{new Date(active.observedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</b><span>↑ {bytes(active.up, true)}</span><span>↓ {bytes(active.down, true)}</span></output>}
   </div>;
 }
 function TelemetrySparkline({ points }) {
+  const [activeIndex, setActiveIndex] = useState(-1);
   if (points.length < 2) return <span className="telemetry-spark-empty">正在积累趋势</span>;
   const values = points.slice(-20); const width = 112; const height = 28;
   const maximum = Math.max(1, ...values.flatMap((point) => [point.up, point.down]));
   const line = (key) => values.map((point, index) => `${index * width / Math.max(1, values.length - 1)},${height - 2 - point[key] / maximum * (height - 4)}`).join(" ");
-  return <svg className="telemetry-sparkline" viewBox={`0 0 ${width} ${height}`} aria-hidden="true"><polyline className="up" points={line("up")} /><polyline className="down" points={line("down")} /></svg>;
+  const active = values[activeIndex];
+  const selectPoint = (event) => { const bounds = event.currentTarget.getBoundingClientRect(); setActiveIndex(Math.round(Math.max(0, Math.min(1, (event.clientX - bounds.left) / Math.max(1, bounds.width))) * (values.length - 1))); };
+  return <span className="telemetry-spark-wrap"><svg className="telemetry-sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Nowhere 速率趋势，可移动指针查看数值" onPointerMove={selectPoint} onPointerDown={selectPoint} onPointerLeave={(event) => { if (event.pointerType !== "touch") setActiveIndex(-1); }}><polyline className="up" points={line("up")} /><polyline className="down" points={line("down")} />{active && <line className="cursor" x1={activeIndex * width / Math.max(1, values.length - 1)} x2={activeIndex * width / Math.max(1, values.length - 1)} y1="0" y2={height} />}</svg>{active && <output><b>{new Date(active.observedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</b><span>↑ {bytes(active.up, true)}　↓ {bytes(active.down, true)}</span></output>}</span>;
 }
 function TelemetryRefreshControl({ value, onChange }) {
   return <label className="telemetry-refresh-control"><span>前台采样</span><select value={value} onChange={(event) => onChange(Number(event.target.value))}><option value={3000}>3 秒</option><option value={5000}>5 秒</option><option value={10000}>10 秒</option><option value={0}>暂停</option></select></label>;
@@ -4753,6 +4791,8 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
   const [selectedPresetId, setSelectedPresetId] = useState("");
   const [form, setForm] = useState({});
   const [singForm, setSingForm] = useState({});
+  const [formErrors, setFormErrors] = useState({});
+  const [singFormErrors, setSingFormErrors] = useState({});
   const [preview, setPreview] = useState(null);
   const [singPreview, setSingPreview] = useState(null);
   const [busy, setBusy] = useState(() => new Set());
@@ -4869,7 +4909,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
     try { await navigator.clipboard.writeText(value); notify(`${label}已复制`); }
     catch (_) { notify("复制失败", true); }
   };
-  const update = (key, value) => { setForm((old) => ({ ...old, [key]: value })); setPreview(null); };
+  const update = (key, value) => { setForm((old) => ({ ...old, [key]: value })); setFormErrors((old) => ({ ...old, [key]: "", port: ["tcpPort", "udpPort"].includes(key) ? "" : old.port })); setPreview(null); };
   const updateSing = (key, value) => { setSingForm((old) => {
     const next = { ...old, [key]: value };
     if ((key === "protocol" && value === "shadowsocks") || (key === "method" && next.protocol === "shadowsocks")) {
@@ -4877,7 +4917,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       if (next.method === "2022-blake3-aes-256-gcm") next.password = next.shadowsocks256;
     }
     return next;
-  }); setSingPreview(null); };
+  }); setSingFormErrors((old) => ({ ...old, [key]: "", port: key === "port" ? "" : old.port })); setSingPreview(null); };
   const selectSingTemplate = (templateId) => {
     const template = visiblePresets.find((item) => item.id === templateId);
     if (!template) return;
@@ -4992,22 +5032,28 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
   const create = async () => {
     const busyKey = "nowhere:create"; if (hasBusy(busyKey)) return;
     const otp = operationOtp(); if (otp === null) return;
+    let draftId = ""; setFormErrors({});
     beginBusy(busyKey);
     try {
       await rpc("proxyConsole:previewManagedNowhere", { input: form });
       const draft = await rpc("proxyConsole:createManagedNowhereDraft", { input: form });
+      draftId = draft.instanceId;
       setState(draft.state);
       await executeManaged("nowhere", draft.instanceId, "preflight", otp);
       await executeManaged("nowhere", draft.instanceId, "create", otp);
       clearSessionDraft("deploy:nowhere");
       setEditor(false); setRecentInstanceId(draft.instanceId); notify("Nowhere 托管实例已创建，尚未启动");
-    } catch (error) { notify(error.message, true); }
+    } catch (error) {
+      if (draftId) { try { setState(await rpc("proxyConsole:discardManagedNowhereDraft", { instanceId: draftId })); } catch (_) {} }
+      if (/port|端口|address already in use/i.test(error.message)) setFormErrors({ port: "该端口已被目标机上的其他进程占用，请更换端口后重试。" });
+      notify(error.message, true);
+    }
     finally { endBusy(busyKey); }
   };
   const createSing = async () => {
     const busyKey = "sing:create"; if (hasBusy(busyKey)) return;
     const otp = operationOtp(); if (otp === null) return;
-    beginBusy(busyKey);
+    setSingFormErrors({}); beginBusy(busyKey);
     try {
       await rpc("proxyConsole:previewManagedSingBox", { input: singForm });
       const spec = await rpc("proxyConsole:prepareManagedSingBoxCreate", { input: singForm, requestId: crypto.randomUUID() });
@@ -5017,7 +5063,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       if (!result.ok) throw new Error(MANAGED_ERROR[result.error] || result.error || "创建失败");
       clearSessionDraft("deploy:sing-box");
       setSingEditor(false); setRecentInstanceId(spec.instanceId); notify("sing-box 托管实例已创建，尚未启动");
-    } catch (error) { notify(error.message, true); }
+    } catch (error) { if (/port|端口|address already in use/i.test(error.message)) setSingFormErrors({ port: "该端口已被目标机上的其他进程占用，请更换端口后重试。" }); notify(error.message, true); }
     finally { endBusy(busyKey); }
   };
   const act = async (kind, instance, action) => {
@@ -5338,7 +5384,8 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       <p>修改仅应用到此托管实例。运行中的实例会重启；停止的实例保持停止。保存失败会尝试恢复旧配置，成功后同步订阅链接。</p>
       {configEdit && <div className="form-grid">
         <Field label="节点名称" wide><input autoFocus value={configEdit.values.name || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, name: event.target.value } }))} /></Field>
-        {[["publicHost", "公网域名或 IP"], ["listenHost", "监听地址"], ["key", "共享密钥", "password"], ["rate", "上传限速 Mbps", "number"], ["etar", "下载限速 Mbps", "number"]].map(([key, label, type]) => <Field key={key} label={label}><input type={type || "text"} value={configEdit.values[key] ?? ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, [key]: type === "number" ? Number(event.target.value) : event.target.value } }))} /></Field>)}
+        {[["publicHost", "公网域名或 IP"], ["listenHost", "监听地址"], ["rate", "上传限速 Mbps", "number"], ["etar", "下载限速 Mbps", "number"]].map(([key, label, type]) => <Field key={key} label={label}><input type={type || "text"} value={configEdit.values[key] ?? ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, [key]: type === "number" ? Number(event.target.value) : event.target.value } }))} /></Field>)}
+        <Field label="共享密钥"><SecretInput value={configEdit.values.key || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, key: event.target.value } }))} /></Field>
         <Field label="TCP Carrier 端口"><input type="number" min="0" max="65535" value={configEdit.values.tcpPort || 0} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, tcpPort: Number(event.target.value) } }))} /></Field><Field label="UDP Carrier 端口"><input type="number" min="0" max="65535" value={configEdit.values.udpPort || 0} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, udpPort: Number(event.target.value) } }))} /></Field><Field label="TCP Carrier"><select value={configEdit.values.tcpCarrier || "tcp"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, tcpCarrier: event.target.value } }))}><option value="tcp">TCP · 自动地址族</option><option value="tcp4">TCP · IPv4</option><option value="tcp6">TCP · IPv6</option></select></Field><Field label="UDP Carrier"><select value={configEdit.values.udpCarrier || "udp"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, udpCarrier: event.target.value } }))}><option value="udp">UDP · 自动地址族</option><option value="udp4">UDP · IPv4</option><option value="udp6">UDP · IPv6</option></select></Field><Field label="Morph"><select value={configEdit.values.morph || 0} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, morph: Number(event.target.value) } }))}><option value={0}>关闭</option><option value={1}>开启（两端必须一致）</option></select></Field><Field label="Transport 内存策略"><select value={configEdit.values.transportMemoryProfile || "throughput"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, transportMemoryProfile: event.target.value } }))}><option value="memory">节省内存</option><option value="balanced">平衡</option><option value="throughput">吞吐优先</option></select></Field>
         <Field label="TLS 与证书"><select value={certificateSelection(configEdit.values, "ephemeral")} onChange={event => selectCertificate((updater) => setConfigEdit((old) => ({ ...old, values: updater(old.values) })), event.target.value, "nowhere")}><option value="ephemeral">临时自签</option><option value="managed">为此实例生成稳定自签</option><option value="existing">手动填写已有 PEM</option>{!!usableCertificates(configEdit.values.machineId).length && <optgroup label="证书工作台">{certificateAssetOptions(configEdit.values.machineId)}</optgroup>}</select></Field>
         {!configEdit.values.certificateAssetId && configEdit.values.certificateMode === "managed" && <><Field label="证书名称"><input value={configEdit.values.certificateHost || configEdit.values.publicHost || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, certificateHost: event.target.value } }))} /></Field><Field label="有效天数"><input type="number" min="1" max="3650" value={configEdit.values.certificateDays || 825} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, certificateDays: Number(event.target.value) } }))} /></Field></>}
@@ -5354,10 +5401,10 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
         {[["publicHost", "公网域名或 IP"], ["listenHost", "监听地址"], ["port", "监听端口", "number"]].map(([key, label, type]) => <Field key={key} label={label}><input type={type || "text"} value={singConfigEdit.values[key] ?? ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, [key]: type === "number" ? Number(event.target.value) : event.target.value } }))} /></Field>)}
         <Field label="日志级别"><select value={singConfigEdit.values.log || "info"} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, log: event.target.value } }))}>{["debug", "info", "warn", "error"].map(value => <option key={value}>{value}</option>)}</select></Field>
         {["vless-reality", "vmess", "tuic"].includes(singConfigEdit.protocol) && <Field label="用户 UUID"><input value={singConfigEdit.values.uuid || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, uuid: event.target.value } }))} /></Field>}
-        {singConfigEdit.protocol === "vless-reality" && <><Field label="Reality SNI"><input value={singConfigEdit.values.serverName || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, serverName: event.target.value } }))} /></Field><Field label="握手目标"><input value={singConfigEdit.values.handshakeServer || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, handshakeServer: event.target.value } }))} /></Field><Field label="握手端口"><input type="number" value={singConfigEdit.values.handshakePort || 443} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, handshakePort: Number(event.target.value) } }))} /></Field><Field label="Flow"><select value={singConfigEdit.values.flow ?? "xtls-rprx-vision"} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, flow: event.target.value } }))}><option value="xtls-rprx-vision">Vision</option><option value="">不使用 Flow</option></select></Field><Field label="Reality 私钥"><input type="password" value={singConfigEdit.values.realityPrivateKey || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, realityPrivateKey: event.target.value } }))} /></Field><Field label="Reality 公钥"><input value={singConfigEdit.values.realityPublicKey || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, realityPublicKey: event.target.value } }))} /></Field><Field label="Short ID"><input value={singConfigEdit.values.shortId || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, shortId: event.target.value } }))} /></Field></>}
+        {singConfigEdit.protocol === "vless-reality" && <><Field label="Reality SNI"><input value={singConfigEdit.values.serverName || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, serverName: event.target.value } }))} /></Field><Field label="握手目标"><input value={singConfigEdit.values.handshakeServer || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, handshakeServer: event.target.value } }))} /></Field><Field label="握手端口"><input type="number" value={singConfigEdit.values.handshakePort || 443} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, handshakePort: Number(event.target.value) } }))} /></Field><Field label="Flow"><select value={singConfigEdit.values.flow ?? "xtls-rprx-vision"} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, flow: event.target.value } }))}><option value="xtls-rprx-vision">Vision</option><option value="">不使用 Flow</option></select></Field><Field label="Reality 私钥"><SecretInput autoComplete="off" value={singConfigEdit.values.realityPrivateKey || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, realityPrivateKey: event.target.value } }))} /></Field><Field label="Reality 公钥"><input value={singConfigEdit.values.realityPublicKey || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, realityPublicKey: event.target.value } }))} /></Field><Field label="Short ID"><input value={singConfigEdit.values.shortId || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, shortId: event.target.value } }))} /></Field></>}
         {singConfigEdit.protocol === "vmess" && <><Field label="传输"><select value={singConfigEdit.values.transport || "tcp"} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, transport: event.target.value } }))}><option value="tcp">TCP</option><option value="ws">WebSocket</option></select></Field>{singConfigEdit.values.transport === "ws" && <Field label="WebSocket 路径"><input value={singConfigEdit.values.wsPath || "/"} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, wsPath: event.target.value } }))} /></Field>}</>}
         {singConfigEdit.protocol === "shadowsocks" && <Field label="加密方式"><select value={singConfigEdit.values.method} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, method: event.target.value } }))}><option value="2022-blake3-aes-128-gcm">2022 BLAKE3 AES-128-GCM</option><option value="2022-blake3-aes-256-gcm">2022 BLAKE3 AES-256-GCM</option><option value="chacha20-ietf-poly1305">ChaCha20-Poly1305</option><option value="aes-128-gcm">AES-128-GCM</option></select></Field>}
-        {["shadowsocks", "trojan", "hysteria2", "tuic", "anytls"].includes(singConfigEdit.protocol) && <Field label="密码"><input type="password" value={singConfigEdit.values.password || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, password: event.target.value } }))} /></Field>}
+        {["shadowsocks", "trojan", "hysteria2", "tuic", "anytls"].includes(singConfigEdit.protocol) && <Field label="密码"><SecretInput autoComplete="off" value={singConfigEdit.values.password || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, password: event.target.value } }))} /></Field>}
         {["trojan", "hysteria2", "tuic", "anytls"].includes(singConfigEdit.protocol) && <><Field label="TLS SNI"><input value={singConfigEdit.values.serverName || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, serverName: event.target.value } }))} /></Field><Field label="证书来源"><select value={certificateSelection(singConfigEdit.values, "existing")} onChange={event => selectCertificate((updater) => setSingConfigEdit((old) => ({ ...old, values: updater(old.values) })), event.target.value, "sing-box")}>{singConfigEdit.values.certificateMode === "managed-self-signed" && <option value="managed-self-signed">保留实例自签证书</option>}<option value="existing">手动填写已有 PEM</option>{!!usableCertificates(singConfigEdit.values.machineId).length && <optgroup label="证书工作台">{certificateAssetOptions(singConfigEdit.values.machineId)}</optgroup>}</select></Field>{!singConfigEdit.values.certificateAssetId && singConfigEdit.values.certificateMode === "existing" && <><Field label="证书链路径"><input value={singConfigEdit.values.certificatePath || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, certificatePath: event.target.value } }))} /></Field><Field label="私钥路径"><input value={singConfigEdit.values.privateKeyPath || ""} onChange={event => setSingConfigEdit(old => ({ ...old, values: { ...old.values, privateKeyPath: event.target.value } }))} /></Field></>}</>}
       </div>}
       {singConfigError && <p role="alert" className="managed-error">{singConfigError}</p>}
@@ -5374,11 +5421,12 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
         <Field label="协议"><input value="NW2" disabled /></Field>
         <Field label="服务器"><select value={form.machineId || ""} onChange={(event) => { selectMachine(setForm, event.target.value, "Nowhere"); setPreview(null); }}><option value="">请选择</option>{boundMachines.map((machine) => <option key={machine.id} value={machine.id}>{flag(machine.countryCode)} {machine.name}</option>)}</select></Field>
         <Field label="公网域名或 IP" hint={form.publicHost ? "已从 Komari 自动带出，可手动覆盖" : "Komari 未提供公网地址，请手动填写"}><input value={form.publicHost || ""} onChange={(event) => update("publicHost", event.target.value)} placeholder="example.com 或公网 IP" /></Field>
-        <Field label="TCP Carrier 端口" hint="填 0 关闭 TCP"><input type="number" min="0" max="65535" value={form.tcpPort ?? form.port ?? 2077} onChange={(event) => { const value = Number(event.target.value); setForm((old) => ({ ...old, tcpPort: value, port: value || old.udpPort || old.port, network: value ? old.udpPort ? "mix" : "tcp" : "udp" })); setPreview(null); }} /></Field><Field label="UDP Carrier 端口" hint="填 0 关闭 UDP"><input type="number" min="0" max="65535" value={form.udpPort ?? form.port ?? 2077} onChange={(event) => { const value = Number(event.target.value); setForm((old) => ({ ...old, udpPort: value, port: old.tcpPort || value || old.port, network: value ? old.tcpPort ? "mix" : "udp" : "tcp" })); setPreview(null); }} /></Field>
+        <Field label="TCP Carrier 端口" hint="填 0 关闭 TCP" error={formErrors.port}><input type="number" min="0" max="65535" value={form.tcpPort ?? form.port ?? 2077} onChange={(event) => { const value = Number(event.target.value); setForm((old) => ({ ...old, tcpPort: value, port: value || old.udpPort || old.port, network: value ? old.udpPort ? "mix" : "tcp" : "udp" })); setFormErrors({}); setPreview(null); }} /></Field>
+        <Field label="UDP Carrier 端口" hint="填 0 关闭 UDP" error={formErrors.port}><input type="number" min="0" max="65535" value={form.udpPort ?? form.port ?? 2077} onChange={(event) => { const value = Number(event.target.value); setForm((old) => ({ ...old, udpPort: value, port: old.tcpPort || value || old.port, network: value ? old.tcpPort ? "mix" : "udp" : "tcp" })); setFormErrors({}); setPreview(null); }} /></Field>
         <Field label="监听地址"><input value={form.listenHost || "0.0.0.0"} onChange={(event) => update("listenHost", event.target.value)} /></Field>
         <Field label="客户端输出"><select value={form.client || "anywhere"} onChange={(event) => update("client", event.target.value)}><option value="anywhere">Anywhere</option><option value="both">Anywhere + Vector</option></select></Field>
         <Field label="TLS 与证书" hint={form.certificateAssetId ? "复用证书工作台资产，并输出固定 Pin" : form.certificateMode === "ephemeral" ? "每次启动由 Nowhere 生成临时证书" : form.certificateMode === "managed" ? "为此实例生成并长期保留" : "手动填写目标机 PEM 路径"}><select value={certificateSelection(form, "ephemeral")} onChange={(event) => { selectCertificate(setForm, event.target.value, "nowhere"); setPreview(null); }}><option value="ephemeral">临时自签</option><option value="managed">为此实例生成稳定自签</option><option value="existing">手动填写已有 PEM</option>{!!usableCertificates(form.machineId).length && <optgroup label="证书工作台">{certificateAssetOptions(form.machineId)}</optgroup>}</select></Field>
-        <Field label="共享密钥" wide><input type="password" value={form.key || ""} onChange={(event) => update("key", event.target.value)} /></Field>
+        <Field label="共享密钥" wide><SecretInput autoComplete="new-password" value={form.key || ""} onChange={(event) => update("key", event.target.value)} /></Field>
         {!form.certificateAssetId && form.certificateMode === "managed" && <><Field label="证书名称"><input value={form.certificateHost || form.publicHost || ""} onChange={(event) => update("certificateHost", event.target.value)} /></Field><Field label="有效天数"><input type="number" min="1" max="3650" value={form.certificateDays || 825} onChange={(event) => update("certificateDays", Number(event.target.value))} /></Field></>}
         {!form.certificateAssetId && form.certificateMode === "existing" && <><Field label="证书链路径"><input value={form.certificatePath || ""} onChange={(event) => update("certificatePath", event.target.value)} /></Field><Field label="私钥路径"><input value={form.privateKeyPath || ""} onChange={(event) => update("privateKeyPath", event.target.value)} /></Field></>}
       </div>
@@ -5414,7 +5462,8 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
         {singForm.binarySource === "download" && <Field label="下载版本" hint={singBoxReleases.loading ? "正在获取 sing-box 官方 Release…" : singBoxReleases.error ? "官方列表暂不可用，可使用缓存或手动指定" : `官方稳定版本 · 最新 ${singBoxReleases.latest}`}><div className="release-picker"><select aria-label="sing-box 下载版本" value={singBoxReleases.releases.some((release) => release.tag === singForm.downloadVersion) ? singForm.downloadVersion : "custom"} onChange={(event) => updateSing("downloadVersion", event.target.value === "custom" ? "" : event.target.value)}>{singBoxReleases.releases.map((release, index) => <option key={release.tag} value={release.tag}>{release.tag}{index === 0 ? " · 最新" : ""}{release.publishedAt ? ` · ${new Date(release.publishedAt).toLocaleDateString("zh-CN")}` : ""}</option>)}<option value="custom">手动指定版本…</option></select><Button icon={RefreshCw} onClick={() => loadSingBoxReleases(true)} disabled={singBoxReleases.loading}>{singBoxReleases.loading ? "获取中" : "刷新"}</Button></div>{!singBoxReleases.releases.some((release) => release.tag === singForm.downloadVersion) && <input aria-label="手动指定 sing-box 版本" value={singForm.downloadVersion || ""} onChange={(event) => updateSing("downloadVersion", event.target.value)} placeholder="例如 1.13.11" />}</Field>}
       </div>
       <div className="form-grid deploy-form"><Field label="节点名称" wide><input value={singForm.name || ""} onChange={(event) => updateSing("name", event.target.value)} /></Field><Field label="节点宿主"><select value={singForm.machineId || ""} onChange={(event) => { selectMachine(setSingForm, event.target.value, visiblePresets.find((item) => item.id === selectedPresetId)?.suffix || "节点"); setSingPreview(null); }}><option value="">请选择</option>{boundMachines.map((machine) => <option key={machine.id} value={machine.id}>{flag(machine.countryCode)} {machine.name}</option>)}</select></Field><Field label="快捷预设" hint={visiblePresets.find((item) => item.id === selectedPresetId)?.summary}><select value={selectedPresetId} onChange={(event) => selectSingTemplate(event.target.value)}><option value="" disabled>请选择预设</option>{visiblePresets.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="公网域名或 IP" hint={singForm.publicHost ? "已从 Komari 自动带出，可手动覆盖" : "Komari 未提供公网地址，请手动填写"}><input value={singForm.publicHost || ""} onChange={(event) => updateSing("publicHost", event.target.value)} /></Field><Field label="监听端口"><input type="number" min="1024" max="65535" value={singForm.port || 20888} onChange={(event) => updateSing("port", Number(event.target.value))} /></Field><Field label="监听地址"><input value={singForm.listenHost || "0.0.0.0"} onChange={(event) => updateSing("listenHost", event.target.value)} /></Field>{singForm.protocol === "vless-reality" && <><Field label="Reality SNI"><input value={singForm.serverName || ""} onChange={(event) => updateSing("serverName", event.target.value)} /></Field><Field label="握手目标"><input value={singForm.handshakeServer || ""} onChange={(event) => updateSing("handshakeServer", event.target.value)} /></Field><Field label="握手端口"><input type="number" value={singForm.handshakePort || 443} onChange={(event) => updateSing("handshakePort", Number(event.target.value))} /></Field><Field label="Flow"><select value={singForm.flow ?? "xtls-rprx-vision"} onChange={(event) => updateSing("flow", event.target.value)}><option value="xtls-rprx-vision">Vision</option><option value="">不使用 Flow</option></select></Field></>}{singForm.protocol === "vmess" && <><Field label="传输"><select value={singForm.transport || "tcp"} onChange={(event) => updateSing("transport", event.target.value)}><option value="tcp">TCP</option><option value="ws">WebSocket</option></select></Field>{singForm.transport === "ws" && <Field label="WebSocket 路径"><input value={singForm.wsPath || "/"} onChange={(event) => updateSing("wsPath", event.target.value)} /></Field>}</>}{singForm.protocol === "shadowsocks" && <Field label="加密方式"><select value={singForm.method || "2022-blake3-aes-128-gcm"} onChange={(event) => updateSing("method", event.target.value)}><option value="2022-blake3-aes-128-gcm">2022 BLAKE3 AES-128-GCM</option><option value="2022-blake3-aes-256-gcm">2022 BLAKE3 AES-256-GCM</option><option value="chacha20-ietf-poly1305">ChaCha20-Poly1305</option><option value="aes-128-gcm">AES-128-GCM</option></select></Field>}{["trojan", "hysteria2", "tuic", "anytls"].includes(singForm.protocol) && <><Field label="TLS SNI"><input value={singForm.serverName || ""} onChange={(event) => updateSing("serverName", event.target.value)} /></Field><Field label="证书方式" hint={singForm.certificateAssetId ? "复用证书工作台资产并输出 Pin" : singForm.certificateMode === "self-signed" ? "为此实例生成独立自签证书" : "手动填写目标机 PEM 路径"}><select value={certificateSelection(singForm, "self-signed")} onChange={(event) => { selectCertificate(setSingForm, event.target.value, "sing-box"); setSingPreview(null); }}><option value="self-signed">为此实例生成自签证书</option><option value="existing">手动填写已有 PEM</option>{!!usableCertificates(singForm.machineId).length && <optgroup label="证书工作台">{certificateAssetOptions(singForm.machineId)}</optgroup>}</select></Field>{!singForm.certificateAssetId && singForm.certificateMode === "existing" && <><Field label="证书链路径"><input value={singForm.certificatePath || ""} onChange={(event) => updateSing("certificatePath", event.target.value)} /></Field><Field label="私钥路径"><input value={singForm.privateKeyPath || ""} onChange={(event) => updateSing("privateKeyPath", event.target.value)} /></Field></>}</>}</div>
-      <details className="deploy-advanced"><summary>凭据与日志</summary><div className="form-grid"><Field label="用户 UUID"><input value={singForm.uuid || ""} onChange={(event) => updateSing("uuid", event.target.value)} /></Field>{["shadowsocks", "trojan", "hysteria2", "tuic", "anytls"].includes(singForm.protocol) && <Field label="密码"><input type="password" value={singForm.password || ""} onChange={(event) => updateSing("password", event.target.value)} /></Field>}{singForm.protocol === "vless-reality" && <><Field label="Reality 私钥"><input type="password" value={singForm.realityPrivateKey || ""} onChange={(event) => updateSing("realityPrivateKey", event.target.value)} /></Field><Field label="Reality 公钥"><input value={singForm.realityPublicKey || ""} onChange={(event) => updateSing("realityPublicKey", event.target.value)} /></Field><Field label="Short ID"><input value={singForm.shortId || ""} onChange={(event) => updateSing("shortId", event.target.value)} /></Field></>}<Field label="日志级别"><select value={singForm.log || "info"} onChange={(event) => updateSing("log", event.target.value)}>{["debug", "info", "warn", "error"].map((value) => <option key={value}>{value}</option>)}</select></Field></div></details>
+      {singFormErrors.port && <p className="field-error deploy-field-error" role="alert">监听端口：{singFormErrors.port}</p>}
+      <details className="deploy-advanced"><summary>凭据与日志</summary><div className="form-grid"><Field label="用户 UUID"><input value={singForm.uuid || ""} onChange={(event) => updateSing("uuid", event.target.value)} /></Field>{["shadowsocks", "trojan", "hysteria2", "tuic", "anytls"].includes(singForm.protocol) && <Field label="密码"><SecretInput value={singForm.password || ""} onChange={(event) => updateSing("password", event.target.value)} /></Field>}{singForm.protocol === "vless-reality" && <><Field label="Reality 私钥"><SecretInput value={singForm.realityPrivateKey || ""} onChange={(event) => updateSing("realityPrivateKey", event.target.value)} /></Field><Field label="Reality 公钥"><input value={singForm.realityPublicKey || ""} onChange={(event) => updateSing("realityPublicKey", event.target.value)} /></Field><Field label="Short ID"><input value={singForm.shortId || ""} onChange={(event) => updateSing("shortId", event.target.value)} /></Field></>}<Field label="日志级别"><select value={singForm.log || "info"} onChange={(event) => updateSing("log", event.target.value)}>{["debug", "info", "warn", "error"].map((value) => <option key={value}>{value}</option>)}</select></Field></div></details>
       {singPreview && <div className="deploy-preview"><Check size={17} /><div><strong>完整配置可生成</strong><p>{singPreview.summary.label} · {singPreview.summary.publicHost}:{singPreview.summary.port} · {singPreview.selfSigned ? "将生成独立自签证书，客户端会允许该自签证书" : "创建前将在目标机执行 sing-box check"}</p></div></div>}
       <div className="dialog-actions"><DraftStatus onDiscard={() => { clearSessionDraft("deploy:sing-box"); setSingEditor(false); }} /><Button onClick={() => setSingEditor(false)} disabled={singCreating}>取消</Button><Button icon={Search} onClick={previewSing} disabled={singCreating}>预览</Button><Button icon={Download} variant="primary" onClick={createSing} disabled={singCreating || !singForm.machineId || !singForm.publicHost || !singForm.name}>{singCreating ? "校验并创建中…" : "校验并创建（不启动）"}</Button></div>
     </Modal>

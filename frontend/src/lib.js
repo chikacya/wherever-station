@@ -42,6 +42,8 @@ function decodeLoose(value) {
 }
 
 export function inferNodeCountryCode(node = {}, machine = {}) {
+  const detected = String(node.countryCode || node.geo?.countryCode || "").trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(detected)) return detected;
   const assigned = String(machine.countryCode || "").trim().toUpperCase();
   if (/^[A-Z]{2}$/.test(assigned)) return assigned;
   const text = [node.name, node.remoteName, node.uri, ...(node.tags || [])]

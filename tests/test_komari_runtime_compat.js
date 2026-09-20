@@ -1,4 +1,9 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const runtimeSource = fs.readFileSync(path.join(__dirname, "..", "script.js"), "utf8");
+assert.doesNotMatch(runtimeSource, /require\(["']node:dns["']\)/, "Komari's embedded runtime does not provide node:dns");
 
 // Komari 1.4.3 exposes URL APIs through node:url, not as JavaScript globals.
 // Removing Node's globals here keeps managed configuration code honest about that contract.

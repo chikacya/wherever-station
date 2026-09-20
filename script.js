@@ -100,11 +100,17 @@ function cleanIpProfile(value) {
   const textMap = (input, keys, max = 160) => Object.fromEntries(keys.map((key) => [key, cleanText(input && input[key], max)]));
   return {
     ok: true, version: cleanText(value.version, 32), publicIp: cleanText(value.publicIp, 64), elapsedMs: Math.max(0, Number(value.elapsedMs) || 0), checkedAt: cleanIsoDate(value.checkedAt),
-    location: textMap(value.location, ["countryCode", "country", "region", "city", "timezone"]),
-    network: textMap(value.network, ["asn", "organization", "isp", "domain", "type", "range"]),
+    location: {
+      ...textMap(value.location, ["countryCode", "country", "region", "city", "timezone", "continent", "postalCode"]),
+      latitude: value.location && value.location.latitude !== null && value.location.latitude !== "" && Number.isFinite(Number(value.location.latitude)) ? Number(value.location.latitude) : null,
+      longitude: value.location && value.location.longitude !== null && value.location.longitude !== "" && Number.isFinite(Number(value.location.longitude)) ? Number(value.location.longitude) : null,
+    },
+    network: textMap(value.network, ["asn", "organization", "isp", "domain", "type", "range", "ipVersion"]),
     risk: { score: Number.isFinite(Number(value.risk && value.risk.score)) ? Number(value.risk.score) : null, level: ["low", "medium", "high", "unknown"].includes(value.risk && value.risk.level) ? value.risk.level : "unknown", proxy: cleanText(value.risk && value.risk.proxy, 16), residential: typeof (value.risk && value.risk.residential) === "boolean" ? value.risk.residential : null },
     attributes: (Array.isArray(value.attributes) ? value.attributes : []).slice(0, 12).map((item) => ({ label: cleanText(item.label, 32), value: cleanText(item.value, 80) })),
-    services: (Array.isArray(value.services) ? value.services : []).slice(0, 16).map((item) => ({ name: cleanText(item.name, 80), status: cleanText(item.status, 24), region: cleanText(item.region, 16), detail: cleanText(item.detail, 120) })),
+    signals: (Array.isArray(value.signals) ? value.signals : []).slice(0, 12).map((item) => ({ label: cleanText(item.label, 32), value: typeof item.value === "boolean" ? item.value : null, state: ["good", "warning", "danger", "neutral", "unknown"].includes(item.state) ? item.state : "unknown", detail: cleanText(item.detail, 80) })),
+    observations: (Array.isArray(value.observations) ? value.observations : []).slice(0, 8).map((item) => ({ source: cleanText(item.source, 32), ip: cleanText(item.ip, 64), countryCode: cleanText(item.countryCode, 8).toUpperCase(), city: cleanText(item.city, 80), latencyMs: Math.max(0, Number(item.latencyMs) || 0), matched: item.matched === true })),
+    services: (Array.isArray(value.services) ? value.services : []).slice(0, 16).map((item) => ({ name: cleanText(item.name, 80), status: cleanText(item.status, 24), region: cleanText(item.region, 16), detail: cleanText(item.detail, 120), latencyMs: Math.max(0, Number(item.latencyMs) || 0) })),
   };
 }
 function parseSubscriptionUserinfo(value, observedAt = new Date().toISOString()) {

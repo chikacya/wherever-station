@@ -4206,6 +4206,19 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
   const profileCountryCode = profile?.location?.countryCode || selectedMachine?.countryCode || "";
   const riskLabel = { low: "低风险", medium: "中等风险", high: "高风险", unknown: "待判断" }[profile?.risk?.level || "unknown"];
   const serviceLabel = { AVAILABLE: "可用", PARTIAL: "部分可用", BLOCKED: "受限", UNKNOWN: "未知" };
+  const serviceReady = (profile?.services || []).filter((item) => item.status === "AVAILABLE").length;
+  const observationMatched = (profile?.observations || []).filter((item) => item.matched).length;
+  const coordinateLabel = profile?.location?.latitude != null && profile?.location?.longitude != null ? `${Number(profile.location.latitude).toFixed(2)}, ${Number(profile.location.longitude).toFixed(2)}` : "待判断";
+  const networkFacts = profile ? [
+    ["ASN", profile.network?.asn || "待判断"],
+    ["运营组织", profile.network?.organization || "待判断"],
+    ["ISP", profile.network?.isp || "待判断"],
+    ["网络域", profile.network?.domain || "待判断"],
+    ["网段", profile.network?.range || "待判断"],
+    ["时区", profile.location?.timezone || "待判断"],
+    ["坐标", coordinateLabel],
+    ["IP 类型", profile.network?.ipVersion || "待判断"],
+  ] : [];
   useEffect(() => {
     if (!state.machines.length) {
       if (selectedId) setSelectedId("");
@@ -4336,11 +4349,32 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
             </div>
           </article>
           <article className="ip-profile-card dashboard-card">
-            <header><span>IP QUALITY / SERVICE ACCESS</span><b>{selectedMachine?.ipProfile?.checkedAt ? new Date(selectedMachine.ipProfile.checkedAt).toLocaleDateString("zh-CN") : "NOT TESTED"}</b></header>
-            <div className="ip-profile-main">
-              <div className="ip-profile-summary"><span>出口位置</span><strong>{profile ? `${flag(profileCountryCode)} ${profileLocation || profileCountryCode || "位置未知"}` : `${flag(selectedMachine?.countryCode)} ${selectedMachine?.countryCode || "待检测"}`}</strong><small>{profile ? `${profile.network?.asn || "ASN 未知"} · ${profile.network?.organization || profile.network?.isp || "运营商未知"}` : "从目标 VPS 直接检测，不经过面板转发"}</small>{profile && <div className="ip-profile-risk"><b className={`risk-${profile.risk?.level || "unknown"}`}>{profile.risk?.score == null ? "—" : Math.round(profile.risk.score)}</b><span>{riskLabel}<small>{profile.publicIp || "IP 未知"}</small></span></div>}</div>
-              <div className="ip-profile-detail"><div className="ip-profile-attributes">{(profile?.attributes || []).map((item) => <span key={item.label}><small>{item.label}</small><b>{item.value}</b></span>)}</div><div className="ip-profile-services">{(profile?.services || []).slice(0, 8).map((item) => <span key={item.name} className={`profile-${String(item.status).toLowerCase()}`} title={item.detail || undefined}><b>{item.name}</b><small>{serviceLabel[item.status] || item.status}{item.region ? ` · ${item.region}` : ""}</small></span>)}{!profile?.services?.length && <p>运行检测后，在这里显示风险、网络属性与常用服务可用性。</p>}</div></div>
-            </div>
+            <header><span>IP INTELLIGENCE / SERVICE ACCESS</span><b>{selectedMachine?.ipProfile?.checkedAt ? new Date(selectedMachine.ipProfile.checkedAt).toLocaleDateString("zh-CN") : "NOT TESTED"}</b></header>
+            {!profile ? <div className="ip-profile-empty"><ShieldCheck size={28} /><strong>检测 VPS 出口画像</strong><span>位置、网络身份、风险特征、多源出口与服务可用性</span></div> : <div className="ip-profile-grid">
+              <section className="ip-profile-identity">
+                <span>EXIT IDENTITY</span>
+                <strong>{flag(profileCountryCode)} {profileLocation || profileCountryCode || "位置未知"}</strong>
+                <small className="sensitive-value">{profile.publicIp || "IP 未知"}</small>
+                <div className="ip-profile-risk"><b className={`risk-${profile.risk?.level || "unknown"}`}>{profile.risk?.score == null ? "—" : Math.round(profile.risk.score)}</b><span>{riskLabel}<small>RISK SCORE</small></span></div>
+                <div className="ip-profile-identity-meta"><span>{profile.location?.continent || "—"}</span><span>{profile.location?.postalCode || "—"}</span></div>
+              </section>
+              <section className="ip-profile-network">
+                <header><span>NETWORK IDENTITY</span><b>{profile.network?.type || "UNCLASSIFIED"}</b></header>
+                <div>{networkFacts.map(([label, value]) => <span key={label}><small>{label}</small><b title={value}>{value}</b></span>)}</div>
+              </section>
+              <section className="ip-profile-signals">
+                <header><span>RISK SIGNALS</span><b>{(profile.signals || []).length} CHECKS</b></header>
+                <div>{(profile.signals || []).map((item) => <span key={item.label} className={`signal-${item.state || "unknown"}`} title={item.detail || undefined}><i /><small>{item.label}</small><b>{item.value === true ? "是" : item.value === false ? "否" : "未知"}</b></span>)}</div>
+              </section>
+              <section className="ip-profile-services">
+                <header><span>SERVICE ACCESS</span><b>{serviceReady}/{profile.services?.length || 0} AVAILABLE</b></header>
+                <div>{(profile.services || []).slice(0, 12).map((item) => <span key={item.name} className={`profile-${String(item.status).toLowerCase()}`} title={item.detail || undefined}><i /><b>{item.name}</b><small>{serviceLabel[item.status] || item.status}{item.region ? ` · ${item.region}` : ""}</small><em>{item.latencyMs ? `${item.latencyMs} ms` : "—"}</em></span>)}</div>
+              </section>
+              <section className="ip-profile-observations">
+                <header><span>EGRESS SOURCES</span><b>{observationMatched}/{profile.observations?.length || 0} MATCH</b></header>
+                <div>{(profile.observations || []).map((item) => <span key={item.source} className={item.matched ? "matched" : "diverged"}><i /><b>{item.source}</b><small>{flag(item.countryCode)} {item.city || item.countryCode || "未知"}</small><em className="sensitive-value">{item.ip || "无结果"}</em><time>{item.latencyMs ? `${item.latencyMs} ms` : "—"}</time></span>)}</div>
+              </section>
+            </div>}
             <footer><Button icon={ShieldCheck} variant="primary" onClick={inspectIpProfile} disabled={profileBusy || !selectedModel?.client}>{profileBusy ? "并发检测中，约 10–15 秒…" : selectedMachine?.ipProfile ? "重新检测" : "运行检测"}</Button><span>{profile?.elapsedMs ? `${(profile.elapsedMs / 1000).toFixed(1)} 秒 · ` : ""}结果仅代表当前出口与检测时刻</span></footer>
           </article>
         </div>

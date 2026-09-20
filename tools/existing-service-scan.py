@@ -165,21 +165,51 @@ def query_string(values):
 def certificate_readiness(tls):
     certificate_path = clipped(tls.get("certificate_path"), 512)
     key_path = clipped(tls.get("key_path"), 512)
-    result = {"path": certificate_path, "keyPath": key_path, "readable": False, "validTo": "", "sans": [], "keyMatch": None}
+    result = {"path": certificate_path, "keyPath": key_path, "readable": False, "validTo": "", "sans": [], "keyMatch": None, "selfSigned": None, "fingerprintSha256": ""}
     if not certificate_path or not key_path or not os.path.isfile(certificate_path) or not os.path.isfile(key_path) or not shutil.which("openssl"):
         return result if certificate_path or key_path else None
-    cert = run(["openssl", "x509", "-in", certificate_path, "-noout", "-enddate", "-ext", "subjectAltName"], 6)
+    cert = run(["openssl", "x509", "-in", certificate_path, "-noout", "-enddate", "-subject", "-issuer", "-fingerprint", "-sha256", "-ext", "subjectAltName"], 6)
     result["readable"] = cert.returncode == 0
+    subject = ""
+    issuer = ""
     for line in cert.stdout.splitlines():
         if line.startswith("notAfter="):
             result["validTo"] = clipped(line.split("=", 1)[1], 80)
+        if line.startswith("subject="):
+            subject = line.split("=", 1)[1].strip()
+        if line.startswith("issuer="):
+            issuer = line.split("=", 1)[1].strip()
+        if "Fingerprint=" in line:
+            result["fingerprintSha256"] = line.split("=", 1)[1].replace(":", "").strip().lower()
         if "DNS:" in line or "IP Address:" in line:
             result["sans"] = [clipped(part.replace("DNS:", "").replace("IP Address:", ""), 253) for part in line.strip().split(",") if part.strip()][:20]
+    if subject and issuer:
+        result["selfSigned"] = subject == issuer
     cert_key = run(["openssl", "x509", "-in", certificate_path, "-pubkey", "-noout"], 6)
     private_key = run(["openssl", "pkey", "-in", key_path, "-pubout"], 6)
     if cert_key.returncode == 0 and private_key.returncode == 0:
         result["keyMatch"] = hashlib.sha256(cert_key.stdout.encode()).digest() == hashlib.sha256(private_key.stdout.encode()).digest()
     return result
+
+
+def tls_client_settings(tls, protocol):
+    certificate = certificate_readiness(tls)
+    explicit_name = clipped(tls.get("server_name"), 253)
+    certificate_name = next((value for value in (certificate or {}).get("sans", []) if value and ":" not in value and not value.replace(".", "").isdigit()), "")
+    server_name = explicit_name or certificate_name or PUBLIC_HOST
+    if certificate and (not certificate.get("readable") or certificate.get("keyMatch") is not True):
+        return None, "证书或私钥无法读取，不能确认客户端 TLS 参数"
+    if not certificate and (tls.get("certificate") or tls.get("key")):
+        return None, "配置使用内联证书，暂时无法确认信任方式"
+    if not server_name:
+        return None, "缺少可确认的 TLS SNI"
+    query = {"sni": server_name}
+    if certificate and certificate.get("selfSigned"):
+        if protocol == "hysteria2" and certificate.get("fingerprintSha256"):
+            query["pinSHA256"] = certificate["fingerprintSha256"]
+        else:
+            query["insecure"] = "1"
+    return {"query": query, "certificate": certificate, "serverName": server_name}, ""
 
 
 def add_review(reviews, unit, source, inbound, reason):
@@ -237,6 +267,7 @@ def sing_box_candidates(unit, source, config, candidates, reviews):
         tls = inbound.get("tls") if isinstance(inbound.get("tls"), dict) else {}
         users = inbound.get("users") if isinstance(inbound.get("users"), list) else []
         made = []
+        candidate_certificate = None
         if protocol == "shadowsocks":
             entries = users or [inbound]
             for index, user in enumerate(entries):
@@ -277,13 +308,57 @@ def sing_box_candidates(unit, source, config, candidates, reviews):
                 if user.get("flow"):
                     params["flow"] = user.get("flow")
                 made.append((name, f"vless://{quote(uuid)}@{url_host(host)}:{port}?{query_string(params)}#{quote(name)}"))
+        elif tls.get("enabled") and protocol in ("vless", "vmess", "trojan", "hysteria2", "tuic", "anytls"):
+            tls_settings, tls_error = tls_client_settings(tls, protocol)
+            if tls_error:
+                add_review(reviews, unit, source, inbound, tls_error)
+                continue
+            candidate_certificate = tls_settings["certificate"]
+            transport = transport_query(inbound)
+            if protocol in ("vless", "vmess", "trojan") and transport.get("type") not in ("tcp", "ws"):
+                add_review(reviews, unit, source, inbound, f"{transport.get('type')} 传输暂时不能无损输出")
+                continue
+            for user in users:
+                name = user.get("name") or user.get("username") or tag
+                params = dict(tls_settings["query"])
+                if protocol == "vless":
+                    uuid = user.get("uuid")
+                    if not uuid:
+                        continue
+                    params.update(transport)
+                    params["security"] = "tls"
+                    if user.get("flow"):
+                        params["flow"] = user.get("flow")
+                    made.append((name, f"vless://{quote(uuid)}@{url_host(host)}:{port}?{query_string(params)}#{quote(name)}"))
+                elif protocol == "vmess":
+                    uuid = user.get("uuid")
+                    if not uuid:
+                        continue
+                    vmess = {"v": "2", "ps": name, "add": host, "port": str(port), "id": uuid, "aid": "0", "scy": "auto", "net": transport.get("type", "tcp"), "type": "none", "host": transport.get("host", ""), "path": transport.get("path", ""), "tls": "tls", "sni": tls_settings["serverName"]}
+                    made.append((name, "vmess://" + base64.b64encode(json.dumps(vmess, ensure_ascii=False, separators=(",", ":")).encode()).decode()))
+                elif protocol == "tuic":
+                    uuid = user.get("uuid")
+                    password = user.get("password")
+                    if not uuid or not password:
+                        continue
+                    params.update({"congestion_control": inbound.get("congestion_control") or "bbr", "udp_relay_mode": "native"})
+                    if tls.get("alpn"):
+                        params["alpn"] = tls.get("alpn")[0] if isinstance(tls.get("alpn"), list) else tls.get("alpn")
+                    made.append((name, f"tuic://{quote(uuid)}:{quote(password)}@{url_host(host)}:{port}?{query_string(params)}#{quote(name)}"))
+                else:
+                    password = user.get("password")
+                    if not password:
+                        continue
+                    if protocol == "hysteria2" and tls.get("alpn"):
+                        params["alpn"] = tls.get("alpn")[0] if isinstance(tls.get("alpn"), list) else tls.get("alpn")
+                    made.append((name, f"{protocol}://{quote(password)}@{url_host(host)}:{port}?{query_string(params)}#{quote(name)}"))
         else:
-            add_review(reviews, unit, source, inbound, "该入站包含 TLS 或高级参数，需要在原面板确认客户端配置")
+            add_review(reviews, unit, source, inbound, "该协议或高级参数暂时不能无损生成客户端 URI")
             continue
         if not made:
             add_review(reviews, unit, source, inbound, "配置中缺少可生成客户端链接的用户凭据")
         for index, (name, uri) in enumerate(made):
-            candidates.append({"id": stable_id(unit["unit"], source, tag, index, uri.split("#", 1)[0]), "kind": "sing-box", "protocol": protocol, "name": clipped(name, 160), "uri": uri, "source": source, "confidence": "ready", "evidence": [unit["unit"], source, f"inbound={tag}"]})
+            candidates.append({"id": stable_id(unit["unit"], source, tag, index, uri.split("#", 1)[0]), "kind": "sing-box", "protocol": protocol, "name": clipped(name, 160), "uri": uri, "source": source, "confidence": "ready", "certificate": candidate_certificate, "evidence": [unit["unit"], source, f"inbound={tag}"]})
 
 
 def discover_sing_box(unit, candidates, reviews):

@@ -272,7 +272,7 @@ async function main() {
     if (args.includes('--ui-connectivity')) {
       stage = 'ui-connectivity';
       await card.getByRole('button', { name: '测试连接', exact: true }).click();
-      await card.getByText(/^连接：通过/).waitFor({ timeout: 50000 });
+      await card.getByLabel('最近连接测试通过').waitFor({ timeout: 50000 });
       const latest = await rpc('proxyConsole:getState');
       const instance = latest.managedInstances.find(item => item.name === testName);
       if (instance?.connectivity?.status !== 'passed') throw new Error('UI connection check was not persisted');

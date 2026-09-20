@@ -173,9 +173,10 @@ th:first-child, td:first-child { width: 42px; text-align: center; }
 .managed-card dt { color: var(--muted); font-size: 10px; }
 .managed-card dd { margin: 2px 0 0; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
 .managed-error { margin: 0 0 11px; padding: 8px 10px; color: var(--danger); background: var(--danger-soft); border-radius: 7px; font-size: 12px; }
-.managed-connectivity { margin: 4px 0 11px; color: var(--muted); font-size: 11px; }
-.managed-connectivity.ok { color: var(--success); }
-.managed-connectivity.bad { color: var(--danger); }
+.managed-header-status { flex: none; display: flex; align-items: center; gap: 8px; }
+.connection-indicator { width: 29px; height: 29px; display: inline-grid; place-items: center; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 50%; }
+.connection-indicator.passed { color: var(--success); background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 28%, var(--border)); }
+.connection-indicator.failed { color: var(--danger); background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 28%, var(--border)); }
 .telemetry-glance { margin: 10px 0; padding: 9px 10px; display: grid; grid-template-columns: .7fr 1.25fr 112px auto; align-items: center; gap: 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
 .telemetry-glance > div { min-width: 0; display: grid; gap: 1px; }
 .telemetry-glance span, .telemetry-grid span { color: var(--muted); font-size: 10px; }
@@ -1597,8 +1598,16 @@ body, button, input, select, textarea { font-family: var(--sans); }
 .deploy-capabilities { margin-top: 18px; display: flex; gap: 6px; flex-wrap: wrap; }
 .deploy-capabilities span { padding: 6px 8px; color: var(--focus-muted); border: 1px solid color-mix(in srgb, var(--focus-text) 28%, transparent); font: 600 8px/1 var(--mono); letter-spacing: .07em; }
 .singbox-launch { grid-column: span 5; min-height: 236px; background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 34%, var(--border)); }
-.certificate-launch, .import-launch, .provider-launch { grid-column: span 4; }
+.certificate-launch, .import-launch, .discovery-launch, .provider-launch { grid-column: span 3; }
 .certificate-launch { background: color-mix(in srgb, var(--success) 7%, var(--panel)); }
+.discovery-launch { background: color-mix(in srgb, var(--primary) 5%, var(--panel)); }
+.discovery-machine-grid { display: grid; gap: 8px; }
+.discovery-machine-grid > button { width: 100%; min-width: 0; padding: 12px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; color: var(--text); background: var(--surface); border: 1px solid var(--border); text-align: left; transition: border-color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out); }
+.discovery-machine-grid > button:hover { background: var(--primary-soft); border-color: var(--primary); }
+.discovery-machine-grid > button > span { font-size: 20px; text-align: center; }
+.discovery-machine-grid > button > div { min-width: 0; display: grid; gap: 2px; }
+.discovery-machine-grid strong, .discovery-machine-grid small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.discovery-machine-grid small { color: var(--muted); font-size: 10px; }
 
 @media (hover: hover) and (pointer: fine) {
   .deploy-launch-card:hover:not(:disabled) { z-index: 1; transform: translateY(-3px); border-color: var(--primary); box-shadow: 0 12px 28px color-mix(in srgb, var(--primary) 14%, transparent); }
@@ -1608,13 +1617,13 @@ body, button, input, select, textarea { font-family: var(--sans); }
 
 @media (max-width: 1040px) {
   .nowhere-launch, .singbox-launch { grid-column: span 6; }
-  .certificate-launch { grid-column: span 12; }
+  .certificate-launch, .import-launch, .discovery-launch, .provider-launch { grid-column: span 6; }
 }
 @media (max-width: 840px) {
   .service-observatory { grid-column: 1 / -1; }
 }
 @media (max-width: 680px) {
-  .deploy-launch-card, .nowhere-launch, .singbox-launch, .certificate-launch, .import-launch, .provider-launch { grid-column: 1 / -1; min-height: 132px; padding: 18px; }
+  .deploy-launch-card, .nowhere-launch, .singbox-launch, .certificate-launch, .import-launch, .discovery-launch, .provider-launch { grid-column: 1 / -1; min-height: 132px; padding: 18px; }
   .nowhere-launch { min-height: 190px; }
   .nowhere-launch > strong { margin-top: 22px; }
   .service-observatory { min-height: 230px; padding: 20px; }

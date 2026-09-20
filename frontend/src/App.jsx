@@ -4031,7 +4031,86 @@ function TrafficPlanDialog({ model, onClose, onSave, notify }) {
   );
 }
 
-function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, me, onNavigate, serviceStates = {}, refreshServices, serviceBusy }) {
+function ExistingServiceDiscoveryDialog({ machine, state, clients, persist, notify, me, onClose }) {
+  const [model, setModel] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [selected, setSelected] = useState({});
+  useEffect(() => {
+    if (!machine) {
+      setModel(null);
+      setSelected({});
+      return;
+    }
+    setModel({ machine, publicHost: preferredPublicHost(clients[machine.monitorClientId]) || "", result: null });
+    setSelected({});
+  }, [machine, clients]);
+  const close = () => {
+    if (!busy) onClose();
+  };
+  const scan = async () => {
+    if (!model?.machine || busy) return;
+    const otp = me?.two_factor_enabled ? prompt("请输入本次只读发现的两步验证码") || "" : "";
+    if (me?.two_factor_enabled && !otp) return;
+    setBusy(true);
+    try {
+      const spec = await rpc("proxyConsole:prepareExistingServiceDiscovery", { machineId: model.machine.id, publicHost: model.publicHost.trim() });
+      const task = await executeTask(spec.clientId, spec.command, otp, 30000);
+      if (Number(task.exit_code) !== 0) throw new Error(task.result || "目标机扫描失败");
+      const result = await rpc("proxyConsole:parseExistingServiceDiscovery", { output: task.result });
+      setModel((current) => current ? { ...current, result } : current);
+      setSelected(Object.fromEntries(result.candidates.map((item) => [item.id, true])));
+      notify(`发现 ${result.units.length} 个服务、${result.candidates.length} 个可导入节点`);
+    } catch (error) { notify(error.message, true); }
+    finally { setBusy(false); }
+  };
+  const importSelected = async () => {
+    const candidates = (model?.result?.candidates || []).filter((item) => selected[item.id]);
+    if (!candidates.length) return;
+    setBusy(true);
+    try {
+      const parsed = await Promise.all(candidates.map((item) => rpc("proxyConsole:parseNodeUris", { text: item.uri })));
+      const existing = new Set(state.nodes.map((node) => node.uri.split("#", 1)[0]));
+      const added = [];
+      parsed.forEach((result, index) => {
+        const node = result.nodes?.[0]; const candidate = candidates[index];
+        if (!node || existing.has(node.uri.split("#", 1)[0])) return;
+        existing.add(node.uri.split("#", 1)[0]);
+        added.push({ id: randomId(), name: candidate.name || node.name, protocol: node.protocol, machineId: model.machine.id, uri: node.uri, enabled: true, tags: ["自动发现", candidate.kind === "nowhere" ? "Nowhere" : "sing-box"], source: "import", sourceId: "" });
+      });
+      if (!added.length) { notify("所选节点已存在或无法无损导入", true); return; }
+      await persist({ ...state, nodes: [...state.nodes, ...added] }, `已导入 ${added.length} 个发现节点`);
+      onClose();
+    } catch (error) { notify(error.message, true); }
+    finally { setBusy(false); }
+  };
+  const saveDrafts = async (items) => {
+    if (!items.length || busy) return;
+    setBusy(true);
+    try {
+      const existing = new Set((state.nodeDrafts || []).map((item) => item.id));
+      const createdAt = new Date().toISOString();
+      const drafts = items.map((item) => ({ id: `draft-${item.id}`, name: item.name, protocol: item.protocol, machineId: model.machine.id, kind: item.kind, source: item.source, reason: item.reason, evidence: item.evidence || [], repair: item.repair || {}, createdAt })).filter((item) => !existing.has(item.id));
+      if (!drafts.length) { notify("这些发现项已经保存在待修复列表中"); return; }
+      await persist({ ...state, nodeDrafts: [...(state.nodeDrafts || []), ...drafts] }, `已保存 ${drafts.length} 个待修复节点`);
+    } catch (error) { notify(error.message, true); }
+    finally { setBusy(false); }
+  };
+  return <Modal open={!!machine} title={`${model?.machine?.name || machine?.name || "服务器"} · 发现现有节点`} eyebrow="只读扫描" onClose={close} size="large">
+    <div className="discovery-intro"><Search size={17} /><div><strong>读取服务、进程和配置，不修改远端</strong><span>参数完整的节点可以直接导入；不能可靠推导的部分会保留为待补全草稿。</span></div></div>
+    <div className="discovery-controls"><Field label="公网域名或 IP（可选）" hint="Komari 有公网地址时会自动带出；留空仍可扫描。"><input value={model?.publicHost || ""} onChange={(event) => setModel((current) => current ? { ...current, publicHost: event.target.value, result: null } : current)} placeholder="example.com 或公网 IP" /></Field><Button icon={Search} variant="primary" disabled={busy || !model} onClick={scan}>{busy ? "正在只读扫描…" : "开始扫描"}</Button></div>
+    {model?.result && <div className="discovery-results">
+      <div className="discovery-summary"><span><strong>{model.result.units.length}</strong>服务</span><span><strong>{model.result.candidates.length}</strong>可导入</span><span><strong>{model.result.needsReview.filter((item) => item.confidence === "confirm").length}</strong>待确认</span><span><strong>{model.result.needsReview.filter((item) => item.confidence !== "confirm").length}</strong>草稿</span></div>
+      <details className="discovery-units"><summary>查看发现依据</summary>{model.result.units.map((unit) => <div key={unit.unit}><span className={`status ${unit.active === "active" ? "ok" : ""}`}><i />{unit.active}</span><strong>{unit.unit}</strong><small>{unit.adapter === "native-cli" ? `Nowhere 原生命令行${unit.binaryVersion ? ` · ${unit.binaryVersion}` : ""}` : unit.fragmentPath || "未找到 unit 文件"}</small>{unit.configPaths?.map((path) => <code key={path}>{path}</code>)}</div>)}</details>
+      <div className="discovery-candidates">{model.result.candidates.map((item) => <label key={item.id}><input type="checkbox" checked={selected[item.id] !== false} onChange={(event) => setSelected((current) => ({ ...current, [item.id]: event.target.checked }))} /><span className={`protocol ${item.protocol === "nowhere" ? "special" : ""}`}>{item.protocol}</span><div><strong>{item.name}</strong><small>{item.adapter === "native-cli" ? "Nowhere 原生发现" : item.source}</small>{item.certificate && <small>{item.certificate.readable && item.certificate.keyMatch ? "证书与私钥可用" : "证书需要检查"}</small>}</div><Status tone="ok">可导入</Status><IconButton label={`复制 ${item.name} URI`} onClick={(event) => { event.preventDefault(); navigator.clipboard.writeText(item.uri); notify("发现节点 URI 已复制"); }}><Copy size={15} /></IconButton></label>)}</div>
+      {!!model.result.needsReview.length && <details className="discovery-review" open><summary>{model.result.needsReview.length} 项可继续补全</summary><div className="discovery-review-actions"><span>保留为草稿后可在“节点”页补全；补全前不会进入订阅。</span><Button icon={Save} onClick={() => saveDrafts(model.result.needsReview)} disabled={busy}>全部保存为草稿</Button></div>{model.result.needsReview.map((item) => <div key={item.id}><span className="protocol">{item.protocol}</span><p><strong>{item.name}</strong><small>{item.reason}</small><code>{item.source}</code></p><Status tone={item.confidence === "confirm" ? "warning" : ""}>{item.confidence === "confirm" ? "待确认" : "草稿"}</Status><Button icon={Save} onClick={() => saveDrafts([item])} disabled={busy}>保留</Button></div>)}</details>}
+    </div>}
+    {!model?.result && !busy && <div className="discovery-empty">选择开始扫描；远端保持只读。</div>}
+    {busy && <div className="probe-progress"><span className="spinner" /><span>正在读取 systemd、进程参数和可访问的配置文件…</span></div>}
+    <div className="dialog-actions"><Button onClick={close} disabled={busy}>关闭</Button><Button icon={Import} variant="primary" onClick={importSelected} disabled={busy || !Object.values(selected).some(Boolean)}>导入所选 {Object.values(selected).filter(Boolean).length} 项</Button></div>
+  </Modal>;
+}
+
+function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, me, onNavigate, onDiscover, serviceStates = {}, refreshServices, serviceBusy }) {
   const [editor, setEditor] = useState(null);
   const [trafficPlanEditor, setTrafficPlanEditor] = useState(null);
   const [recentId, setRecentId] = useState("");
@@ -4041,9 +4120,6 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
   const [onboardingEndpoint, setOnboardingEndpoint] = useState("");
   const [onboardingPlatform, setOnboardingPlatform] = useState("linux");
   const [onboardingResetDay, setOnboardingResetDay] = useState(1);
-  const [discovery, setDiscovery] = useState(null);
-  const [discoveryBusy, setDiscoveryBusy] = useState(false);
-  const [discoverySelected, setDiscoverySelected] = useState({});
   const boundClientIds = new Set(state.machines.map((machine) => machine.monitorClientId).filter(Boolean));
   const unboundClients = Object.values(clients).filter((client) => !boundClientIds.has(client.uuid));
   const machineModels = state.machines.map((machine) => {
@@ -4121,58 +4197,6 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
         "服务器已删除",
       );
   };
-  const openDiscovery = (machine) => {
-    setDiscovery({ machine, publicHost: preferredPublicHost(clients[machine.monitorClientId]) || "", result: null });
-    setDiscoverySelected({});
-  };
-  const scanExisting = async () => {
-    if (!discovery?.machine || discoveryBusy) return;
-    const otp = me?.two_factor_enabled ? prompt("请输入本次只读发现的两步验证码") || "" : "";
-    if (me?.two_factor_enabled && !otp) return;
-    setDiscoveryBusy(true);
-    try {
-      const spec = await rpc("proxyConsole:prepareExistingServiceDiscovery", { machineId: discovery.machine.id, publicHost: discovery.publicHost.trim() });
-      const task = await executeTask(spec.clientId, spec.command, otp, 30000);
-      if (Number(task.exit_code) !== 0) throw new Error(task.result || "目标机扫描失败");
-      const result = await rpc("proxyConsole:parseExistingServiceDiscovery", { output: task.result });
-      setDiscovery((current) => current ? { ...current, result } : current);
-      setDiscoverySelected(Object.fromEntries(result.candidates.map((item) => [item.id, true])));
-      notify(`发现 ${result.units.length} 个服务、${result.candidates.length} 个可导入节点`);
-    } catch (error) { notify(error.message, true); }
-    finally { setDiscoveryBusy(false); }
-  };
-  const importDiscovered = async () => {
-    const candidates = (discovery?.result?.candidates || []).filter((item) => discoverySelected[item.id]);
-    if (!candidates.length) return;
-    setDiscoveryBusy(true);
-    try {
-      const parsed = await Promise.all(candidates.map((item) => rpc("proxyConsole:parseNodeUris", { text: item.uri })));
-      const existing = new Set(state.nodes.map((node) => node.uri.split("#", 1)[0]));
-      const added = [];
-      parsed.forEach((result, index) => {
-        const node = result.nodes?.[0]; const candidate = candidates[index];
-        if (!node || existing.has(node.uri.split("#", 1)[0])) return;
-        existing.add(node.uri.split("#", 1)[0]);
-        added.push({ id: randomId(), name: candidate.name || node.name, protocol: node.protocol, machineId: discovery.machine.id, uri: node.uri, enabled: true, tags: ["自动发现", candidate.kind === "nowhere" ? "Nowhere" : "sing-box"], source: "import", sourceId: "" });
-      });
-      if (!added.length) { notify("所选节点已存在或无法无损导入", true); return; }
-      await persist({ ...state, nodes: [...state.nodes, ...added] }, `已导入 ${added.length} 个发现节点`);
-      setDiscovery(null);
-    } catch (error) { notify(error.message, true); }
-    finally { setDiscoveryBusy(false); }
-  };
-  const saveDiscoveryDrafts = async (items) => {
-    if (!items.length || discoveryBusy) return;
-    setDiscoveryBusy(true);
-    try {
-      const existing = new Set((state.nodeDrafts || []).map((item) => item.id));
-      const createdAt = new Date().toISOString();
-      const drafts = items.map((item) => ({ id: `draft-${item.id}`, name: item.name, protocol: item.protocol, machineId: discovery.machine.id, kind: item.kind, source: item.source, reason: item.reason, evidence: item.evidence || [], repair: item.repair || {}, createdAt })).filter((item) => !existing.has(item.id));
-      if (!drafts.length) { notify("这些发现项已经保存在待修复列表中"); return; }
-      await persist({ ...state, nodeDrafts: [...(state.nodeDrafts || []), ...drafts] }, `已保存 ${drafts.length} 个待修复节点`);
-    } catch (error) { notify(error.message, true); }
-    finally { setDiscoveryBusy(false); }
-  };
   return (
     <section className="machines-panel">
       <div className="fleet-toolbar">
@@ -4230,7 +4254,7 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
             <footer className="selected-server-actions">
               <div className="selected-server-primary-actions">
                 <Button icon={Upload} variant="primary" onClick={() => onNavigate?.("deploy")} disabled={!selectedModel?.client}>在此部署</Button>
-                <Button icon={Search} onClick={() => openDiscovery(selectedMachine)} disabled={!selectedModel?.client}>发现节点</Button>
+                <Button icon={Search} onClick={() => onDiscover?.(selectedMachine)} disabled={!selectedModel?.client}>发现节点</Button>
                 <Button icon={RefreshCw} onClick={() => refreshServices(true, null, selectedMachine?.monitorClientId)} disabled={!selectedModel?.client || serviceBusy}>刷新状态</Button>
               </div>
               <div className="selected-server-secondary-actions">
@@ -4311,19 +4335,6 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
         <div className="onboarding-command"><div><strong>安装命令</strong><span>复制后在目标 VPS 的管理员终端执行</span></div><textarea readOnly value={onboardingKey.trim() && onboardingEndpoint.trim() ? onboardingCommand : "填写 Komari 地址和自动发现密钥后生成"} aria-label="Agent 安装命令" /><div><a href="https://komari-document.pages.dev/install/agent-ad" target="_blank" rel="noreferrer">查看 Komari 官方说明 <ExternalLink size={13} /></a><Button icon={Copy} variant="primary" disabled={!onboardingKey.trim() || !onboardingEndpoint.trim()} onClick={() => { navigator.clipboard.writeText(onboardingCommand); notify("Agent 安装命令已复制"); }}>复制命令</Button></div></div>
         <div className="onboarding-next"><Activity size={17} /><div><strong>命令执行后等待 Agent 上线</strong><span>刷新后可直接补充地区与服务商，无需切换页面。</span></div><Button icon={RefreshCw} onClick={onRefresh}>刷新 Agent</Button></div>
         <div className="dialog-actions"><Button onClick={() => setOnboarding(false)}>完成</Button></div>
-      </Modal>
-      <Modal open={!!discovery} title={`${discovery?.machine?.name || "服务器"} · 发现现有节点`} eyebrow="只读扫描" onClose={() => !discoveryBusy && setDiscovery(null)} size="large">
-        <div className="discovery-intro"><Search size={17} /><div><strong>读取服务、进程和配置，不修改远端</strong><span>只有参数完整、能够无损生成客户端 URI 的节点可以直接导入；其余结果会说明缺少什么。</span></div></div>
-        <div className="discovery-controls"><Field label="公网域名或 IP（可选）" hint="Komari 有公网地址时已自动带出；留空仍可扫描，不完整结果会保存为可修复草稿。"><input value={discovery?.publicHost || ""} onChange={(event) => setDiscovery((current) => ({ ...current, publicHost: event.target.value, result: null }))} placeholder="example.com 或公网 IP" /></Field><Button icon={Search} variant="primary" disabled={discoveryBusy} onClick={scanExisting}>{discoveryBusy ? "正在只读扫描…" : "开始扫描"}</Button></div>
-        {discovery?.result && <div className="discovery-results">
-          <div className="discovery-summary"><span><strong>{discovery.result.units.length}</strong>服务</span><span><strong>{discovery.result.candidates.length}</strong>可导入</span><span><strong>{discovery.result.needsReview.filter((item) => item.confidence === "confirm").length}</strong>待确认</span><span><strong>{discovery.result.needsReview.filter((item) => item.confidence !== "confirm").length}</strong>草稿</span></div>
-          <details className="discovery-units"><summary>查看发现依据</summary>{discovery.result.units.map((unit) => <div key={unit.unit}><span className={`status ${unit.active === "active" ? "ok" : ""}`}><i />{unit.active}</span><strong>{unit.unit}</strong><small>{unit.adapter === "native-cli" ? `Nowhere 原生命令行${unit.binaryVersion ? ` · ${unit.binaryVersion}` : ""}` : unit.fragmentPath || "未找到 unit 文件"}</small>{unit.configPaths?.map((path) => <code key={path}>{path}</code>)}</div>)}</details>
-          <div className="discovery-candidates">{discovery.result.candidates.map((item) => <label key={item.id}><input type="checkbox" checked={discoverySelected[item.id] !== false} onChange={(event) => setDiscoverySelected((current) => ({ ...current, [item.id]: event.target.checked }))} /><span className={`protocol ${item.protocol === "nowhere" ? "special" : ""}`}>{item.protocol}</span><div><strong>{item.name}</strong><small>{item.adapter === "native-cli" ? "Nowhere 原生发现" : item.source}</small>{item.certificate && <small>{item.certificate.readable && item.certificate.keyMatch ? "证书与私钥可用" : "证书需要检查"}</small>}</div><Status tone="ok">可导入</Status><IconButton label={`复制 ${item.name} URI`} onClick={(event) => { event.preventDefault(); navigator.clipboard.writeText(item.uri); notify("发现节点 URI 已复制"); }}><Copy size={15} /></IconButton></label>)}</div>
-          {!!discovery.result.needsReview.length && <details className="discovery-review" open><summary>{discovery.result.needsReview.length} 项可继续修复</summary><div className="discovery-review-actions"><span>保留为草稿后，可在“节点管理”逐项补全；补全前不会进入订阅。</span><Button icon={Save} onClick={() => saveDiscoveryDrafts(discovery.result.needsReview)} disabled={discoveryBusy}>全部保存为草稿</Button></div>{discovery.result.needsReview.map((item) => <div key={item.id}><span className="protocol">{item.protocol}</span><p><strong>{item.name}</strong><small>{item.reason}</small><code>{item.source}</code></p><Status tone={item.confidence === "confirm" ? "warning" : ""}>{item.confidence === "confirm" ? "待确认" : "草稿"}</Status><Button icon={Save} onClick={() => saveDiscoveryDrafts([item])} disabled={discoveryBusy}>保留</Button></div>)}</details>}
-        </div>}
-        {!discovery?.result && !discoveryBusy && <div className="discovery-empty">直接开始只读扫描；如果没有可确认的公网地址，结果会进入待修复草稿。</div>}
-        {discoveryBusy && <div className="probe-progress"><span className="spinner" /><span>正在读取 systemd、进程参数和可访问的配置文件…</span></div>}
-        <div className="dialog-actions"><Button onClick={() => setDiscovery(null)} disabled={discoveryBusy}>关闭</Button><Button icon={Import} variant="primary" onClick={importDiscovered} disabled={discoveryBusy || !Object.values(discoverySelected).some(Boolean)}>导入所选 {Object.values(discoverySelected).filter(Boolean).length} 项</Button></div>
       </Modal>
     </section>
   );
@@ -4621,11 +4632,12 @@ function withTelemetryRate(row, previous) {
   return { ...row, telemetry: { ...row.telemetry, upBytesPerSecond: Math.round(Number(up - oldUp) / elapsed), downBytesPerSecond: Math.round(Number(down - oldDown) / elapsed) } };
 }
 
-function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, onNavigate }) {
+function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, onNavigate, onDiscover }) {
   const [liveStates, setLiveStates] = useState([]);
   const [telemetryDetail, setTelemetryDetail] = useState("");
   const [telemetryHistory, setTelemetryHistory] = useState({});
   const [telemetrySampleMs, setTelemetrySampleMs] = useState(3000);
+  const [discoveryPicker, setDiscoveryPicker] = useState(false);
   const statusTargets = state.managedInstances.map(item => `${item.machineId}:${item.id}`).sort().join('|');
   const statusRevision = state.managedInstances.map(item => item.lastOperationId || '').join('|');
   useEffect(() => {
@@ -5157,14 +5169,15 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
     const listenSummary = [instance.tcpPort ? `TCP ${instance.tcpPort}` : "", instance.udpPort ? `UDP ${instance.udpPort}` : ""].filter(Boolean).join(" · ");
     const canStart = instance.status === "stopped" || instance.status === "failed";
     const instanceBusy = [...busy].some(key => key.split(":").includes(instance.id));
+    const connectionLabel = connection?.status === "passed" ? "最近连接测试通过" : connection?.status === "failed" ? "最近连接测试失败" : "尚未测试连接";
+    const connectionTitle = connection ? `${connectionLabel} · ${new Date(connection.observedAt).toLocaleString()}${connection.sourceKind === "target" ? " · 目标机自测，不代表公网可达" : " · 由另一台 Agent 发起"}` : connectionLabel;
     return <article className={`managed-card ${recentInstanceId === instance.id ? "recent" : ""}`} data-instance-id={instance.id} key={instance.id}>
-      <header><div className="managed-title"><span>{flag(machine?.countryCode) || (kind === "nowhere" ? "N" : "S")}</span><div><h3>{instance.name}</h3><p>{machine?.name || "宿主已删除"} · {instance.publicHost}:{instance.port}</p></div></div><Status tone={status[1]}>{status[0]}</Status></header>
+      <header><div className="managed-title"><span>{flag(machine?.countryCode) || (kind === "nowhere" ? "N" : "S")}</span><div><h3>{instance.name}</h3><p>{machine?.name || "宿主已删除"} · {instance.publicHost}:{instance.port}</p></div></div><div className="managed-header-status"><span className={`connection-indicator ${connection?.status || "untested"}`} role="img" aria-label={connectionLabel} title={connectionTitle}>{connection?.status === "passed" ? <Check size={15} /> : connection?.status === "failed" ? <X size={15} /> : <Activity size={15} />}</span><Status tone={status[1]}>{status[0]}</Status></div></header>
       <dl><div><dt>内核 / 协议</dt><dd>{kind === "nowhere" ? `Nowhere ${instance.version || ""} · NW2` : instance.protocol || "sing-box"}</dd></div><div><dt>监听</dt><dd>{listenSummary}</dd></div><div><dt>{kind === "nowhere" ? "传输" : "版本"}</dt><dd>{kind === "nowhere" ? (instance.network === "mix" ? "TCP + UDP" : String(instance.network || "mix").toUpperCase()) : instance.version || "跟随宿主"}</dd></div><div><dt>归属</dt><dd>Wherever Station</dd></div></dl>
       {instance.lastError && <p className="managed-error">{MANAGED_ERROR[instance.lastError] || instance.lastError}</p>}
       <p className="muted">进程采样：{observed?.observedAt ? `${observed.state} · ${new Date(observed.observedAt).toLocaleTimeString()}${Date.now() - Date.parse(observed.observedAt) > 15000 ? '（旧数据）' : ''}` : '尚未采样'}{me?.two_factor_enabled ? ' · 两步验证已开启，自动远程采样暂停' : ''}</p>
       {kind === "nowhere" && <div className="telemetry-glance"><div><span>Nowhere</span><strong>{telemetry?.lifecycle ? NOWHERE_LIFECYCLE[telemetry.lifecycle] || telemetry.lifecycle : observed?.state === "active" ? "遥测不可用" : "未运行"}</strong></div><div><span>当前速率</span><strong>↑ {bytes(telemetry?.upBytesPerSecond, true)}　↓ {bytes(telemetry?.downBytesPerSecond, true)}</strong></div><TelemetrySparkline points={telemetryHistory[instance.id] || []} /><Button icon={Activity} onClick={() => setTelemetryDetail(instance.id)}>实时遥测</Button></div>}
       {kind === "sing-box" && <div className="telemetry-glance singbox-process-glance"><div><span>sing-box 进程</span><strong>{observed?.state === "active" ? "运行中" : "未运行"}</strong></div><div><span>CPU / RSS</span><strong>{Number.isFinite(telemetry?.cpuPercent) ? `${telemetry.cpuPercent.toFixed(1)}%` : "等待采样"}　/　{Number.isFinite(telemetry?.rssBytes) ? bytes(telemetry.rssBytes) : "—"}</strong></div><div><span>PID</span><strong>{observed?.pid || "—"}</strong></div></div>}
-      <p className={connection?.status === "passed" ? "managed-connectivity ok" : connection?.status === "failed" ? "managed-connectivity bad" : "managed-connectivity"}>连接：{connection ? `${connection.status === "passed" ? "通过" : "失败"} · ${connection.sourceName} · ${new Date(connection.observedAt).toLocaleString()}${connection.sourceKind === "target" ? "（目标机自测，不代表公网可达）" : ""}` : "尚未检测"}</p>
       {kind === "nowhere" && !["draft", "validated"].includes(instance.status) && <div className="managed-primary-actions"><Button icon={Edit3} onClick={() => editNowhere(instance)} disabled={instanceBusy}>{hasBusy(`read:${instance.id}`) ? "正在读取配置…" : "编辑运行配置"}</Button><Button icon={PackageOpen} onClick={() => openNowhereManager(instance)} disabled={instanceBusy}>版本与证书</Button></div>}
       {kind === "sing-box" && <div className="managed-primary-actions"><Button icon={Edit3} onClick={() => editSingBox(instance)} disabled={instanceBusy}>{hasBusy(`read:${instance.id}`) ? "正在读取配置…" : "编辑运行配置"}</Button></div>}
       {kind === "nowhere" && ["draft", "validated", "failed"].includes(instance.status) && <div className="managed-primary-actions"><Button onClick={() => retryNowhere(instance)} disabled={instanceBusy}>检查并继续创建</Button><small>先核对远端结果；已创建的实例只恢复状态。</small></div>}
@@ -5193,7 +5206,10 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
         <b><KeyRound size={15} />管理证书</b>
       </button>
       <button className="deploy-launch-card import-launch" type="button" onClick={() => onNavigate("nodes")}>
-        <header><span>IMPORT</span><Import size={19} /></header><strong>导入已有节点</strong><small>URI · Base64 · Clash YAML</small><b>打开节点库</b>
+        <header><span>IMPORT</span><Import size={19} /></header><strong>导入节点链接</strong><small>URI · Base64 · Clash YAML</small><b>打开节点库</b>
+      </button>
+      <button className="deploy-launch-card discovery-launch" type="button" onClick={() => boundMachines.length === 1 ? onDiscover?.(boundMachines[0]) : setDiscoveryPicker(true)} disabled={!boundMachines.length}>
+        <header><span>DISCOVERY</span><Search size={19} /></header><strong>发现现有节点</strong><small>读取服务与配置 · 不修改远端</small><b><Search size={15} />选择服务器</b>
       </button>
       <button className="deploy-launch-card provider-launch" type="button" onClick={() => onNavigate("providers")}>
         <header><span>EXTERNAL PANEL</span><Database size={19} /></header><strong>连接专业面板</strong><small>2S-UI · S-UI</small><b>管理连接</b>
@@ -5361,6 +5377,10 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       <div className="dialog-actions"><DraftStatus onDiscard={() => { clearSessionDraft("deploy:sing-box"); setSingEditor(false); }} /><Button onClick={() => setSingEditor(false)} disabled={singCreating}>取消</Button><Button icon={Search} onClick={previewSing} disabled={singCreating}>预览</Button><Button icon={Download} variant="primary" onClick={createSing} disabled={singCreating || !singForm.machineId || !singForm.publicHost || !singForm.name}>{singCreating ? "校验并创建中…" : "校验并创建（不启动）"}</Button></div>
     </Modal>
     <PresetManager open={presetManager} state={state} persist={persist} notify={notify} onClose={() => setPresetManager(false)} />
+    <Modal open={discoveryPicker} title="选择要扫描的服务器" eyebrow="发现现有节点" onClose={() => setDiscoveryPicker(false)}>
+      <div className="discovery-machine-grid">{boundMachines.map((machine) => <button key={machine.id} type="button" onClick={() => { setDiscoveryPicker(false); onDiscover?.(machine); }}><span>{flag(machine.countryCode) || "◇"}</span><div><strong>{machine.name}</strong><small>{machine.provider || "VPS"} · {machine.region || machine.country || "未分组"}</small></div><Search size={17} /></button>)}</div>
+      <div className="dialog-actions"><Button onClick={() => setDiscoveryPicker(false)}>取消</Button></div>
+    </Modal>
     <Modal open={!!logs} title={`${logs?.instance?.name || "节点实例"} · 最近日志`} eyebrow="运行日志" onClose={() => setLogs(null)} size="large"><pre className="managed-logs">{logs?.text || "暂无日志"}</pre><div className="dialog-actions"><Button onClick={() => setLogs(null)}>关闭</Button></div></Modal>
     <Modal open={!!qr} title={`${qr?.name || "节点实例"} · 客户端链接`} eyebrow="节点二维码" onClose={() => setQr(null)}><div className="qr-box">{qr && <QRCodeSVG value={qr.uri} size={240} level="M" bgColor="#ffffff" fgColor="#171717" />}</div><p className="warning">二维码包含节点凭据，请勿公开截图。</p><div className="dialog-actions"><Button onClick={() => setQr(null)}>关闭</Button></div></Modal>
   </section>;
@@ -5445,6 +5465,7 @@ export default function App() {
   const [updatedAt, setUpdatedAt] = useState("");
   const [toast, setToast] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [discoveryMachine, setDiscoveryMachine] = useState(null);
   const [serviceStates, setServiceStates] = useState(readServiceCache);
   const [serviceBusy, setServiceBusy] = useState(false);
   const serviceWarmRef = useRef(false);
@@ -5726,7 +5747,7 @@ export default function App() {
               busy={metricsBusy}
               persist={persist}
             />
-            <Machines state={state} clients={clients} statuses={statuses} persist={persist} notify={notify} onRefresh={load} me={me} onNavigate={setTab} serviceStates={serviceStates} refreshServices={refreshServices} serviceBusy={serviceBusy} />
+            <Machines state={state} clients={clients} statuses={statuses} persist={persist} notify={notify} onRefresh={load} me={me} onNavigate={setTab} onDiscover={setDiscoveryMachine} serviceStates={serviceStates} refreshServices={refreshServices} serviceBusy={serviceBusy} />
           </div>
         )}
         {tab === "nodes" && (
@@ -5746,7 +5767,7 @@ export default function App() {
         {tab === "sources" && (
           <Sources state={state} persist={persist} notify={notify} />
         )}
-        {tab === "deploy" && <ManagedNowhereDeploy state={state} setState={setState} clients={clients} me={me} notify={notify} persist={persist} onNavigate={setTab} />}
+        {tab === "deploy" && <ManagedNowhereDeploy state={state} setState={setState} clients={clients} me={me} notify={notify} persist={persist} onNavigate={setTab} onDiscover={setDiscoveryMachine} />}
         {tab === "providers" && <Providers state={state} setState={setState} notify={notify} onNavigate={setTab} />}
         </div>
       </main>
@@ -5762,6 +5783,7 @@ export default function App() {
         }}
         onRestored={(restored) => { setState(restored); setSettingsOpen(false); notify("备份已恢复，请核对 Agent 绑定和证书路径"); }}
       />
+      <ExistingServiceDiscoveryDialog machine={discoveryMachine} state={state} clients={clients} persist={persist} notify={notify} me={me} onClose={() => setDiscoveryMachine(null)} />
       {toast && (
         <div className={`toast ${toast.error ? "error" : ""}`} role="status">
           {toast.error ? <X size={16} /> : <Check size={16} />}

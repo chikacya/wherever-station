@@ -180,7 +180,7 @@ async function main() {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.locator('.nav').getByRole('button', { name: '部署节点', exact: true }).click();
     await page.locator('.nowhere-launch').waitFor();
-    if (await page.locator('.deploy-launch-card').count() !== 5) throw new Error('Deploy launch Bento is incomplete');
+    if (await page.locator('.deploy-launch-card').count() !== 6) throw new Error('Deploy launch Bento is incomplete');
     const deployMotion = await page.locator('.deploy-launch-card').evaluateAll(elements => elements.map(element => ({ name: getComputedStyle(element).animationName, delay: getComputedStyle(element).animationDelay })));
     if (deployMotion.some(item => item.name !== 'bento-reveal')) throw new Error(`Deploy Bento reveal is missing: ${JSON.stringify(deployMotion)}`);
     if (new Set(deployMotion.map(item => item.delay)).size < 3) throw new Error(`Deploy Bento reveal is not progressively staged: ${JSON.stringify(deployMotion)}`);

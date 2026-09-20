@@ -89,6 +89,9 @@ class ExistingServiceScanTests(unittest.TestCase):
             trojan = next(item for item in document["candidates"] if item["protocol"] == "trojan")
             self.assertIn("insecure=1", trojan["uri"])
             self.assertIn("sni=tls.example.com", trojan["uri"])
+            vmess = next(item for item in document["candidates"] if item["protocol"] == "vmess")
+            vmess_payload = json.loads(base64.b64decode(vmess["uri"].split("://", 1)[1]).decode("utf-8"))
+            self.assertEqual(vmess_payload["allowInsecure"], "1")
             self.assertEqual(document["needsReview"], [])
             self.assertEqual(nowhere_env.read_text(encoding="utf-8").count("NOWHERE_KEY_VALUE"), 1)
 

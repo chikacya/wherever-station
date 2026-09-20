@@ -335,6 +335,8 @@ def sing_box_candidates(unit, source, config, candidates, reviews):
                     if not uuid:
                         continue
                     vmess = {"v": "2", "ps": name, "add": host, "port": str(port), "id": uuid, "aid": "0", "scy": "auto", "net": transport.get("type", "tcp"), "type": "none", "host": transport.get("host", ""), "path": transport.get("path", ""), "tls": "tls", "sni": tls_settings["serverName"]}
+                    if candidate_certificate and candidate_certificate.get("selfSigned"):
+                        vmess["allowInsecure"] = "1"
                     made.append((name, "vmess://" + base64.b64encode(json.dumps(vmess, ensure_ascii=False, separators=(",", ":")).encode()).decode()))
                 elif protocol == "tuic":
                     uuid = user.get("uuid")

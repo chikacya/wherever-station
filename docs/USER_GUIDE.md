@@ -23,7 +23,7 @@ Server traffic plans and subscription quotas are separate:
 - A server plan describes the VPS network allowance.
 - A subscription quota controls whether one public subscription URL remains available.
 
-Use **Discover nodes** to inspect existing sing-box or Nowhere services. Discovery never changes their configuration. A candidate with incomplete public address, credentials, TLS, or Reality data remains a repair draft.
+Use **Discover nodes** to inspect existing sing-box or Nowhere services. Discovery never changes their configuration. A candidate with incomplete public address, credentials, TLS, or Reality data remains a repair draft. A complete Nowhere result can first create a stopped adoption copy, followed by an explicit switch from the deployment page; staging the copy does not stop the original service.
 
 ## Node library
 
@@ -35,7 +35,7 @@ The import dialog accepts:
 
 Review the parse result before saving. The optional server field is only for organization and remote actions.
 
-The node library supports direct URI copy, a single-node QR code, filters, ordering, bulk enable/disable, tags, server reassignment, regular-expression replacement, and naming templates. A default name follows the selected server until the name is edited manually.
+The node library supports direct URI copy, a single-node QR code, filters, ordering, bulk enable/disable, tags, server reassignment, regular-expression replacement, and naming templates. A default name follows the selected server until the name is edited manually. The header privacy mode masks node addresses, server IPs, and source URLs before taking a screenshot without changing saved data.
 
 Unknown URI schemes are stored as opaque values. They can be sent through URI-based outputs but are not automatically converted to structured formats.
 
@@ -43,7 +43,7 @@ Unknown URI schemes are stored as opaque values. They can be sent through URI-ba
 
 Add an HTTP(S) airport or self-hosted subscription in **Sources**. Synchronization runs from the Komari server; the optional server assignment does not proxy the request.
 
-The first synchronization creates nodes. Later synchronizations update matching nodes and disable missing nodes instead of deleting them. If the response contains `Subscription-Userinfo`, the source card shows upload, download, remaining traffic, and expiry.
+The first synchronization creates nodes. Later synchronizations match normalized connection fingerprints; a connection already represented by discovery or another source is skipped rather than duplicated. Missing upstream nodes are disabled instead of deleted. If the response contains `Subscription-Userinfo`, the source card shows upload, download, remaining traffic, and expiry.
 
 Source URLs are credentials. Avoid screenshots, logs, or issue reports that reveal them.
 

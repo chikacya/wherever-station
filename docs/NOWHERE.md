@@ -30,4 +30,6 @@ Process state and traffic telemetry are collected independently of Komari host m
 
 ## Existing installations
 
-Discovery is conservative. A complete, supported definition can be imported; incomplete findings become repair drafts so that credentials, public address, or certificate information are never guessed. Services not created or adopted by Wherever Station remain outside its lifecycle boundary.
+Discovery is conservative. A complete, supported definition can be imported; incomplete findings become repair drafts so that credentials, public address, or certificate information are never guessed.
+
+A fully readable Nowhere service may be **adopted**. Adoption has two explicit steps: first copy the current binary and configuration into a separate, stopped managed instance while the original service keeps running; then switch only after the operator has reviewed that instance. A failed switch attempts to restore the original service, and a successful adoption can later be rolled back deliberately. Original service files are never overwritten or deleted. A service that has not completed adoption remains outside the Wherever Station lifecycle boundary.

@@ -3,7 +3,7 @@ const path = require("node:path");
 const { cleanInstanceId, planManagedNowhere } = require("./managed-nowhere");
 const { nowhereCapabilities } = require("./nowhere-capabilities");
 
-const ACTIONS = new Set(["preflight", "create", "start", "stop", "restart", "status", "logs", "delete", "upgrade", "update", "read-config"]);
+const ACTIONS = new Set(["preflight", "create", "start", "stop", "restart", "status", "logs", "delete", "upgrade", "update", "read-config", "adopt", "rollback-adoption"]);
 
 function encodedCommand(script, payload) {
   const code = Buffer.from(script, "utf8").toString("base64");
@@ -47,6 +47,9 @@ function payloadFor(plan) {
     privateKeyPath: plan.privateKeyPath,
     certificateHost: plan.certificateHost,
     certificateDays: plan.certificateDays,
+    sourceBinaryPath: plan.sourceBinaryPath || "",
+    sourceUnit: plan.sourceUnit || "",
+    sourceWasEnabled: plan.sourceWasEnabled === true,
   };
 }
 
@@ -73,6 +76,9 @@ function buildManagedNowhereCommand(action, input, sourceMode = "download") {
       unit: plan.unit,
       sourceMode,
     });
+  }
+  if (["adopt", "rollback-adoption"].includes(action)) {
+    return encodedCommand(lockExistingInstance(scriptFile("nowhere-adopt.py")), { ...payload, action });
   }
   if (action === "upgrade") {
     const targetVersion = String(input.targetVersion || "");

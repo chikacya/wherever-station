@@ -16,6 +16,7 @@ runtime_tools = (
     'managed-task-tracker.js', 'nowhere-action.py', 'nowhere-binary-upgrade.py',
     'nowhere-capabilities.js', 'nowhere-compatibility.json', 'nowhere-config.js',
     'nowhere-create.py', 'nowhere-delete.py',
+    'nowhere-adopt.py',
     'nowhere-preflight.py', 'nowhere-read.py', 'nowhere-recover.py',
     'nowhere-status.py', 'nowhere-update.py',
     'operation-store.js', 'protocol-capabilities.js', 'provider-s-ui.js',

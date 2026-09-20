@@ -23,6 +23,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .app-shell { min-height: 100dvh; background-image: linear-gradient(color-mix(in srgb, var(--text) 2%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--text) 1.6%, transparent) 1px, transparent 1px); background-size: 48px 48px; }
 .station-chrome { min-height: 62px; padding: 0 18px; display: grid; grid-template-columns: minmax(238px, auto) minmax(0, 1fr) auto; align-items: stretch; gap: 18px; position: sticky; top: 0; z-index: 30; background: var(--chrome); border-bottom: 1px solid var(--border); backdrop-filter: blur(14px); }
 .app-header { min-width: 0; min-height: 62px; padding: 0; display: flex; align-items: center; background: transparent; }
+.sensitive-value { transition: filter 180ms ease, opacity 180ms ease; }
+.privacy-mode .sensitive-value { filter: blur(6px); opacity: .72; user-select: none; }
+.privacy-mode .sensitive-value:hover { filter: blur(4px); }
 .brand { display: flex; gap: 10px; align-items: center; }
 .station-mark { flex: none; display: block; }
 .station-mark-surface { fill: var(--brand-surface); }

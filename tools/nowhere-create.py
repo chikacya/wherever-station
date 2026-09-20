@@ -61,13 +61,17 @@ def download_binary(destination):
 
 
 def copy_binary(destination):
+    requested = str(P.get('sourceBinaryPath') or '')
+    source = os.path.realpath(requested) if requested.startswith('/') else ''
+    if source and (not os.path.isfile(source) or not os.access(source, os.X_OK)):
+        source = ''
     pid = run(['systemctl', 'show', 'nowhere.service', '-p', 'MainPID', '--value'], 5).stdout.strip()
-    source = ''
     if pid.isdigit() and pid != '0':
-        try:
-            source = os.path.realpath('/proc/' + pid + '/exe')
-        except OSError:
-            source = ''
+        if not source:
+            try:
+                source = os.path.realpath('/proc/' + pid + '/exe')
+            except OSError:
+                source = ''
     if not source or not os.path.isfile(source):
         source = shutil.which('nowhere') or ''
     if not source or not os.path.isfile(source):

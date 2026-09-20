@@ -46,6 +46,8 @@ import {
   Database,
   Download,
   Edit3,
+  Eye,
+  EyeOff,
   ExternalLink,
   Globe2,
   GripVertical,
@@ -74,6 +76,7 @@ import {
   Monitor,
   Square,
   Trash2,
+  Undo2,
   Upload,
   X,
 } from "lucide-react";
@@ -872,7 +875,7 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
         cell: ({ row }) => (
           <div className="node-name">
             <strong>{row.original.name}</strong>
-            <small>{hostFromUri(row.original)}</small>
+            <small className="sensitive-value">{hostFromUri(row.original)}</small>
           </div>
         ),
       },
@@ -899,7 +902,7 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
             <div className="host-cell">
               <span>
                 {machine.id
-                  ? `${flag(machine.countryCode)} ${machine.country || "未分组"}`
+                  ? `${flag(machine.countryCode)} ${String(machine.countryCode || "").toUpperCase() || "未分组"}`
                   : `${flag(inferredCountry)} ${inferredCountry || (provider ? "外部面板" : external ? "外部订阅" : "未归类")}`.trim()}
               </span>
               <small>{machine.name || external?.name || provider?.name || "未关联 VPS"}</small>
@@ -1015,22 +1018,23 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
   const countryCodes = [...new Set(state.nodes.map((node) => inferNodeCountryCode(node, machineMap.get(node.machineId))).filter(Boolean))].sort();
   const probeSources = state.machines.filter((machine) => machine.monitorClientId && clients[machine.monitorClientId]);
   async function openConnection(nodeIds) {
-    setConnection({ nodeIds, sourceMachineId: probeSources[0]?.id || "", histories: [], results: [], running: false, loadingHistory: true });
+    setConnection({ nodeIds, histories: [], results: [], running: false, loadingHistory: true });
     const histories = await rpc("proxyConsole:getConnectivityHistory", { nodeIds, limit: 80 }).catch(() => []);
     setConnection((current) => current ? ({ ...current, histories, loadingHistory: false }) : current);
   }
   const runConnectionChecks = async () => {
-    if (!connection?.sourceMachineId || connection.running) return;
+    if (!probeSources.length || connection.running) return;
     const otp = me?.two_factor_enabled ? prompt("请输入本次批量连接检查的两步验证码") || "" : "";
     if (me?.two_factor_enabled && !otp) return;
     setConnection((current) => ({ ...current, running: true, results: [] }));
     const results = []; let latestState = state;
     for (const nodeId of connection.nodeIds) {
       const node = state.nodes.find((item) => item.id === nodeId);
+      const source = probeSources.find((machine) => machine.id !== node?.machineId) || probeSources[0];
       try {
-        const spec = await rpc("proxyConsole:prepareNodeConnectivityCheck", { nodeId, sourceMachineId: connection.sourceMachineId, requestId: crypto.randomUUID() });
+        const spec = await rpc("proxyConsole:prepareNodeConnectivityCheck", { nodeId, sourceMachineId: source.id, requestId: crypto.randomUUID() });
         const task = await executeTask(spec.clientId, spec.command, otp, 40000);
-        const saved = await rpc("proxyConsole:recordNodeConnectivityCheck", { nodeId, sourceMachineId: connection.sourceMachineId, output: task.result });
+        const saved = await rpc("proxyConsole:recordNodeConnectivityCheck", { nodeId, sourceMachineId: source.id, output: task.result });
         latestState = saved.state; results.push({ nodeId, name: node?.name || nodeId, ...saved.result });
       } catch (error) { results.push({ nodeId, name: node?.name || nodeId, status: "failed", error: error.message }); }
       setConnection((current) => current ? ({ ...current, results: [...results] }) : current);
@@ -1113,7 +1117,7 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
           label="全部地区"
           options={countryCodes.map((code) => [
             code,
-            `${flag(code)} ${state.machines.find((machine) => machine.countryCode === code)?.country || code}`,
+            `${flag(code)} ${code}`,
           ])}
         />
         <Filter
@@ -1275,18 +1279,12 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
         }}
       />
       <Modal open={!!connection} title="连接检查" eyebrow="节点可用性" onClose={() => !connection?.running && setConnection(null)}>
-        <p className="editor-note">选择一台在线 Agent，检查节点能否访问 HTTPS，并记录出口地址。</p>
-        <Field label="检测来源" hint="选择不同地区的 Agent，可以更接近真实访问环境。">
-          <select value={connection?.sourceMachineId || ""} onChange={(event) => setConnection((current) => ({ ...current, sourceMachineId: event.target.value }))} disabled={connection?.running}>
-            <option value="">请选择在线 Agent</option>
-            {probeSources.map((machine) => <option value={machine.id} key={machine.id}>{flag(machine.countryCode)} {machine.name}</option>)}
-          </select>
-        </Field>
+        <p className="editor-note">自动从另一台可用 Agent 启动临时代理客户端，请求 HTTPS 测试地址并核对出口；没有异地 Agent 时才在节点宿主本机测试。</p>
         {connection?.running && <div className="probe-progress"><span className="spinner" />正在检查 {connection.results.length + 1} / {connection.nodeIds.length}</div>}
-        {!!connection?.results.length && <div className="probe-results">{connection.results.map((item) => <div key={item.nodeId}><Status ok={item.status === "passed"}>{item.status === "passed" ? "通过" : "失败"}</Status><span>{item.name}</span><small>{item.actualIp || item.error || "检查完成"}</small></div>)}</div>}
-        <details className="probe-history" open={!connection?.results.length}><summary>{connection?.loadingHistory ? "正在读取历史…" : `最近历史 · ${connection?.histories.length || 0}`}</summary><div>{connection?.histories.map((item) => <p key={item.id}><Status ok={item.status === "passed"}>{item.status === "passed" ? "通过" : "失败"}</Status><span>{item.nodeName}</span><small>{item.sourceName} · {new Date(item.observedAt).toLocaleString("zh-CN", { hour12: false })}{item.actualIp ? ` · ${item.actualIp}` : ""}</small></p>)}</div></details>
+        {!!connection?.results.length && <div className="probe-results">{connection.results.map((item) => <div key={item.nodeId}><Status ok={item.status === "passed"}>{item.status === "passed" ? "通过" : "失败"}</Status><span>{item.name}</span><small>{item.sourceName ? `${item.sourceName} → ` : ""}<span className={item.actualIp ? "sensitive-value" : ""}>{item.actualIp || MANAGED_ERROR[item.error] || item.error || "检查完成"}</span></small></div>)}</div>}
+        <details className="probe-history" open={!connection?.results.length}><summary>{connection?.loadingHistory ? "正在读取历史…" : `最近历史 · ${connection?.histories.length || 0}`}</summary><div>{connection?.histories.map((item) => <p key={item.id}><Status ok={item.status === "passed"}>{item.status === "passed" ? "通过" : "失败"}</Status><span>{item.nodeName}</span><small>{item.sourceName} · {new Date(item.observedAt).toLocaleString("zh-CN", { hour12: false })}{item.actualIp ? <> · <span className="sensitive-value">{item.actualIp}</span></> : ""}</small></p>)}</div></details>
         {!probeSources.length && <p className="inline-error">没有在线且已绑定的 Komari Agent，暂时无法执行检查。</p>}
-        <div className="dialog-actions"><Button onClick={() => setConnection(null)} disabled={connection?.running}>关闭</Button><Button variant="primary" icon={Activity} onClick={runConnectionChecks} disabled={connection?.running || !connection?.sourceMachineId}>{connection?.running ? "检查中…" : `检查 ${connection?.nodeIds.length || 0} 个节点`}</Button></div>
+        <div className="dialog-actions"><Button onClick={() => setConnection(null)} disabled={connection?.running}>关闭</Button><Button variant="primary" icon={Activity} onClick={runConnectionChecks} disabled={connection?.running || !probeSources.length}>{connection?.running ? "检查中…" : `代理测试 ${connection?.nodeIds.length || 0} 个节点`}</Button></div>
       </Modal>
       <Modal open={!!draftRepair} title={`补全 · ${draftRepair?.draft?.name || "发现节点"}`} eyebrow="发现修复" onClose={() => setDraftRepair(null)} size="large">
         <p className="editor-note">优先粘贴从原面板或客户端导出的完整 URI；也可按发现证据补齐常见协议参数。这里不会写回 VPS。</p>
@@ -3185,6 +3183,22 @@ function SubscriptionEditor({
                   {flag(code)} {code}
                 </button>
               ))}
+              {machines.filter((machine) => nodes.some((node) => node.machineId === machine.id)).map((machine) => (
+                <button
+                  key={`machine:${machine.id}`}
+                  type="button"
+                  title={`纳入 ${machine.name} 的全部节点`}
+                  onClick={() => setForm((current) => ({
+                    ...current,
+                    nodeIds: [...new Set([
+                      ...current.nodeIds,
+                      ...nodes.filter((node) => node.machineId === machine.id).map((node) => node.id),
+                    ])],
+                  }))}
+                >
+                  {flag(machine.countryCode)} {machine.name}
+                </button>
+              ))}
             </div>
             <div className="palette">
               {visible.map((node) => (
@@ -3452,7 +3466,7 @@ function Sources({ state, persist, notify }) {
     try {
       const result = await sourceRpc(source.id);
       notify(
-        `同步完成：新增 ${result.created}，更新 ${result.updated}，停用 ${result.disabled}`,
+        `同步完成：新增 ${result.created}，更新 ${result.updated}，停用 ${result.disabled}${result.duplicates ? `，跳过重复 ${result.duplicates}` : ""}`,
       );
       window.dispatchEvent(new CustomEvent("proxy-console-reload"));
     } catch (error) {
@@ -3533,7 +3547,7 @@ function Sources({ state, persist, notify }) {
                     : "待同步"}
               </Status>
             </div>
-            <p className="source-url">{source.url}</p>
+            <p className="source-url sensitive-value">{source.url}</p>
             {source.traffic && <div className="subscription-traffic source-traffic" aria-label="上游订阅流量"><span>上传 <strong>{bytes(source.traffic.upload)}</strong></span><span>下载 <strong>{bytes(source.traffic.download)}</strong></span><span>剩余 <strong>{source.traffic.total ? bytes(Math.max(0, source.traffic.total - source.traffic.upload - source.traffic.download)) : "未提供"}</strong></span>{source.traffic.expire ? <span>到期 <strong>{new Date(source.traffic.expire * 1000).toLocaleDateString("zh-CN")}</strong></span> : null}</div>}
             {source.lastError && (
               <p className="inline-error">{source.lastError}</p>
@@ -3595,7 +3609,7 @@ function Sources({ state, persist, notify }) {
       <div className="card-list station-card-grid">
         {(state.ruleSets || []).map((source) => <article className="source-card" key={source.id}>
           <div className="source-main"><span className="sub-icon"><ListFilter size={19} /></span><div><h3>{source.name}</h3><p>{source.entryCount || 0} 条 · {source.action === "proxy" ? "代理" : source.action === "direct" ? "直连" : "拒绝"}{source.version ? ` · ${source.version}` : ""}</p></div><Status ok={Boolean(source.lastSuccessAt)}>{source.lastError ? (source.lastSuccessAt ? "旧缓存可用" : "刷新失败") : source.lastSuccessAt ? "缓存可用" : "待刷新"}</Status></div>
-          <p className="source-url">{source.url}</p>
+          <p className="source-url sensitive-value">{source.url}</p>
           {source.lastError && <p className="inline-error">{source.lastError}{source.lastSuccessAt ? "；订阅仍沿用上次成功内容" : ""}</p>}
           <div className="source-foot"><span>{source.lastSuccessAt ? `成功：${new Date(source.lastSuccessAt).toLocaleString("zh-CN")}` : "尚无可用缓存"}</span><div><Button icon={RefreshCw} onClick={() => syncRule(source)} disabled={syncingRule === source.id}>{syncingRule === source.id ? "刷新中" : "刷新缓存"}</Button><Button icon={Edit3} onClick={() => setRuleEditor(source)}>编辑</Button><IconButton label="删除规则集" onClick={() => removeRule(source)}><Trash2 size={16} /></IconButton></div></div>
         </article>)}
@@ -3828,7 +3842,7 @@ function Providers({ state, setState, notify, onNavigate }) {
     <div className="provider-toolbar"><div className="search"><Search size={16} /><input aria-label="搜索外部面板和节点" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索面板、节点或协议" /></div><span>{state.providers?.length || 0} 个面板 · {state.nodes.filter((node) => node.source === "provider").length} 个节点</span></div>
     <div className="card-list provider-list">
       {visibleProviders.map((provider) => { const providerNodes = state.nodes.filter((node) => node.sourceId === provider.id); const isExpanded = expanded[provider.id] !== false; return <article className="provider-card" key={provider.id}>
-        <header><button className="provider-expand" type="button" aria-label={`${isExpanded ? "收起" : "展开"} ${provider.name} 节点`} aria-expanded={isExpanded} onClick={() => setExpanded((value) => ({ ...value, [provider.id]: !isExpanded }))}>{isExpanded ? <ChevronUp size={17} /> : <ChevronDown size={17} />}</button><div><h3>{provider.name}</h3><p>{provider.type === "2s-ui" ? "2S-UI" : "S-UI"} · {provider.baseUrl}</p><div className="provider-meta"><span>{providerNodes.length} 个节点</span><span>{provider.inboundCount} 入站</span><span>{provider.clientCount} 客户端</span>{provider.status && <span>{provider.status.startsWith("running:") ? `sing-box 运行中 · ${provider.status.slice(8)}` : provider.status.startsWith("stopped:") ? `sing-box 已停止 · ${provider.status.slice(8)}` : provider.status}</span>}<span>{provider.lastSyncAt ? `同步于 ${new Date(provider.lastSyncAt).toLocaleString("zh-CN", { hour12: false })}` : "尚未同步"}</span></div></div><Status tone={provider.lastError ? "bad" : provider.lastSuccessAt ? "ok" : "warning"}>{provider.lastError ? "连接异常" : provider.lastSuccessAt ? "连接正常" : "待检查"}</Status><div className="provider-head-actions">
+        <header><button className="provider-expand" type="button" aria-label={`${isExpanded ? "收起" : "展开"} ${provider.name} 节点`} aria-expanded={isExpanded} onClick={() => setExpanded((value) => ({ ...value, [provider.id]: !isExpanded }))}>{isExpanded ? <ChevronUp size={17} /> : <ChevronDown size={17} />}</button><div><h3>{provider.name}</h3><p>{provider.type === "2s-ui" ? "2S-UI" : "S-UI"} · <span className="sensitive-value">{provider.baseUrl}</span></p><div className="provider-meta"><span>{providerNodes.length} 个节点</span><span>{provider.inboundCount} 入站</span><span>{provider.clientCount} 客户端</span>{provider.status && <span>{provider.status.startsWith("running:") ? `sing-box 运行中 · ${provider.status.slice(8)}` : provider.status.startsWith("stopped:") ? `sing-box 已停止 · ${provider.status.slice(8)}` : provider.status}</span>}<span>{provider.lastSyncAt ? `同步于 ${new Date(provider.lastSyncAt).toLocaleString("zh-CN", { hour12: false })}` : "尚未同步"}</span></div></div><Status tone={provider.lastError ? "bad" : provider.lastSuccessAt ? "ok" : "warning"}>{provider.lastError ? "连接异常" : provider.lastSuccessAt ? "连接正常" : "待检查"}</Status><div className="provider-head-actions">
           <Button icon={RefreshCw} onClick={() => test(provider)} disabled={!!busy}>{busy === `test:${provider.id}` ? "检查中…" : "检查"}</Button>
           <Button icon={RefreshCw} variant="primary" onClick={() => inspect(provider)} disabled={!!busy}>{busy === `sync:${provider.id}` ? "正在读取…" : "同步"}</Button>
           <a className="icon-button" aria-label="打开原面板" title="打开原面板" href={provider.baseUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} /></a>
@@ -4068,17 +4082,13 @@ function ExistingServiceDiscoveryDialog({ machine, state, clients, persist, noti
     if (!candidates.length) return;
     setBusy(true);
     try {
-      const parsed = await Promise.all(candidates.map((item) => rpc("proxyConsole:parseNodeUris", { text: item.uri })));
-      const existing = new Set(state.nodes.map((node) => node.uri.split("#", 1)[0]));
-      const added = [];
-      parsed.forEach((result, index) => {
-        const node = result.nodes?.[0]; const candidate = candidates[index];
-        if (!node || existing.has(node.uri.split("#", 1)[0])) return;
-        existing.add(node.uri.split("#", 1)[0]);
-        added.push({ id: randomId(), name: candidate.name || node.name, protocol: node.protocol, machineId: model.machine.id, uri: node.uri, enabled: true, tags: ["自动发现", candidate.kind === "nowhere" ? "Nowhere" : "sing-box"], source: "import", sourceId: "" });
-      });
-      if (!added.length) { notify("所选节点已存在或无法无损导入", true); return; }
-      await persist({ ...state, nodes: [...state.nodes, ...added] }, `已导入 ${added.length} 个发现节点`);
+      const result = await rpc("proxyConsole:importDiscoveredNodes", { machineId: model.machine.id, candidates });
+      if (!result.added) {
+        notify(result.duplicates?.length ? `所选节点已由节点库或订阅源收录（${result.duplicates.length} 项）` : "所选节点无法无损导入", true);
+        return;
+      }
+      notify(`已导入 ${result.added} 个发现节点${result.duplicates?.length ? `，跳过 ${result.duplicates.length} 个重复项` : ""}`);
+      window.dispatchEvent(new Event("proxy-console-reload"));
       onClose();
     } catch (error) { notify(error.message, true); }
     finally { setBusy(false); }
@@ -4095,13 +4105,30 @@ function ExistingServiceDiscoveryDialog({ machine, state, clients, persist, noti
     } catch (error) { notify(error.message, true); }
     finally { setBusy(false); }
   };
+  const stageNowhereAdoption = async (item) => {
+    if (busy || !item?.adoption?.eligible) return;
+    if (!confirm(`将“${item.name}”纳入 Wherever Station 管理？\n\n本步骤只复制当前内核与配置并建立停止状态的托管实例，不会停止原服务。确认配置后，再到“部署节点”执行切换接管。`)) return;
+    const otp = me?.two_factor_enabled ? prompt("请输入本次目标机操作的两步验证码") || "" : "";
+    if (me?.two_factor_enabled && !otp) return;
+    setBusy(true);
+    try {
+      const draft = await rpc("proxyConsole:createManagedNowhereAdoptionDraft", { machineId: model.machine.id, candidate: item });
+      const spec = await rpc("proxyConsole:prepareManagedNowhereAction", { instanceId: draft.instanceId, action: "create", requestId: crypto.randomUUID() });
+      const saved = await executeTrackedManagedTask(spec, otp);
+      if (!saved.result.ok) throw new Error(MANAGED_ERROR[saved.result.error] || saved.result.error || "建立接管实例失败");
+      notify("已建立待接管实例；原 Nowhere 仍在运行，可到“部署节点”核对后切换");
+      window.dispatchEvent(new Event("proxy-console-reload"));
+      onClose();
+    } catch (error) { notify(error.message, true); }
+    finally { setBusy(false); }
+  };
   return <Modal open={!!machine} title={`${model?.machine?.name || machine?.name || "服务器"} · 发现现有节点`} eyebrow="只读扫描" onClose={close} size="large">
     <div className="discovery-intro"><Search size={17} /><div><strong>读取服务、进程和配置，不修改远端</strong><span>参数完整的节点可以直接导入；不能可靠推导的部分会保留为待补全草稿。</span></div></div>
     <div className="discovery-controls"><Field label="公网域名或 IP（可选）" hint="Komari 有公网地址时会自动带出；留空仍可扫描。"><input value={model?.publicHost || ""} onChange={(event) => setModel((current) => current ? { ...current, publicHost: event.target.value, result: null } : current)} placeholder="example.com 或公网 IP" /></Field><Button icon={Search} variant="primary" disabled={busy || !model} onClick={scan}>{busy ? "正在只读扫描…" : "开始扫描"}</Button></div>
     {model?.result && <div className="discovery-results">
       <div className="discovery-summary"><span><strong>{model.result.units.length}</strong>服务</span><span><strong>{model.result.candidates.length}</strong>可导入</span><span><strong>{model.result.needsReview.filter((item) => item.confidence === "confirm").length}</strong>待确认</span><span><strong>{model.result.needsReview.filter((item) => item.confidence !== "confirm").length}</strong>草稿</span></div>
       <details className="discovery-units"><summary>查看发现依据</summary>{model.result.units.map((unit) => <div key={unit.unit}><span className={`status ${unit.active === "active" ? "ok" : ""}`}><i />{unit.active}</span><strong>{unit.unit}</strong><small>{unit.adapter === "native-cli" ? `Nowhere 原生命令行${unit.binaryVersion ? ` · ${unit.binaryVersion}` : ""}` : unit.fragmentPath || "未找到 unit 文件"}</small>{unit.configPaths?.map((path) => <code key={path}>{path}</code>)}</div>)}</details>
-      <div className="discovery-candidates">{model.result.candidates.map((item) => <label key={item.id}><input type="checkbox" checked={selected[item.id] !== false} onChange={(event) => setSelected((current) => ({ ...current, [item.id]: event.target.checked }))} /><span className={`protocol ${item.protocol === "nowhere" ? "special" : ""}`}>{item.protocol}</span><div><strong>{item.name}</strong><small>{item.adapter === "native-cli" ? "Nowhere 原生发现" : item.source}</small>{item.certificate && <small>{item.certificate.readable && item.certificate.keyMatch ? "证书与私钥可用" : "证书需要检查"}</small>}</div><Status tone="ok">可导入</Status><IconButton label={`复制 ${item.name} URI`} onClick={(event) => { event.preventDefault(); navigator.clipboard.writeText(item.uri); notify("发现节点 URI 已复制"); }}><Copy size={15} /></IconButton></label>)}</div>
+      <div className="discovery-candidates">{model.result.candidates.map((item) => <label key={item.id}><input type="checkbox" checked={selected[item.id] !== false} onChange={(event) => setSelected((current) => ({ ...current, [item.id]: event.target.checked }))} /><span className={`protocol ${item.protocol === "nowhere" ? "special" : ""}`}>{item.protocol}</span><div><strong>{item.name}</strong><small>{item.adapter === "native-cli" ? "Nowhere 原生发现" : item.source}</small>{item.certificate && <small>{item.certificate.readable && item.certificate.keyMatch ? "证书与私钥可用" : "证书需要检查"}</small>}</div>{item.adoption?.eligible ? <Button icon={ShieldCheck} onClick={(event) => { event.preventDefault(); event.stopPropagation(); void stageNowhereAdoption(item); }} disabled={busy}>纳入管理</Button> : <Status tone="ok">可导入</Status>}<IconButton label={`复制 ${item.name} URI`} onClick={(event) => { event.preventDefault(); navigator.clipboard.writeText(item.uri); notify("发现节点 URI 已复制"); }}><Copy size={15} /></IconButton></label>)}</div>
       {!!model.result.needsReview.length && <details className="discovery-review" open><summary>{model.result.needsReview.length} 项可继续补全</summary><div className="discovery-review-actions"><span>保留为草稿后可在“节点”页补全；补全前不会进入订阅。</span><Button icon={Save} onClick={() => saveDrafts(model.result.needsReview)} disabled={busy}>全部保存为草稿</Button></div>{model.result.needsReview.map((item) => <div key={item.id}><span className="protocol">{item.protocol}</span><p><strong>{item.name}</strong><small>{item.reason}</small><code>{item.source}</code></p><Status tone={item.confidence === "confirm" ? "warning" : ""}>{item.confidence === "confirm" ? "待确认" : "草稿"}</Status><Button icon={Save} onClick={() => saveDrafts([item])} disabled={busy}>保留</Button></div>)}</details>}
     </div>}
     {!model?.result && !busy && <div className="discovery-empty">选择开始扫描；远端保持只读。</div>}
@@ -4241,7 +4268,7 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
             </header>
             <div className="selected-server-title">
               <strong>{selectedMachine?.name}</strong>
-              <span>{selectedMachine?.provider || "未填写服务商"} · {selectedMachine?.country || "未分组"}{selectedMachine?.region ? ` / ${selectedMachine.region}` : ""}{selectedModel?.client?.ipv4 || selectedModel?.client?.ip ? ` · ${selectedModel.client.ipv4 || selectedModel.client.ip}` : ""}</span>
+              <span>{selectedMachine?.provider || "未填写服务商"} · {flag(selectedMachine?.countryCode)} {String(selectedMachine?.countryCode || "").toUpperCase() || "未分组"}{selectedMachine?.region ? ` / ${selectedMachine.region}` : ""}{selectedModel?.client?.ipv4 || selectedModel?.client?.ip ? <> · <span className="sensitive-value">{selectedModel.client.ipv4 || selectedModel.client.ip}</span></> : ""}</span>
             </div>
             <div className="resource-bars" aria-label={`${selectedMachine?.name} 资源占用`}>
               {[['CPU', selectedModel?.cpu], ['MEMORY', selectedModel?.memory], ['DISK', selectedModel?.disk]].map(([label, value]) => <div key={label}><span>{label}<strong>{value == null ? "—" : `${value.toFixed(1)}%`}</strong></span><i><b style={{ width: `${value || 0}%` }} /></i></div>)}
@@ -4514,6 +4541,14 @@ const MANAGED_ERROR = {
   "proxy-https-failed": "代理通道未能完成 HTTPS 请求",
   "exit-ip-missing": "代理请求成功，但未能识别出口 IP",
   "exit-ip-mismatch": "代理可用，但出口 IP 与节点地址不一致",
+  "adoption-source-invalid": "原 Nowhere 服务标识无效，无法接管",
+  "adoption-source-not-running": "原 Nowhere 服务未运行，已取消接管",
+  "adoption-source-stop-failed": "无法停止原 Nowhere 服务，托管实例未启动",
+  "adoption-start-failed": "托管实例启动失败，已尝试恢复原服务",
+  "adoption-persistence-failed": "开机启动切换失败，已尝试恢复原服务",
+  "adoption-managed-stop-failed": "无法停止托管实例，未恢复原服务",
+  "adoption-rollback-failed": "原服务恢复失败，已尝试重新启动托管实例",
+  "adoption-failed": "Nowhere 接管操作失败",
   "probe-timeout": "连接检查超时",
   "probe-failed": "连接检查失败",
   "invalid-response": "检测来源没有返回可识别的结果",
@@ -4988,8 +5023,13 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
   const act = async (kind, instance, action) => {
     const busyKey = `${kind}:${instance.id}:${action}`;
     if ([...busy].some(key => key.split(":").includes(instance.id))) return;
-    const label = { start: "启动", stop: "停止", restart: "重启", status: "刷新", logs: "读取日志", delete: "删除" }[action];
-    if (["start", "stop", "restart", "delete"].includes(action) && !confirm(`${label}托管实例“${instance.name}”？${action === "delete" ? "\n\n实例目录与对应节点记录会被删除。" : ""}`)) return;
+    const label = { start: "启动", stop: "停止", restart: "重启", status: "刷新", logs: "读取日志", delete: "删除", adopt: "切换接管", "rollback-adoption": "恢复原服务" }[action];
+    const confirmation = action === "adopt"
+      ? `切换接管“${instance.name}”？\n\n原服务会先停止，再启动已核对的托管实例；原文件会保留。若新实例启动失败，系统会自动尝试恢复原服务。`
+      : action === "rollback-adoption"
+        ? `恢复“${instance.name}”的原 Nowhere 服务？\n\n托管实例会停止，原服务会重新启动；托管记录与文件仍会保留。`
+        : `${label}托管实例“${instance.name}”？${action === "delete" ? "\n\n实例目录与对应节点记录会被删除。" : ""}`;
+    if (["start", "stop", "restart", "delete", "adopt", "rollback-adoption"].includes(action) && !confirm(confirmation)) return;
     const otp = operationOtp(); if (otp === null) return;
     beginBusy(busyKey);
     try {
@@ -5167,12 +5207,14 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
     const machine = machineFor(instance); const node = nodeFor(instance); const status = MANAGED_STATUS[instance.status] || [instance.status || "未知", ""]; const connection = instance.connectivity; const telemetry = observed?.telemetry;
     const instanceCapabilities = kind === "nowhere" ? nowhereVersionCapabilities(instance.version) : null;
     const listenSummary = [instance.tcpPort ? `TCP ${instance.tcpPort}` : "", instance.udpPort ? `UDP ${instance.udpPort}` : ""].filter(Boolean).join(" · ");
-    const canStart = instance.status === "stopped" || instance.status === "failed";
+    const adoptionStaged = kind === "nowhere" && instance.adoptionState === "staged";
+    const adopted = kind === "nowhere" && instance.adoptionState === "adopted";
+    const canStart = (instance.status === "stopped" || instance.status === "failed") && !adoptionStaged;
     const instanceBusy = [...busy].some(key => key.split(":").includes(instance.id));
     const connectionLabel = connection?.status === "passed" ? "最近连接测试通过" : connection?.status === "failed" ? "最近连接测试失败" : "尚未测试连接";
     const connectionTitle = connection ? `${connectionLabel} · ${new Date(connection.observedAt).toLocaleString()}${connection.sourceKind === "target" ? " · 目标机自测，不代表公网可达" : " · 由另一台 Agent 发起"}` : connectionLabel;
     return <article className={`managed-card ${recentInstanceId === instance.id ? "recent" : ""}`} data-instance-id={instance.id} key={instance.id}>
-      <header><div className="managed-title"><span>{flag(machine?.countryCode) || (kind === "nowhere" ? "N" : "S")}</span><div><h3>{instance.name}</h3><p>{machine?.name || "宿主已删除"} · {instance.publicHost}:{instance.port}</p></div></div><div className="managed-header-status"><span className={`connection-indicator ${connection?.status || "untested"}`} role="img" aria-label={connectionLabel} title={connectionTitle}>{connection?.status === "passed" ? <Check size={15} /> : connection?.status === "failed" ? <X size={15} /> : <Activity size={15} />}</span><Status tone={status[1]}>{status[0]}</Status></div></header>
+      <header><div className="managed-title"><span>{flag(machine?.countryCode) || (kind === "nowhere" ? "N" : "S")}</span><div><h3>{instance.name}</h3><p>{machine?.name || "宿主已删除"} · <span className="sensitive-value">{instance.publicHost}:{instance.port}</span></p></div></div><div className="managed-header-status"><span className={`connection-indicator ${connection?.status || "untested"}`} role="img" aria-label={connectionLabel} title={connectionTitle}>{connection?.status === "passed" ? <Check size={15} /> : connection?.status === "failed" ? <X size={15} /> : <Activity size={15} />}</span>{adoptionStaged && <Status tone="warning">待接管</Status>}{adopted && <Status tone="ok">已接管</Status>}<Status tone={status[1]}>{status[0]}</Status></div></header>
       <dl><div><dt>内核 / 协议</dt><dd>{kind === "nowhere" ? `Nowhere ${instance.version || ""} · NW2` : instance.protocol || "sing-box"}</dd></div><div><dt>监听</dt><dd>{listenSummary}</dd></div><div><dt>{kind === "nowhere" ? "传输" : "版本"}</dt><dd>{kind === "nowhere" ? (instance.network === "mix" ? "TCP + UDP" : String(instance.network || "mix").toUpperCase()) : instance.version || "跟随宿主"}</dd></div><div><dt>归属</dt><dd>Wherever Station</dd></div></dl>
       {instance.lastError && <p className="managed-error">{MANAGED_ERROR[instance.lastError] || instance.lastError}</p>}
       <p className="muted">进程采样：{observed?.observedAt ? `${observed.state} · ${new Date(observed.observedAt).toLocaleTimeString()}${Date.now() - Date.parse(observed.observedAt) > 15000 ? '（旧数据）' : ''}` : '尚未采样'}{me?.two_factor_enabled ? ' · 两步验证已开启，自动远程采样暂停' : ''}</p>
@@ -5181,7 +5223,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       {kind === "nowhere" && !["draft", "validated"].includes(instance.status) && <div className="managed-primary-actions"><Button icon={Edit3} onClick={() => editNowhere(instance)} disabled={instanceBusy}>{hasBusy(`read:${instance.id}`) ? "正在读取配置…" : "编辑运行配置"}</Button><Button icon={PackageOpen} onClick={() => openNowhereManager(instance)} disabled={instanceBusy}>版本与证书</Button></div>}
       {kind === "sing-box" && <div className="managed-primary-actions"><Button icon={Edit3} onClick={() => editSingBox(instance)} disabled={instanceBusy}>{hasBusy(`read:${instance.id}`) ? "正在读取配置…" : "编辑运行配置"}</Button></div>}
       {kind === "nowhere" && ["draft", "validated", "failed"].includes(instance.status) && <div className="managed-primary-actions"><Button onClick={() => retryNowhere(instance)} disabled={instanceBusy}>检查并继续创建</Button><small>先核对远端结果；已创建的实例只恢复状态。</small></div>}
-      <footer><div className="managed-primary-actions">{canStart ? <Button icon={Play} variant="primary" onClick={() => act(kind, instance, "start")} disabled={instanceBusy}>启动</Button> : <Button icon={Square} onClick={() => act(kind, instance, "stop")} disabled={instanceBusy || instance.status !== "running"}>停止</Button>}<Button icon={RotateCw} onClick={() => act(kind, instance, "restart")} disabled={instanceBusy || instance.status !== "running"}>重启</Button><Button icon={Activity} onClick={() => checkConnection(instance)} disabled={instanceBusy || instance.status !== "running"}>{hasBusy(`probe:${instance.id}`) ? "正在检测…" : "测试连接"}</Button><Button icon={Link2} onClick={() => node && setSubscriptionEdit({ nodeId: node.id, nodeName: node.name, subscriptionId: state.subscriptions[0]?.id || "new", name: `${machine?.region || machine?.name || "我的"}节点` })} disabled={!node}>加入订阅</Button></div><div className="managed-secondary-actions"><IconButton disabled={instanceBusy} label="刷新状态" onClick={() => act(kind, instance, "status")}><RefreshCw size={16} /></IconButton><IconButton disabled={instanceBusy} label="查看日志" onClick={() => act(kind, instance, "logs")}><Clipboard size={16} /></IconButton><IconButton label="复制客户端链接" onClick={() => copyUri(instance)}><Copy size={16} /></IconButton><IconButton label="显示二维码" onClick={() => node?.uri && setQr({ name: instance.name, uri: node.uri })}><QrCode size={16} /></IconButton><IconButton disabled={instanceBusy} label="删除托管实例" onClick={() => act(kind, instance, "delete")}><Trash2 size={16} /></IconButton></div></footer>
+      <footer><div className="managed-primary-actions">{adoptionStaged ? <Button icon={ShieldCheck} variant="primary" onClick={() => act(kind, instance, "adopt")} disabled={instanceBusy}>切换接管</Button> : canStart ? <Button icon={Play} variant="primary" onClick={() => act(kind, instance, "start")} disabled={instanceBusy}>启动</Button> : <Button icon={Square} onClick={() => act(kind, instance, "stop")} disabled={instanceBusy || instance.status !== "running"}>停止</Button>}<Button icon={RotateCw} onClick={() => act(kind, instance, "restart")} disabled={instanceBusy || instance.status !== "running" || adoptionStaged}>重启</Button>{adopted && <Button icon={Undo2} onClick={() => act(kind, instance, "rollback-adoption")} disabled={instanceBusy}>恢复原服务</Button>}<Button icon={Activity} onClick={() => checkConnection(instance)} disabled={instanceBusy || instance.status !== "running"}>{hasBusy(`probe:${instance.id}`) ? "正在检测…" : "测试连接"}</Button><Button icon={Link2} onClick={() => node && setSubscriptionEdit({ nodeId: node.id, nodeName: node.name, subscriptionId: state.subscriptions[0]?.id || "new", name: `${machine?.region || machine?.name || "我的"}节点` })} disabled={!node}>加入订阅</Button></div><div className="managed-secondary-actions"><IconButton disabled={instanceBusy} label="刷新状态" onClick={() => act(kind, instance, "status")}><RefreshCw size={16} /></IconButton><IconButton disabled={instanceBusy} label="查看日志" onClick={() => act(kind, instance, "logs")}><Clipboard size={16} /></IconButton><IconButton label="复制客户端链接" onClick={() => copyUri(instance)}><Copy size={16} /></IconButton><IconButton label="显示二维码" onClick={() => node?.uri && setQr({ name: instance.name, uri: node.uri })}><QrCode size={16} /></IconButton><IconButton disabled={instanceBusy || adopted} label={adopted ? "请先恢复原服务" : "删除托管实例"} onClick={() => act(kind, instance, "delete")}><Trash2 size={16} /></IconButton></div></footer>
     </article>;
   };
   return <section className="workspace-page deploy-panel">
@@ -5464,6 +5506,7 @@ export default function App() {
   const [metricsBusy, setMetricsBusy] = useState(false);
   const [updatedAt, setUpdatedAt] = useState("");
   const [toast, setToast] = useState(null);
+  const [privacyMode, setPrivacyMode] = useState(() => sessionStorage.getItem("wherever-privacy-mode") === "1");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [discoveryMachine, setDiscoveryMachine] = useState(null);
   const [serviceStates, setServiceStates] = useState(readServiceCache);
@@ -5696,7 +5739,7 @@ export default function App() {
       </div>
     );
   return (
-    <div className={`app-shell station-theme ${theme.resolved}`}>
+    <div className={`app-shell station-theme ${theme.resolved}${privacyMode ? " privacy-mode" : ""}`}>
       <div className="station-chrome">
       <header className="app-header">
         <div className="brand">
@@ -5723,6 +5766,7 @@ export default function App() {
       </nav>
       <div className="station-meta">
         {embedded && <a className="theme-toggle fullscreen-toggle" href={fullscreenHref} target="_blank" rel="noreferrer" aria-label="全屏打开 Wherever Station" title="全屏打开"><Maximize2 size={15} /><span>全屏</span></a>}
+        <button className={`theme-toggle${privacyMode ? " active" : ""}`} type="button" onClick={() => setPrivacyMode((current) => { const next = !current; sessionStorage.setItem("wherever-privacy-mode", next ? "1" : "0"); return next; })} aria-pressed={privacyMode} aria-label={privacyMode ? "关闭隐私打码" : "隐藏 IP 与地址"} title={privacyMode ? "关闭隐私打码" : "截图隐私模式"}>{privacyMode ? <EyeOff size={15} /> : <Eye size={15} />}<span>{privacyMode ? "已打码" : "隐私"}</span></button>
         <button className="theme-toggle" type="button" onClick={() => setSettingsOpen(true)} aria-label="打开设置" title="设置"><Settings size={15} /><span>设置</span></button>
         <button className="theme-toggle" type="button" onClick={theme.cycle} aria-label={`切换主题，当前${theme.mode === "auto" ? "跟随 Komari" : theme.mode === "light" ? "浅色" : "深色"}`} title="跟随 Komari / 浅色 / 深色">
           {theme.mode === "auto" ? <Monitor size={15} /> : theme.mode === "light" ? <Sun size={15} /> : <Moon size={15} />}

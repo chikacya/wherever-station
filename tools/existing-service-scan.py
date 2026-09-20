@@ -26,6 +26,13 @@ def clipped(value, limit=240):
     return str(value or "").strip()[:limit]
 
 
+def integer(value, fallback=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
 def stable_id(*values):
     return hashlib.sha256("\0".join(str(value) for value in values).encode("utf-8")).hexdigest()[:20]
 
@@ -239,13 +246,42 @@ def add_review(reviews, unit, source, inbound, reason):
 
 
 def reality_public_key(binary, private_key):
-    if not binary or not private_key:
+    if not private_key:
         return ""
-    result = run([binary, "generate", "reality-keypair", "--private-key", private_key], 6)
-    for line in (result.stdout + "\n" + result.stderr).splitlines():
-        if "public" in line.lower() and ":" in line:
-            return line.split(":", 1)[1].strip().split()[0]
+    if binary:
+        result = run([binary, "generate", "reality-keypair", "--private-key", private_key], 6)
+        for line in (result.stdout + "\n" + result.stderr).splitlines():
+            if "public" in line.lower() and ":" in line:
+                return line.split(":", 1)[1].strip().split()[0]
+    if shutil.which("openssl"):
+        try:
+            raw = base64.urlsafe_b64decode(str(private_key) + "=" * (-len(str(private_key)) % 4))
+            if len(raw) != 32:
+                return ""
+            private_der = bytes.fromhex("302e020100300506032b656e04220420") + raw
+            derived = subprocess.run(
+                ["openssl", "pkey", "-inform", "DER", "-pubout", "-outform", "DER"],
+                input=private_der, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=6, check=False,
+            )
+            if derived.returncode == 0 and len(derived.stdout) >= 32:
+                return base64.urlsafe_b64encode(derived.stdout[-32:]).decode().rstrip("=")
+        except (ValueError, OSError, subprocess.TimeoutExpired):
+            pass
     return ""
+
+
+def reality_server_name(tls, reality):
+    value = tls.get("server_name")
+    if isinstance(value, list):
+        value = value[0] if value else ""
+    if not value:
+        handshake = reality.get("handshake") if isinstance(reality.get("handshake"), dict) else {}
+        value = handshake.get("server") or handshake.get("server_name") or ""
+    value = clipped(value, 253).strip("[]")
+    if value.count(":") == 1 and value.rsplit(":", 1)[1].isdigit():
+        value = value.rsplit(":", 1)[0]
+    return value
 
 
 def sing_box_candidates(unit, source, config, candidates, reviews):
@@ -292,11 +328,12 @@ def sing_box_candidates(unit, source, config, candidates, reviews):
         elif protocol == "vless" and tls.get("enabled") and isinstance(tls.get("reality"), dict) and tls["reality"].get("enabled"):
             reality = tls["reality"]
             public_key = reality_public_key(binary, reality.get("private_key"))
-            server_name = (tls.get("server_name") or (reality.get("handshake") or {}).get("server") or "")
+            server_name = reality_server_name(tls, reality)
             short_ids = reality.get("short_id") or reality.get("short_ids") or []
             short_id = short_ids[0] if isinstance(short_ids, list) and short_ids else short_ids if isinstance(short_ids, str) else ""
             if not public_key or not server_name:
-                add_review(reviews, unit, source, inbound, "Reality 公钥或 SNI 无法从运行配置可靠推导")
+                missing = "、".join(value for value, absent in (("公钥", not public_key), ("SNI", not server_name)) if absent)
+                add_review(reviews, unit, source, inbound, f"Reality {missing}无法从运行配置可靠推导")
                 continue
             params = transport_query(inbound)
             params.update({"security": "reality", "sni": server_name, "pbk": public_key, "sid": short_id, "fp": "chrome"})
@@ -476,7 +513,48 @@ def discover_nowhere(unit, candidates, reviews):
             "key_path": values.get("NOWHERE_TLS_KEY_VALUE") or portal_query.get("key") or "",
         })
     source = path or "运行进程参数"
-    candidates.append({"id": stable_id(unit["unit"], source, uri.split("#", 1)[0]), "kind": "nowhere", "protocol": "nowhere", "name": name, "uri": uri, "source": source, "confidence": "ready", "certificate": certificate, "adapter": "native-cli", "evidence": [unit["unit"], source, "adapter=native-cli", f"network={network}", f"version={version}"]})
+    managed_names = {
+        "NOWHERE_PORTAL", "NOWHERE_CLIENT_VALUE", "NOWHERE_VERSION_VALUE", "NOWHERE_PUBLIC_HOST_VALUE",
+        "NOWHERE_LISTEN_HOST_VALUE", "NOWHERE_PORT_VALUE", "NOWHERE_KEY_VALUE", "NOWHERE_NET_VALUE",
+        "NOWHERE_TCP_PORT_VALUE", "NOWHERE_UDP_PORT_VALUE", "NOWHERE_TCP_CARRIER_VALUE", "NOWHERE_UDP_CARRIER_VALUE",
+        "NOWHERE_ALPN_VALUE", "NOWHERE_TLS_VALUE", "NOWHERE_CRT_VALUE", "NOWHERE_TLS_KEY_VALUE",
+        "NOWHERE_RATE_VALUE", "NOWHERE_ETAR_VALUE", "NOWHERE_CERTIFICATE_MODE_VALUE",
+        "NOWHERE_CERTIFICATE_HOST_VALUE", "NOWHERE_CERTIFICATE_DAYS_VALUE", "NOWHERE_DIAL_VALUE",
+        "NOWHERE_SOCKS_VALUE", "NOWHERE_LOG_VALUE", "NOWHERE_TELEMETRY_INTERVAL_VALUE",
+        "NOWHERE_VECTOR_SOCKS_VALUE", "NOWHERE_VECTOR_SNI_VALUE", "NOWHERE_VECTOR_PIN_VALUE",
+        "NOWHERE_VECTOR_MUX_VALUE", "NOWHERE_MORPH_VALUE", "NOWHERE_TRANSPORT_MEMORY_PROFILE_VALUE",
+        "NOW_TELEMETRY_INTERVAL", "NOW_TRANSPORT_MEMORY_PROFILE",
+    }
+    source_binary = os.path.realpath(args_binary) if args_binary and os.path.isfile(args_binary) else ""
+    adoption_input = {
+        "name": name, "version": version, "publicHost": host, "listenHost": bind_host or "0.0.0.0",
+        "port": tcp_port or udp_port, "tcpPort": tcp_port, "udpPort": udp_port,
+        "tcpCarrier": tcp_carrier, "udpCarrier": udp_carrier, "key": key, "client": "anywhere",
+        "network": network, "tls": integer(tls_mode, 1),
+        "certificateMode": "existing" if str(tls_mode) == "2" else "ephemeral",
+        "certificatePath": values.get("NOWHERE_CRT_VALUE") or portal_query.get("crt") or "",
+        "privateKeyPath": values.get("NOWHERE_TLS_KEY_VALUE") or portal_query.get("key") or "",
+        "certificateHost": values.get("NOWHERE_CERTIFICATE_HOST_VALUE") or host,
+        "rate": integer(values.get("NOWHERE_RATE_VALUE") or portal_query.get("rate")),
+        "etar": integer(values.get("NOWHERE_ETAR_VALUE") or portal_query.get("etar")),
+        "dial": values.get("NOWHERE_DIAL_VALUE") or portal_query.get("dial") or "auto",
+        "socks": values.get("NOWHERE_SOCKS_VALUE") or portal_query.get("socks") or "none",
+        "log": values.get("NOWHERE_LOG_VALUE") or portal_query.get("log") or "info",
+        "telemetryInterval": values.get("NOWHERE_TELEMETRY_INTERVAL_VALUE") or values.get("NOW_TELEMETRY_INTERVAL") or "1s",
+        "vectorSocks": values.get("NOWHERE_VECTOR_SOCKS_VALUE") or "127.0.0.1:1080",
+        "vectorSni": values.get("NOWHERE_VECTOR_SNI_VALUE") or "none",
+        "vectorPin": values.get("NOWHERE_VECTOR_PIN_VALUE") or "none",
+        "vectorMux": integer(values.get("NOWHERE_VECTOR_MUX_VALUE")),
+        "morph": integer(values.get("NOWHERE_MORPH_VALUE") or portal_query.get("morph")),
+        "transportMemoryProfile": values.get("NOWHERE_TRANSPORT_MEMORY_PROFILE_VALUE") or values.get("NOW_TRANSPORT_MEMORY_PROFILE") or "throughput",
+        "extensionEnvironment": {key_name: value for key_name, value in values.items() if key_name.startswith(("NOWHERE_", "NOW_")) and key_name not in managed_names},
+    }
+    candidates.append({
+        "id": stable_id(unit["unit"], source, uri.split("#", 1)[0]), "kind": "nowhere", "protocol": "nowhere",
+        "name": name, "uri": uri, "source": source, "confidence": "ready", "certificate": certificate,
+        "adapter": "native-cli", "evidence": [unit["unit"], source, "adapter=native-cli", f"network={network}", f"version={version}"],
+        "adoption": {"eligible": bool(source_binary), "sourceUnit": unit["unit"], "sourceBinaryPath": source_binary, "sourceConfigPath": path, "input": adoption_input},
+    })
 
 
 def main():

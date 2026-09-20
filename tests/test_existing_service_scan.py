@@ -2,10 +2,12 @@ import base64
 import json
 import os
 import pathlib
+import shutil
 import stat
 import subprocess
 import tempfile
 import unittest
+import urllib.parse
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -19,6 +21,9 @@ class ExistingServiceScanTests(unittest.TestCase):
             bin_dir = root / "bin"
             bin_dir.mkdir()
             nowhere_env = root / "nowhere.env"
+            nowhere_binary = bin_dir / "nowhere"
+            nowhere_binary.write_text("#!/bin/sh\nprintf 'nowhere 2.0.2\\n'\n", encoding="utf-8")
+            nowhere_binary.chmod(nowhere_binary.stat().st_mode | stat.S_IXUSR)
             nowhere_env.write_text(
                 "\n".join([
                     "NOWHERE_VERSION_VALUE='v2.0.2'",
@@ -50,7 +55,7 @@ class ExistingServiceScanTests(unittest.TestCase):
                 {"type": "anytls", "tag": "AnyTLS", "listen_port": 12443, "users": [{"name": "anytls", "password": "anytls secret"}], "tls": tls},
             ]}), encoding="utf-8")
             nowhere_unit = root / "nowhere.service"
-            nowhere_unit.write_text(f"[Service]\nEnvironmentFile={nowhere_env}\nExecStart=/usr/local/bin/nowhere\n", encoding="utf-8")
+            nowhere_unit.write_text(f"[Service]\nEnvironmentFile={nowhere_env}\nExecStart={nowhere_binary}\n", encoding="utf-8")
             sing_unit = root / "sing-box.service"
             sing_unit.write_text(f"[Service]\nExecStart=/usr/bin/sing-box run -c {sing_config}\n", encoding="utf-8")
             systemctl = bin_dir / "systemctl"
@@ -83,6 +88,10 @@ class ExistingServiceScanTests(unittest.TestCase):
             nowhere = next(item for item in document["candidates"] if item["protocol"] == "nowhere")
             self.assertIn("nowhere.example.com:2077", nowhere["uri"])
             self.assertIn("up=tcp&down=tcp", nowhere["uri"])
+            self.assertTrue(nowhere["adoption"]["eligible"])
+            self.assertEqual(nowhere["adoption"]["sourceUnit"], "nowhere.service")
+            self.assertEqual(nowhere["adoption"]["sourceBinaryPath"], str(nowhere_binary.resolve()))
+            self.assertEqual(nowhere["adoption"]["input"]["key"], "secret value")
             hysteria = next(item for item in document["candidates"] if item["protocol"] == "hysteria2")
             self.assertIn("pinSHA256=aabbccdd", hysteria["uri"])
             self.assertNotIn("insecure=1", hysteria["uri"])
@@ -94,6 +103,41 @@ class ExistingServiceScanTests(unittest.TestCase):
             self.assertEqual(vmess_payload["allowInsecure"], "1")
             self.assertEqual(document["needsReview"], [])
             self.assertEqual(nowhere_env.read_text(encoding="utf-8").count("NOWHERE_KEY_VALUE"), 1)
+
+    def test_vless_reality_public_key_falls_back_to_openssl(self):
+        if not shutil.which("openssl"):
+            self.skipTest("OpenSSL is required for the Reality fallback test")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            private_key = base64.urlsafe_b64encode(bytes(range(1, 33))).decode().rstrip("=")
+            config = root / "sing-box.json"
+            config.write_text(json.dumps({"inbounds": [{
+                "type": "vless", "tag": "Reality", "listen_port": 443,
+                "users": [{"uuid": "00000000-0000-4000-8000-000000000001", "flow": "xtls-rprx-vision"}],
+                "tls": {"enabled": True, "reality": {"enabled": True, "handshake": {"server": "www.example.com:443"}, "private_key": private_key, "short_id": ["0123456789abcdef"]}},
+            }]}), encoding="utf-8")
+            unit = root / "sing-box.service"
+            unit.write_text(f"[Service]\nExecStart=/missing/sing-box run -c {config}\n", encoding="utf-8")
+            systemctl = bin_dir / "systemctl"
+            systemctl.write_text(
+                "#!/bin/sh\n"
+                "if [ \"$1\" = list-unit-files ]; then printf 'sing-box.service enabled\\n'; exit 0; fi\n"
+                "printf 'LoadState=loaded\\nActiveState=active\\nSubState=running\\nMainPID=0\\nFragmentPath=%s/sing-box.service\\n' \"$DISCOVERY_FIXTURE_ROOT\"\n",
+                encoding="utf-8",
+            )
+            systemctl.chmod(systemctl.stat().st_mode | stat.S_IXUSR)
+            payload = base64.b64encode(json.dumps({"publicHost": "agent.example.com", "machineName": "Reality VPS"}).encode()).decode()
+            environment = {**os.environ, "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}", "DISCOVERY_FIXTURE_ROOT": str(root)}
+            result = subprocess.run(["python3", str(SCANNER), payload], capture_output=True, text=True, env=environment, timeout=10, check=True)
+            line = next(item for item in result.stdout.splitlines() if item.startswith("PCDISCOVERY\t1\t"))
+            document = json.loads(base64.b64decode(line.split("\t", 2)[2]).decode())
+            self.assertFalse(any(item["protocol"] == "vless" for item in document["needsReview"]))
+            reality = next(item for item in document["candidates"] if item["protocol"] == "vless")
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(reality["uri"]).query)
+            self.assertEqual(query["sni"], ["www.example.com"])
+            self.assertEqual(len(query["pbk"][0]), 43)
 
 
 if __name__ == "__main__":

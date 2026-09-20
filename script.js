@@ -327,6 +327,11 @@ function cleanState(input) {
     certificatePath: cleanText(item && item.certificatePath, 512), privateKeyPath: cleanText(item && item.privateKeyPath, 512),
     certificateHost: cleanText(item && item.certificateHost, 253) || cleanText(item && item.publicHost, 253), certificateDays: Math.min(3650, Math.max(1, Number(item && item.certificateDays) || 825)),
     extensionEnvironment: cleanNowhereExtensions(item && item.extensionEnvironment), binarySource: item && item.binarySource === "download" ? "download" : "copy",
+    adoptionState: ["staged", "adopted"].includes(item && item.adoptionState) ? item.adoptionState : "",
+    adoptionSourceUnit: /^[A-Za-z0-9_.@:-]+\.service$/.test(String(item && item.adoptionSourceUnit || "")) ? String(item.adoptionSourceUnit) : "",
+    adoptionSourceBinary: String(item && item.adoptionSourceBinary || "").startsWith("/") ? cleanText(item.adoptionSourceBinary, 512) : "",
+    adoptionSourceConfig: String(item && item.adoptionSourceConfig || "").startsWith("/") ? cleanText(item.adoptionSourceConfig, 512) : "",
+    adoptionSourceWasEnabled: item && item.adoptionSourceWasEnabled === true,
     createdAt: /^\d{4}-\d\d-\d\dT/.test(String(item && item.createdAt || "")) ? String(item.createdAt) : new Date().toISOString(),
     updatedAt: /^\d{4}-\d\d-\d\dT/.test(String(item && item.updatedAt || "")) ? String(item.updatedAt) : new Date().toISOString(),
     lastError: cleanText(item && item.lastError, 160), lastOperationId: cleanText(item && item.lastOperationId, 64),
@@ -693,9 +698,46 @@ function decodedNodeName(protocol, uri) {
 }
 function nodeFingerprint(node) {
   try {
-    if (node.protocol === "vmess") { let raw = node.uri.slice(8).trim(); raw += "=".repeat((4 - raw.length % 4) % 4); const value = JSON.parse(Buffer.from(raw, "base64").toString("utf8")); delete value.ps; return `vmess:${JSON.stringify(value)}`; }
-    const url = new URL(node.uri); url.hash = ""; return url.toString();
+    if (node.protocol === "vmess") {
+      let raw = node.uri.slice(8).trim(); raw += "=".repeat((4 - raw.length % 4) % 4);
+      const value = JSON.parse(Buffer.from(raw, "base64").toString("utf8")); delete value.ps;
+      const normalized = Object.fromEntries(Object.keys(value).sort().map((key) => [key, typeof value[key] === "string" ? value[key].trim() : value[key]]));
+      if (normalized.add) normalized.add = String(normalized.add).toLowerCase();
+      if (normalized.port) normalized.port = String(Number(normalized.port));
+      return `vmess:${JSON.stringify(normalized)}`;
+    }
+    const url = new URL(node.uri); url.hash = ""; url.hostname = url.hostname.toLowerCase();
+    const entries = [...url.searchParams.entries()].sort(([leftKey, leftValue], [rightKey, rightValue]) => leftKey.localeCompare(rightKey) || leftValue.localeCompare(rightValue));
+    url.search = "";
+    for (const [key, value] of entries) url.searchParams.append(key, value);
+    return url.toString();
   } catch (_) { return String(node.uri || "").replace(/#.*$/, ""); }
+}
+
+function importDiscoveredNodes(params) {
+  const state = readState();
+  const machineId = cleanText(params && params.machineId, 64);
+  const machine = state.machines.find((item) => item.id === machineId);
+  if (!machine) throw new Error("发现节点的宿主已经不存在");
+  const candidates = Array.isArray(params && params.candidates) ? params.candidates.slice(0, 500) : [];
+  const known = new Map(state.nodes.map((node) => [nodeFingerprint(node), node]));
+  const added = []; const duplicates = []; const errors = [];
+  for (const candidate of candidates) {
+    const uri = cleanText(candidate && candidate.uri, 8192);
+    const parsed = parseNodeUris({ text: uri }); const node = parsed.nodes[0];
+    if (!node) { errors.push({ name: cleanText(candidate && candidate.name, 160), message: parsed.errors[0]?.message || "无法解析节点链接" }); continue; }
+    const fingerprint = nodeFingerprint(node); const existing = known.get(fingerprint);
+    if (existing) { duplicates.push({ id: existing.id, name: existing.name, source: existing.source }); continue; }
+    const created = {
+      id: randomId(), name: cleanText(candidate && candidate.name, 160) || node.name,
+      protocol: node.protocol, machineId, uri: node.uri, enabled: true,
+      tags: ["自动发现", candidate && candidate.kind === "nowhere" ? "Nowhere" : "sing-box"],
+      source: "import", sourceId: "",
+    };
+    state.nodes.push(created); known.set(fingerprint, created); added.push(created);
+  }
+  if (added.length) { state.revision += 1; writeState(cleanState(state)); }
+  return { state: readState(), added: added.length, duplicates, errors };
 }
 function clashProxyUri(proxy) {
   if (!proxy || typeof proxy !== "object") throw new Error("节点不是对象"); const type = cleanText(proxy.type, 24).toLowerCase(); const host = cleanText(proxy.server, 255); const port = Number(proxy.port); const name = cleanText(proxy.name) || `${type.toUpperCase()} 节点`; const serverHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
@@ -1032,10 +1074,20 @@ async function syncExternalSource(params) {
   try {
     const fetched = await fetchDocument(initialSource.url); const parsed = parseNodeUris({ text: fetched.text }); if (!parsed.nodes.length) throw new Error(parsed.errors[0]?.message || "订阅源没有可识别的 URI");
     const state = readState(); const source = state.externalSources.find((item) => item.id === sourceId); if (!source) throw new Error("订阅源已被删除"); if (source.url !== initialSource.url) throw new Error("订阅地址已在同步期间变化，请重新同步");
-    const existing = state.nodes.filter((node) => node.sourceId === source.id); const byFingerprint = new Map(existing.map((node) => [nodeFingerprint(node), node])); const activeIds = []; let created = 0; let updated = 0;
-    for (const incoming of parsed.nodes) { let node = byFingerprint.get(nodeFingerprint(incoming)); if (!node) { node = { id: randomId(), ...incoming, machineId: source.machineId, tags: source.tags, source: "external", sourceId: source.id, enabled: true }; state.nodes.push(node); created += 1; } else { Object.assign(node, { ...incoming, machineId: source.machineId, tags: source.tags, source: "external", sourceId: source.id, enabled: true }); updated += 1; } activeIds.push(node.id); }
+    const existing = state.nodes.filter((node) => node.sourceId === source.id);
+    const byFingerprint = new Map(existing.map((node) => [nodeFingerprint(node), node]));
+    const representedElsewhere = new Map(state.nodes.filter((node) => node.enabled && node.sourceId !== source.id).map((node) => [nodeFingerprint(node), node]));
+    const activeIds = []; let created = 0; let updated = 0; let duplicates = 0;
+    for (const incoming of parsed.nodes) {
+      const fingerprint = nodeFingerprint(incoming);
+      if (representedElsewhere.has(fingerprint)) { duplicates += 1; continue; }
+      let node = byFingerprint.get(fingerprint);
+      if (!node) { node = { id: randomId(), ...incoming, machineId: source.machineId, tags: source.tags, source: "external", sourceId: source.id, enabled: true }; state.nodes.push(node); created += 1; }
+      else { Object.assign(node, { ...incoming, machineId: source.machineId, tags: source.tags, source: "external", sourceId: source.id, enabled: true }); updated += 1; }
+      activeIds.push(node.id);
+    }
     const activeSet = new Set(activeIds); let disabled = 0; for (const node of existing) if (!activeSet.has(node.id) && node.enabled) { node.enabled = false; disabled += 1; }
-    source.nodeIds = activeIds; source.lastSyncAt = new Date().toISOString(); source.lastError = ""; source.traffic = parseSubscriptionUserinfo(fetched.subscriptionUserinfo, source.lastSyncAt); state.revision += 1; writeState(cleanState(state)); return { state: readState(), created, updated, disabled, errors: parsed.errors.length, traffic: source.traffic };
+    source.nodeIds = activeIds; source.lastSyncAt = new Date().toISOString(); source.lastError = ""; source.traffic = parseSubscriptionUserinfo(fetched.subscriptionUserinfo, source.lastSyncAt); state.revision += 1; writeState(cleanState(state)); return { state: readState(), created, updated, disabled, duplicates, errors: parsed.errors.length, traffic: source.traffic };
   } catch (error) { const state = readState(); const source = state.externalSources.find((item) => item.id === sourceId); if (source) { source.lastError = cleanText(error.message, 240); source.lastSyncAt = new Date().toISOString(); state.revision += 1; writeState(cleanState(state)); } throw error; }
 }
 function startExternalSourceOperation(params) {
@@ -1156,6 +1208,36 @@ function createManagedNowhereDraft(params) {
   state.revision += 1; writeState(cleanState(state));
   return { state: readState(), instanceId: plan.id, plan: publicManagedNowherePlan(plan) };
 }
+function createManagedNowhereAdoptionDraft(params) {
+  const stateBefore = readState();
+  const machineId = cleanText(params && params.machineId, 64);
+  const candidate = params && params.candidate && typeof params.candidate === "object" ? params.candidate : {};
+  const adoption = candidate.adoption && typeof candidate.adoption === "object" ? candidate.adoption : {};
+  const sourceUnit = cleanText(adoption.sourceUnit, 160);
+  const sourceBinary = cleanText(adoption.sourceBinaryPath, 512);
+  const sourceConfig = cleanText(adoption.sourceConfigPath, 512);
+  if (!stateBefore.machines.some((item) => item.id === machineId && item.monitorClientId)) throw new Error("请选择已绑定 Agent 的服务器");
+  if (candidate.protocol !== "nowhere" || adoption.eligible !== true || !/^[A-Za-z0-9_.@:-]+\.service$/.test(sourceUnit) || sourceUnit.startsWith("proxy-console-nowhere@")) throw new Error("该发现项不具备安全接管条件");
+  if (!sourceBinary.startsWith("/")) throw new Error("没有找到原 Nowhere 内核路径");
+  const defaults = newManagedNowhereValues();
+  const input = { ...(adoption.input || {}), id: defaults.id, machineId, binarySource: "copy" };
+  const created = createManagedNowhereDraft({ input });
+  const state = readState(); const instance = state.managedInstances.find((item) => item.id === created.instanceId);
+  const createdNode = state.nodes.find((item) => item.id === instance?.nodeId);
+  if (!instance || !createdNode) throw new Error("接管草稿创建失败");
+  const duplicate = state.nodes.find((item) => item.id !== createdNode.id && nodeFingerprint(item) === nodeFingerprint(createdNode));
+  if (duplicate) {
+    instance.nodeId = duplicate.id;
+    state.nodes = state.nodes.filter((item) => item.id !== createdNode.id);
+    if (["external", "provider"].includes(duplicate.source)) {
+      state.externalSources.forEach((source) => { source.nodeIds = (source.nodeIds || []).filter((id) => id !== duplicate.id); });
+      Object.assign(duplicate, { source: "import", sourceId: "", remoteId: "", remoteName: "", remoteClientName: "", remoteInboundName: "", providerMissing: false, enabled: true });
+    }
+  }
+  Object.assign(instance, { adoptionState: "staged", adoptionSourceUnit: sourceUnit, adoptionSourceBinary: sourceBinary, adoptionSourceConfig: sourceConfig, adoptionSourceWasEnabled: false });
+  state.revision += 1; writeState(cleanState(state));
+  return { state: readState(), instanceId: instance.id, plan: created.plan };
+}
 function managedNowhereMetadata(input, plan) {
   return {
     version: plan.version, publicHost: plan.summary.publicHost, listenHost: cleanText(input.listenHost, 253),
@@ -1174,7 +1256,7 @@ function managedNowhereMetadata(input, plan) {
 function prepareManagedNowhereAction(params) {
   const instanceId = cleanText(params && params.instanceId, 64);
   const action = cleanText(params && params.action, 16);
-  if (!["preflight", "create", "start", "stop", "restart", "status", "logs", "delete", "read-config", "upgrade"].includes(action)) throw new Error("不支持的托管实例操作");
+  if (!["preflight", "create", "start", "stop", "restart", "status", "logs", "delete", "read-config", "upgrade", "adopt", "rollback-adoption"].includes(action)) throw new Error("不支持的托管实例操作");
   const state = readState(); const instance = state.managedInstances.find((item) => item.id === instanceId && item.kind === "nowhere");
   const machine = state.machines.find((item) => item.id === instance?.machineId && item.monitorClientId);
   const node = state.nodes.find((item) => item.id === instance?.nodeId && item.protocol === "nowhere");
@@ -1183,6 +1265,10 @@ function prepareManagedNowhereAction(params) {
   if (!currentCapabilities.supported) throw new Error("该实例版本没有可用的适配器，只能保留记录，不能生成远程命令");
   if (!currentCapabilities.verified && !["status", "logs", "read-config"].includes(action)) throw new Error("该实例版本尚未通过适配验证，目前仅允许读取状态与配置");
   if (action === "delete" && params.confirmation !== instance.id) throw new Error("删除托管实例需要确认实例编号");
+  if (action === "delete" && instance.adoptionState === "adopted") throw new Error("请先恢复原服务，再删除接管实例");
+  if (["start", "restart"].includes(action) && instance.adoptionState === "staged") throw new Error("待接管实例不能直接启动，请使用“切换接管”避免端口冲突");
+  if (action === "adopt" && instance.adoptionState !== "staged") throw new Error("该实例不处于待接管状态");
+  if (action === "rollback-adoption" && instance.adoptionState !== "adopted") throw new Error("该实例尚未接管原服务");
   if (action === "create" && !["draft", "validated", "failed"].includes(instance.status)) throw new Error("该实例已经创建，不能重复下发");
   if (["start", "stop", "restart", "logs", "upgrade"].includes(action) && ["draft", "validated"].includes(instance.status)) throw new Error("请先创建托管实例");
   const plan = planManagedNowhere(managedNowherePlanInput(instance, node));
@@ -1197,7 +1283,7 @@ function prepareManagedNowhereAction(params) {
   const operationId = requestOperationId(params); const expiresAt = Date.now() + MANAGED_OPERATION_TTL_MS;
   retainOperation(MANAGED_OPERATIONS, operationId, { instanceId, machineId: machine.id, action, expiresAt, targetVersion, uri: plan.links.anywhere[0]?.uri || "" });
   for (const [id, operation] of MANAGED_OPERATIONS) if (operation.expiresAt < Date.now()) MANAGED_OPERATIONS.delete(id);
-  const commandInput = targetVersion ? { ...plan, targetVersion } : plan;
+  const commandInput = { ...plan, ...(targetVersion ? { targetVersion } : {}), sourceBinaryPath: instance.adoptionSourceBinary, sourceUnit: instance.adoptionSourceUnit, sourceWasEnabled: instance.adoptionSourceWasEnabled };
   return MANAGED_TASKS.prepare("nowhere", { schema: 1, operationId, expiresAt: new Date(expiresAt).toISOString(), instanceId, machineId: machine.id, clientId: machine.monitorClientId, action, command: buildManagedNowhereCommand(action, commandInput, instance.binarySource), plan: publicManagedNowherePlan(plan) });
 }
 function prepareManagedNowhereUpdate(params) {
@@ -1301,6 +1387,15 @@ function recordManagedNowhereResult(params) {
       }
       else if (pending.action === "create" || pending.action === "stop") instance.status = "stopped";
       else if (pending.action === "start" || pending.action === "restart") instance.status = result.state === "active" ? "running" : "failed";
+      else if (pending.action === "adopt") {
+        instance.status = result.state === "active" ? "running" : "failed";
+        instance.adoptionState = result.state === "active" ? "adopted" : "staged";
+        instance.adoptionSourceWasEnabled = result.sourceWasEnabled === true;
+      }
+      else if (pending.action === "rollback-adoption") {
+        instance.status = "stopped";
+        instance.adoptionState = "staged";
+      }
       else if (pending.action === "upgrade") {
         instance.version = nowhereCapabilities(pending.targetVersion).version;
         instance.status = result.state === "active" ? "running" : "stopped";
@@ -1311,14 +1406,18 @@ function recordManagedNowhereResult(params) {
       instance.lastError = "";
     } else {
       const recovered = pending.action === "upgrade" && result.rolledBack === true;
-      if (!recovered) instance.status = "failed";
+      const adoptionRecovered = pending.action === "adopt" && result.rolledBack === true;
+      const rollbackRecovered = pending.action === "rollback-adoption" && result.rolledBack === true;
+      if (adoptionRecovered) { instance.status = "stopped"; instance.adoptionState = "staged"; }
+      else if (rollbackRecovered) { instance.status = "running"; instance.adoptionState = "adopted"; }
+      else if (!recovered) instance.status = "failed";
       instance.lastError = cleanText(result.error, 160) || "operation-failed";
     }
     storeNowhereCertificate(state, instance, result, now);
     instance.updatedAt = now; instance.lastOperationId = operationId;
   }
   state.revision += 1; writeState(cleanState(state));
-  const normalized = { ok: result.ok === true, state: cleanText(result.state, 24), error: cleanText(result.error, 160), binaryAvailable: result.binaryAvailable === true, binaryVersion: cleanText(result.binaryVersion, 240), portAvailable: result.portAvailable === true, portsAvailable: Array.isArray(result.portsAvailable) ? result.portsAvailable.slice(0, 4) : [], installed: result.installed === true, existingNowhere: cleanText(result.existingNowhere, 24), existingSingBox: cleanText(result.existingSingBox, 24), certificate: result.certificate && typeof result.certificate === "object" ? result.certificate : null, configurationHash: cleanText(result.configurationHash, 64), rolledBack: result.rolledBack === true, recoveryPending: result.recoveryPending === true, logs: pending.action === "logs" ? cleanText(result.logs, 24000) : "" };
+  const normalized = { ok: result.ok === true, state: cleanText(result.state, 24), error: cleanText(result.error, 160), binaryAvailable: result.binaryAvailable === true, binaryVersion: cleanText(result.binaryVersion, 240), portAvailable: result.portAvailable === true, portsAvailable: Array.isArray(result.portsAvailable) ? result.portsAvailable.slice(0, 4) : [], installed: result.installed === true, existingNowhere: cleanText(result.existingNowhere, 24), existingSingBox: cleanText(result.existingSingBox, 24), certificate: result.certificate && typeof result.certificate === "object" ? result.certificate : null, configurationHash: cleanText(result.configurationHash, 64), rolledBack: result.rolledBack === true, recoveryPending: result.recoveryPending === true, sourceWasEnabled: result.sourceWasEnabled === true, sourceState: cleanText(result.sourceState, 24), logs: pending.action === "logs" ? cleanText(result.logs, 24000) : "" };
   MANAGED_OPERATIONS.set(operationId, { ...pending, completedResult: normalized });
   return { state: readState(), result: normalized };
 }
@@ -1644,6 +1743,8 @@ function load() {
   server.registerRPC("proxyConsole:removeCertificateRegistration", removeCertificateRegistration);
   server.registerRPC("proxyConsole:prepareExistingServiceDiscovery", prepareExistingServiceDiscovery);
   server.registerRPC("proxyConsole:parseExistingServiceDiscovery", parseExistingServiceDiscovery);
+  server.registerRPC("proxyConsole:importDiscoveredNodes", importDiscoveredNodes);
+  server.registerRPC("proxyConsole:createManagedNowhereAdoptionDraft", createManagedNowhereAdoptionDraft);
   server.registerRPC("proxyConsole:bindManagedTask", params => MANAGED_TASKS.bind(params));
   server.registerRPC("proxyConsole:getManagedTask", params => { const task = MANAGED_TASKS.get(params.operationId); return { task, ...(task.phase === "completed" ? { state: readState() } : {}) }; });
   server.registerRPC("proxyConsole:listManagedTasks", () => MANAGED_TASKS.list());

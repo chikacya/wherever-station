@@ -1215,16 +1215,29 @@ tbody tr:hover { background: var(--hover); }
 .ip-profile-network > div > span { min-width: 0; padding: 9px 10px; display: grid; gap: 4px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .ip-profile-network > div > span:nth-child(2n) { border-right: 0; }
 .ip-profile-network > div > span:nth-last-child(-n + 2) { border-bottom: 0; }
-.ip-profile-network small, .ip-profile-signals small { color: var(--faint); font: 7px/1 var(--mono); letter-spacing: .04em; }
+.ip-profile-network small { color: var(--faint); font: 7px/1 var(--mono); letter-spacing: .04em; }
 .ip-profile-network b { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-.ip-profile-signals { grid-column: span 4; }
-.ip-profile-signals > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--border); }
-.ip-profile-signals > div > span { min-width: 0; min-height: 48px; padding: 8px 9px; display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; align-items: center; gap: 6px; background: var(--surface); }
-.ip-profile-signals i, .ip-profile-services i, .ip-profile-observations i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
-.ip-profile-signals b { font: 600 9px/1 var(--mono); }
-.ip-profile-signals .signal-good i { background: var(--success); }
-.ip-profile-signals .signal-warning i { background: var(--warning); }
-.ip-profile-signals .signal-danger i { background: var(--danger); }
+.ip-profile-purity { grid-column: span 4; display: flex; flex-direction: column; }
+.ip-profile-purity header .confidence-high { color: var(--success); }
+.ip-profile-purity header .confidence-medium { color: var(--warning); }
+.ip-profile-purity header .confidence-low { color: var(--danger); }
+.ip-purity-score { display: flex; align-items: center; gap: 11px; }
+.ip-purity-score > strong { font: 500 34px/1 var(--mono); letter-spacing: -.06em; }
+.ip-purity-score > span { display: grid; gap: 3px; font-size: 11px; font-weight: 700; }
+.ip-purity-score small { color: var(--faint); font: 7px/1 var(--mono); letter-spacing: .05em; }
+.purity-clean .ip-purity-score > strong, .purity-good .ip-purity-score > strong { color: var(--success); }
+.purity-medium .ip-purity-score > strong { color: var(--warning); }
+.purity-risk .ip-purity-score > strong { color: var(--danger); }
+.ip-purity-scale { height: 8px; margin-top: 15px; position: relative; background: linear-gradient(90deg, var(--danger) 0 34%, var(--warning) 34% 66%, var(--success) 66% 100%); }
+.ip-purity-scale > i { width: 3px; height: 16px; position: absolute; top: 50%; background: var(--text); border: 2px solid var(--surface-2); transform: translate(-50%, -50%); }
+.ip-purity-labels { margin-top: 5px; display: flex; justify-content: space-between; color: var(--faint); font: 7px/1 var(--mono); }
+.ip-purity-facts { margin-top: auto; padding-top: 13px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ip-purity-facts > span { min-width: 0; padding: 0 8px; display: grid; gap: 4px; border-right: 1px solid var(--border); }
+.ip-purity-facts > span:first-child { padding-left: 0; }
+.ip-purity-facts > span:last-child { padding-right: 0; border-right: 0; }
+.ip-purity-facts small { color: var(--faint); font: 7px/1 var(--mono); }
+.ip-purity-facts b { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.ip-profile-services i, .ip-profile-observations i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
 .ip-profile-services { grid-column: span 8; }
 .ip-profile-services > div { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--border); }
 .ip-profile-services > div > span { min-width: 0; min-height: 62px; padding: 9px; display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; grid-template-rows: auto auto; align-content: center; gap: 4px 6px; background: var(--surface); }
@@ -1282,7 +1295,7 @@ tbody tr:hover { background: var(--hover); }
   .host-bars { min-height: 130px; }
   .ip-profile-identity { grid-column: span 4; }
   .ip-profile-network { grid-column: span 8; }
-  .ip-profile-signals { grid-column: span 5; }
+  .ip-profile-purity { grid-column: span 5; }
   .ip-profile-services { grid-column: span 7; }
   .ip-profile-services > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ip-profile-observations { grid-column: 1 / -1; }
@@ -1301,7 +1314,7 @@ tbody tr:hover { background: var(--hover); }
   .server-index-list > button:nth-last-child(-n + 2) { border-bottom: 0; }
   .monthly-traffic-card { grid-column: auto; }
   .ip-profile-card { grid-column: auto; }
-  .ip-profile-identity, .ip-profile-network, .ip-profile-signals, .ip-profile-services, .ip-profile-observations { grid-column: 1 / -1; }
+  .ip-profile-identity, .ip-profile-network, .ip-profile-purity, .ip-profile-services, .ip-profile-observations { grid-column: 1 / -1; }
   .ip-profile-observations > div { grid-template-columns: 1fr; }
   .operation-card { grid-column: span 6; }
   .quick-operation { grid-column: 1 / -1; min-height: 184px; }

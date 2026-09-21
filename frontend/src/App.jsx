@@ -4208,15 +4208,16 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
   const serviceLabel = { AVAILABLE: "可用", PARTIAL: "部分可用", BLOCKED: "受限", UNKNOWN: "未知" };
   const serviceReady = (profile?.services || []).filter((item) => item.status === "AVAILABLE").length;
   const observationMatched = (profile?.observations || []).filter((item) => item.matched).length;
-  const coordinateLabel = profile?.location?.latitude != null && profile?.location?.longitude != null ? `${Number(profile.location.latitude).toFixed(2)}, ${Number(profile.location.longitude).toFixed(2)}` : "待判断";
+  const purityScore = profile?.purity?.score ?? (profile?.risk?.score == null ? null : Math.max(0, Math.min(100, Math.round(100 - profile.risk.score))));
+  const purityLabel = profile?.purity?.label || (purityScore == null ? "待判断" : purityScore >= 85 ? "纯净" : purityScore >= 65 ? "较纯净" : purityScore >= 40 ? "一般" : "高风险");
+  const purityTone = purityScore == null ? "unknown" : purityScore >= 85 ? "clean" : purityScore >= 65 ? "good" : purityScore >= 40 ? "medium" : "risk";
+  const confidenceLabel = { high: "高", medium: "中", low: "低" }[profile?.purity?.confidence || "low"];
   const networkFacts = profile ? [
     ["ASN", profile.network?.asn || "待判断"],
     ["运营组织", profile.network?.organization || "待判断"],
     ["ISP", profile.network?.isp || "待判断"],
-    ["网络域", profile.network?.domain || "待判断"],
     ["网段", profile.network?.range || "待判断"],
     ["时区", profile.location?.timezone || "待判断"],
-    ["坐标", coordinateLabel],
     ["IP 类型", profile.network?.ipVersion || "待判断"],
   ] : [];
   useEffect(() => {
@@ -4362,9 +4363,12 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
                 <header><span>NETWORK IDENTITY</span><b>{profile.network?.type || "UNCLASSIFIED"}</b></header>
                 <div>{networkFacts.map(([label, value]) => <span key={label}><small>{label}</small><b title={value}>{value}</b></span>)}</div>
               </section>
-              <section className="ip-profile-signals">
-                <header><span>RISK SIGNALS</span><b>{(profile.signals || []).length} CHECKS</b></header>
-                <div>{(profile.signals || []).map((item) => <span key={item.label} className={`signal-${item.state || "unknown"}`} title={item.detail || undefined}><i /><small>{item.label}</small><b>{item.value === true ? "是" : item.value === false ? "否" : "未知"}</b></span>)}</div>
+              <section className={`ip-profile-purity purity-${purityTone}`}>
+                <header><span>IP PURITY</span><b className={`confidence-${profile.purity?.confidence || "low"}`}>{confidenceLabel}置信度 · {profile.purity?.sourceCount || 0} 源</b></header>
+                <div className="ip-purity-score"><strong>{purityScore == null ? "—" : Math.round(purityScore)}</strong><span>{purityLabel}<small>PURITY SCORE</small></span></div>
+                <div className="ip-purity-scale" role="img" aria-label={`IP 纯净度 ${purityScore == null ? "未知" : `${Math.round(purityScore)} 分`}`}><i style={{ left: `${purityScore == null ? 0 : purityScore}%` }} /></div>
+                <div className="ip-purity-labels"><span>高风险</span><span>一般</span><span>纯净</span></div>
+                <div className="ip-purity-facts"><span><small>网络属性</small><b>{profile.purity?.networkClass || "待判断"}</b></span><span><small>代理特征</small><b>{profile.purity?.proxyDetected === true ? "已发现" : profile.purity?.proxyDetected === false ? "未发现" : "待判断"}</b></span><span><small>判断依据</small><b title={(profile.purity?.sources || []).join("、")}>{profile.purity?.sourceCount ? `${profile.purity.sourceCount} 个来源` : "待检测"}</b></span></div>
               </section>
               <section className="ip-profile-services">
                 <header><span>SERVICE ACCESS</span><b>{serviceReady}/{profile.services?.length || 0} AVAILABLE</b></header>

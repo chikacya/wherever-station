@@ -227,14 +227,30 @@ def main():
     bogon = boolean(ipapi.get("is_bogon"))
     proxy_detected = boolean(proxy.get("proxy"))
     proxy_type = safe_text(proxy.get("type"), 32).upper()
-    signals = [
-        {"label": "代理", "value": proxy_detected, "state": "warning" if proxy_detected else "good" if proxy_detected is False else "unknown", "detail": proxy_type or "多源识别"},
-        {"label": "VPN", "value": True if proxy_type == "VPN" else False if proxy_type else None, "state": "warning" if proxy_type == "VPN" else "good" if proxy_type else "unknown", "detail": "ProxyCheck"},
-        {"label": "住宅", "value": residential, "state": "good" if residential else "neutral" if residential is False else "unknown", "detail": "IPPure"},
-        {"label": "广播", "value": broadcast, "state": "warning" if broadcast else "good" if broadcast is False else "unknown", "detail": "IPPure"},
-        {"label": "Tor", "value": True if proxy_type == "TOR" else False if proxy_type else None, "state": "warning" if proxy_type == "TOR" else "good" if proxy_type else "unknown", "detail": "ProxyCheck"},
-        {"label": "保留地址", "value": bogon, "state": "danger" if bogon else "good" if bogon is False else "unknown", "detail": "ipapi.is"},
-    ]
+    identity_text = " ".join((network["organization"], network["isp"], network["domain"], network["type"])).lower()
+    datacenter_tokens = (
+        "cloud", "hosting", "host", "server", "data center", "datacenter", "oracle", "google", "amazon", "aws",
+        "azure", "microsoft", "digitalocean", "vultr", "hetzner", "ovh", "linode", "akamai", "alibaba", "tencent",
+    )
+    if residential is True:
+        network_class = "住宅"
+    elif any(token in identity_text for token in datacenter_tokens) or proxy_type in ("BUSINESS", "HOSTING", "DATACENTER", "SERVER"):
+        network_class = "机房"
+    elif proxy_type:
+        network_class = "商业网络"
+    else:
+        network_class = "待判断"
+    purity_sources = []
+    if ippure_for_ip and any(value is not None for value in (number(ippure_for_ip.get("fraudScore")), residential, broadcast)):
+        purity_sources.append("IPPure")
+    if proxy and any(value not in (None, "") for value in (proxy.get("risk"), proxy.get("proxy"), proxy.get("type"))):
+        purity_sources.append("ProxyCheck")
+    if safe_text(ipapi.get("ip"), 64) == public_ip and bogon is not None:
+        purity_sources.append("ipapi.is")
+    purity_score = max(0, min(100, round(100 - risk_score))) if risk_score is not None else None
+    purity_label = "纯净" if purity_score is not None and purity_score >= 85 else "较纯净" if purity_score is not None and purity_score >= 65 else "一般" if purity_score is not None and purity_score >= 40 else "高风险" if purity_score is not None else "待判断"
+    confidence_score = min(100, round(len(purity_sources) / 3 * 100))
+    confidence = "high" if len(purity_sources) >= 3 else "medium" if len(purity_sources) == 2 else "low"
     attributes = [
         {"label": "IP 类型", "value": network["ipVersion"] or "待判断"},
         {"label": "网络类型", "value": network["type"] or "待判断"},
@@ -260,14 +276,14 @@ def main():
             "matched": bool(observed_ip and observed_ip == public_ip),
         })
     result = {
-        "version": "builtin-2026.09",
+        "version": "builtin-2026.09.1",
         "public_ip": public_ip,
         "elapsed_ms": int((time.monotonic() - started) * 1000),
         "location": location,
         "network": network,
         "risk": {"score": risk_score, "level": risk_level, "proxy": proxy_value or "unknown", "residential": residential},
+        "purity": {"score": purity_score, "label": purity_label, "confidence": confidence, "confidenceScore": confidence_score, "sourceCount": len(purity_sources), "sources": purity_sources, "networkClass": network_class, "proxyDetected": proxy_detected},
         "attributes": attributes,
-        "signals": signals,
         "observations": observations,
         "services": list(checked.values()),
     }

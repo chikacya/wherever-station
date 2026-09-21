@@ -27,11 +27,20 @@ function parseIpProfileOutput(output) {
       level: ["low", "medium", "high", "unknown"].includes(value.risk?.level) ? value.risk.level : "unknown",
       proxy: String(value.risk?.proxy || "unknown").slice(0, 16), residential: typeof value.risk?.residential === "boolean" ? value.risk.residential : null,
     };
+    const purity = {
+      score: value.purity?.score !== null && Number.isFinite(Number(value.purity?.score)) ? Math.max(0, Math.min(100, Number(value.purity.score))) : null,
+      label: String(value.purity?.label || "待判断").slice(0, 24),
+      confidence: ["high", "medium", "low"].includes(value.purity?.confidence) ? value.purity.confidence : "low",
+      confidenceScore: Math.max(0, Math.min(100, Number(value.purity?.confidenceScore) || 0)),
+      sourceCount: Math.max(0, Math.min(8, Number(value.purity?.sourceCount) || 0)),
+      sources: Array.isArray(value.purity?.sources) ? value.purity.sources.slice(0, 8).map((item) => String(item || "").slice(0, 32)).filter(Boolean) : [],
+      networkClass: String(value.purity?.networkClass || "待判断").slice(0, 32),
+      proxyDetected: typeof value.purity?.proxyDetected === "boolean" ? value.purity.proxyDetected : null,
+    };
     const attributes = Array.isArray(value.attributes) ? value.attributes.slice(0, 12).map((item) => ({ label: String(item.label || "").slice(0, 32), value: String(item.value || "").slice(0, 80) })) : [];
-    const signals = Array.isArray(value.signals) ? value.signals.slice(0, 12).map((item) => ({ label: String(item.label || "").slice(0, 32), value: typeof item.value === "boolean" ? item.value : null, state: ["good", "warning", "danger", "neutral", "unknown"].includes(item.state) ? item.state : "unknown", detail: String(item.detail || "").slice(0, 80) })) : [];
     const observations = Array.isArray(value.observations) ? value.observations.slice(0, 8).map((item) => ({ source: String(item.source || "").slice(0, 32), ip: String(item.ip || "").slice(0, 64), countryCode: String(item.countryCode || "").slice(0, 8).toUpperCase(), city: String(item.city || "").slice(0, 80), latencyMs: Math.max(0, Number(item.latencyMs) || 0), matched: item.matched === true })) : [];
     const services = Array.isArray(value.services) ? value.services.slice(0, 16).map((item) => ({ name: String(item.name || "").slice(0, 80), status: String(item.status || "UNKNOWN").slice(0, 24), region: String(item.region || "").slice(0, 16), detail: String(item.detail || "").slice(0, 120), latencyMs: Math.max(0, Number(item.latency_ms ?? item.latencyMs) || 0) })) : [];
-    return { ok: true, version: String(value.version || "").slice(0, 32), publicIp: String(value.public_ip || "").slice(0, 64), elapsedMs: Math.max(0, Number(value.elapsed_ms) || 0), location, network, risk, attributes, signals, observations, services };
+    return { ok: true, version: String(value.version || "").slice(0, 32), publicIp: String(value.public_ip || "").slice(0, 64), elapsedMs: Math.max(0, Number(value.elapsed_ms) || 0), location, network, risk, purity, attributes, observations, services };
   } catch (_) { return { ok: false, error: "检测脚本返回的数据无法解析" }; }
 }
 

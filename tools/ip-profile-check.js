@@ -24,7 +24,7 @@ function parseIpProfileOutput(output) {
     const network = cleanObject(value.network, ["asn", "organization", "isp", "domain", "type", "range", "ipVersion"]);
     const addresses = cleanObject(value.addresses, ["ipv4", "ipv6"], 64);
     const risk = {
-      score: Number.isFinite(Number(value.risk?.score)) ? Number(value.risk.score) : null,
+      score: typeof value.risk?.score === "number" && Number.isFinite(value.risk.score) ? value.risk.score : null,
       level: ["low", "medium", "high", "unknown"].includes(value.risk?.level) ? value.risk.level : "unknown",
       proxy: String(value.risk?.proxy || "unknown").slice(0, 16), residential: typeof value.risk?.residential === "boolean" ? value.risk.residential : null,
     };

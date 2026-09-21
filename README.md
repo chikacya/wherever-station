@@ -87,6 +87,7 @@ The Komari server and Agents must remain protocol-compatible. Do not let an Agen
 | [Quick start](docs/QUICKSTART.md) | [快速开始](docs/QUICKSTART.zh-CN.md) | Installation through the first subscription |
 | [Deployment](docs/DEPLOYMENT.md) | [部署](docs/DEPLOYMENT.zh-CN.md) | Install, Agent onboarding, backup, upgrade |
 | [User guide](docs/USER_GUIDE.md) | [使用指南](docs/USER_GUIDE.zh-CN.md) | Daily workflows and UI concepts |
+| [Complete manual](docs/manual/README.md) | [完整用户手册](docs/manual/README.zh-CN.md) | Every tab, control and workflow in separate chapters |
 | [Capabilities and boundaries](docs/CAPABILITIES.md) | [能力与边界](docs/CAPABILITIES.zh-CN.md) | Architecture, Komari relationship, permissions |
 | [Protocol support](docs/PROTOCOLS.md) | [协议支持](docs/PROTOCOLS.zh-CN.md) | Passthrough and structured conversion |
 | [Nowhere support](docs/NOWHERE.md) | [Nowhere 支持](docs/NOWHERE.zh-CN.md) | Versions, lifecycle, local telemetry |

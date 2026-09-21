@@ -24,6 +24,11 @@ assert.deepEqual(parseIpProfileOutput(output), {
   services: [{ name: "Netflix", status: "AVAILABLE", region: "US", detail: "非自制内容可访问", latencyMs: 428 }],
 });
 assert.equal(parseIpProfileOutput("plain output").ok, false);
+for (const score of [null, "", false]) {
+  const parsed = parseIpProfileOutput(PREFIX + Buffer.from(JSON.stringify({ risk: { score }, purity: { score: null } })).toString("base64"));
+  assert.equal(parsed.risk.score, null);
+  assert.equal(parsed.purity.score, null);
+}
 assert.equal(parseIpProfileOutput(`${PREFIX}bad`).ok, false);
 
 const source = Buffer.from([...command.matchAll(/'([^']+)'/g)][1][1], "base64").toString();

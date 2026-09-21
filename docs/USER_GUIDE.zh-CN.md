@@ -2,6 +2,8 @@
 
 [English](USER_GUIDE.md)
 
+需要逐项了解每个 Tab、按钮和操作流程时，请阅读[完整用户手册](manual/README.zh-CN.md)。本页保留为功能概览。
+
 ## 选择起点
 
 空白工作台提供三条互不依赖的路径：

@@ -87,6 +87,7 @@ Komari 主控和 Agent 必须保持协议兼容。不要让 Agent 在主控尚�
 | [快速开始](docs/QUICKSTART.zh-CN.md) | [Quick start](docs/QUICKSTART.md) | 从安装到第一条订阅 |
 | [部署](docs/DEPLOYMENT.zh-CN.md) | [Deployment](docs/DEPLOYMENT.md) | 安装、Agent 接入、备份、升级 |
 | [使用指南](docs/USER_GUIDE.zh-CN.md) | [User guide](docs/USER_GUIDE.md) | 日常操作和界面概念 |
+| [完整用户手册](docs/manual/README.zh-CN.md) | [Complete manual](docs/manual/README.md) | 按每个 Tab 分章介绍全部功能与操作 |
 | [能力与边界](docs/CAPABILITIES.zh-CN.md) | [Capabilities](docs/CAPABILITIES.md) | 架构、与 Komari 的关系、权限 |
 | [协议支持](docs/PROTOCOLS.zh-CN.md) | [Protocol support](docs/PROTOCOLS.md) | 无损透传与结构化转换 |
 | [Nowhere 支持](docs/NOWHERE.zh-CN.md) | [Nowhere support](docs/NOWHERE.md) | 版本、生命周期、遥测、迁移 |

@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { version as pluginVersion } from "../../package.json";
 import RuleEditor from "./RuleEditor.jsx";
+import { exitGroups } from "./ip-profile.js";
 import { buildPreflightReport } from "./preflight.js";
 import {
   flexRender,
@@ -4204,13 +4205,12 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
   const profile = selectedMachine?.ipProfile;
   const profileLocation = [profile?.location?.city, profile?.location?.region, profile?.location?.country].filter((value, index, list) => value && !/[?？�]{2,}/.test(value) && list.indexOf(value) === index).join(" · ");
   const profileCountryCode = profile?.location?.countryCode || selectedMachine?.countryCode || "";
-  const serviceLabel = { AVAILABLE: "可用", PARTIAL: "部分可用", BLOCKED: "受限", UNKNOWN: "未知" };
-  const serviceReady = (profile?.services || []).filter((item) => item.status === "AVAILABLE").length;
-  const observationMatched = (profile?.observations || []).filter((item) => item.matched).length;
-  const purityScore = profile?.purity?.score ?? (profile?.risk?.score == null ? null : Math.max(0, Math.min(100, Math.round(100 - profile.risk.score))));
+  const serviceLabel = { AVAILABLE: "可达", REACHABLE: "可达", PARTIAL: "待验证", BLOCKED: "受限", UNKNOWN: "未知" };
+  const serviceReady = (profile?.services || []).filter((item) => ["AVAILABLE", "REACHABLE"].includes(item.status)).length;
+  const profileExits = exitGroups(profile);
+  const purityScore = profile?.purity?.score ?? null;
   const purityLabel = profile?.purity?.label || (purityScore == null ? "待判断" : purityScore >= 85 ? "纯净" : purityScore >= 65 ? "较纯净" : purityScore >= 40 ? "一般" : "高风险");
   const purityTone = purityScore == null ? "unknown" : purityScore >= 85 ? "clean" : purityScore >= 65 ? "good" : purityScore >= 40 ? "medium" : "risk";
-  const confidenceLabel = { high: "高", medium: "中", low: "低" }[profile?.purity?.confidence || "low"];
   const networkFacts = profile ? [
     ["ASN", profile.network?.asn || "待判断"],
     ["运营组织", profile.network?.organization || "待判断"],
@@ -4352,28 +4352,27 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
             {!profile ? <div className="ip-profile-empty"><ShieldCheck size={28} /><strong>检测 VPS 出口画像</strong><span>位置、网络身份、风险特征、多源出口与服务可用性</span></div> : <div className="ip-profile-grid">
               <section className="ip-profile-identity">
                 <span>EXIT IDENTITY</span>
-                <strong>{flag(profileCountryCode)} {profileLocation || profileCountryCode || "位置未知"}</strong>
-                <div className="ip-profile-addresses"><span><small>IPv4</small><b className="sensitive-value">{profile.addresses?.ipv4 || profile.publicIp || "未检测到"}</b></span><span><small>IPv6</small><b className={profile.addresses?.ipv6 ? "sensitive-value" : "unavailable"}>{profile.addresses?.ipv6 || "未检测到"}</b></span></div>
-                <div className="ip-profile-identity-meta"><span>{profile.location?.continent || "—"}</span><span>{profile.location?.postalCode || "—"}</span></div>
+                <div className="ip-profile-addresses">{profileExits.map((exit) => <span key={exit.family}><small>{exit.family === "ipv4" ? "IPv4" : "IPv6"}</small><b className={exit.address ? "sensitive-value" : "unavailable"}>{exit.address || "未检测到"}</b><em>{exit.address ? (exit.countries.length ? exit.countries.map((code) => `${flag(code)} ${code}`).join(" / ") : exit.places.join(" / ") || "地区未知") : "—"}{exit.conflict ? " · 来源有分歧" : ""}</em></span>)}</div>
+                <div className="ip-profile-identity-meta"><span>数据库地区</span></div>
               </section>
               <section className="ip-profile-network">
-                <header><span>NETWORK IDENTITY</span><b>{profile.network?.type || "UNCLASSIFIED"}</b></header>
+                <header><span>NETWORK IDENTITY</span><b>{profile.publicIp?.includes(":") ? "IPv6" : "IPv4"} · {profile.network?.type || "UNCLASSIFIED"}</b></header>
                 <div>{networkFacts.map(([label, value]) => <span key={label}><small>{label}</small><b title={value}>{value}</b></span>)}</div>
               </section>
               <section className={`ip-profile-purity purity-${purityTone}`}>
-                <header><span>IP PURITY</span><b className={`confidence-${profile.purity?.confidence || "low"}`}>{confidenceLabel}置信度 · {profile.purity?.sourceCount || 0} 源</b></header>
+                <header><span>IP PURITY</span><b>{profile.publicIp?.includes(":") ? "IPv6" : "IPv4"} · 参考来源 {profile.purity?.sourceCount || 0}</b></header>
                 <div className="ip-purity-score"><strong>{purityScore == null ? "—" : Math.round(purityScore)}</strong><span>{purityLabel}<small>PURITY SCORE</small></span></div>
                 <div className="ip-purity-scale" role="img" aria-label={`IP 纯净度 ${purityScore == null ? "未知" : `${Math.round(purityScore)} 分`}`}><i style={{ left: `${purityScore == null ? 0 : purityScore}%` }} /></div>
                 <div className="ip-purity-labels"><span>高风险</span><span>一般</span><span>纯净</span></div>
                 <div className="ip-purity-facts"><span><small>网络属性</small><b>{profile.purity?.networkClass || "待判断"}</b></span><span><small>代理特征</small><b>{profile.purity?.proxyDetected === true ? "已发现" : profile.purity?.proxyDetected === false ? "未发现" : "待判断"}</b></span><span><small>判断依据</small><b title={(profile.purity?.sources || []).join("、")}>{profile.purity?.sourceCount ? `${profile.purity.sourceCount} 个来源` : "待检测"}</b></span></div>
               </section>
               <section className="ip-profile-services">
-                <header><span>SERVICE ACCESS</span><b>{serviceReady}/{profile.services?.length || 0} AVAILABLE</b></header>
+                <header><span>SERVICE ACCESS</span><b>{serviceReady}/{profile.services?.length || 0} 可达</b></header>
                 <div>{(profile.services || []).slice(0, 12).map((item) => <span key={item.name} className={`profile-${String(item.status).toLowerCase()}`} title={item.detail || undefined}><i /><b>{item.name}</b><small>{serviceLabel[item.status] || item.status}{item.region ? ` · ${item.region}` : ""}</small><em>{item.latencyMs ? `${item.latencyMs} ms` : "—"}</em></span>)}</div>
               </section>
               <section className="ip-profile-observations">
-                <header><span>EGRESS SOURCES</span><b>{observationMatched}/{profile.observations?.length || 0} MATCH</b></header>
-                <div>{(profile.observations || []).map((item) => <span key={item.source} className={item.matched ? "matched" : "diverged"}><i /><b>{item.source}</b><small>{flag(item.countryCode)} {item.city || item.countryCode || "未知"}</small><em className="sensitive-value">{item.ip || "无结果"}</em><time>{item.latencyMs ? `${item.latencyMs} ms` : "—"}</time></span>)}</div>
+                <header><span>EGRESS SOURCES</span><b>按地址查看</b></header>
+                {profileExits.filter((exit) => exit.address).map((exit) => <React.Fragment key={exit.family}><h4>{exit.family === "ipv4" ? "IPv4" : "IPv6"}<small>{exit.conflict ? "地区有分歧" : `${exit.observations.length} 个来源`}</small></h4><div>{exit.observations.map((item) => <span key={item.source}><b>{item.source}</b><small>{item.countryCode ? flag(item.countryCode) : ""} {item.city || item.countryCode || "地区未知"}</small><time>{item.latencyMs ? `${item.latencyMs} ms` : "—"}</time></span>)}</div></React.Fragment>)}
               </section>
             </div>}
             <footer><Button icon={ShieldCheck} variant="primary" onClick={inspectIpProfile} disabled={profileBusy || !selectedModel?.client}>{profileBusy ? "并发检测中，约 10–15 秒…" : selectedMachine?.ipProfile ? "重新检测" : "运行检测"}</Button><span>{profile?.elapsedMs ? `${(profile.elapsedMs / 1000).toFixed(1)} 秒 · ` : ""}结果仅代表当前出口与检测时刻</span></footer>

@@ -2,6 +2,8 @@
 
 [简体中文](USER_GUIDE.zh-CN.md)
 
+For a control-by-control explanation of every tab, read the [complete user manual](manual/README.md). This page remains the concise feature overview.
+
 ## Choose a starting point
 
 The empty workspace offers three independent paths:

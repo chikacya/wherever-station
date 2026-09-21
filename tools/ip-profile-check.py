@@ -104,7 +104,7 @@ def chatgpt():
     if blocked:
         return service("ChatGPT", "BLOCKED", region, "地区限制", elapsed_ms(started))
     if any(200 <= code < 400 for code in statuses):
-        return service("ChatGPT", "AVAILABLE", region, "服务端点可达", elapsed_ms(started))
+        return service("ChatGPT", "REACHABLE", region, "端点可达，未验证实际服务能力", elapsed_ms(started))
     return service("ChatGPT", "UNKNOWN", region, "请求未完成", elapsed_ms(started))
 
 
@@ -114,9 +114,9 @@ def netflix():
         responses = list(pool.map(lambda title: fetch(f"https://www.netflix.com/title/{title}"), ("81280792", "70143836")))
     codes = [(status, "NSEZ-404" in body) for status, body, _ in responses]
     if any(status in (200, 301, 302) and not missing for status, missing in codes):
-        return service("Netflix", "AVAILABLE", detail="非自制内容可访问", latency_ms=elapsed_ms(started))
+        return service("Netflix", "REACHABLE", detail="页面可达，未验证播放能力", latency_ms=elapsed_ms(started))
     if any(status in (200, 301, 302) for status, _ in codes):
-        return service("Netflix", "PARTIAL", detail="仅检测到自制内容能力", latency_ms=elapsed_ms(started))
+        return service("Netflix", "UNKNOWN", detail="页面未提供足够的播放能力证据", latency_ms=elapsed_ms(started))
     if any(status == 403 for status, _ in codes):
         return service("Netflix", "BLOCKED", detail="访问被拒绝", latency_ms=elapsed_ms(started))
     return service("Netflix", "UNKNOWN", detail="请求未完成", latency_ms=elapsed_ms(started))
@@ -129,9 +129,9 @@ def youtube():
     region = region_match.group(1) if region_match else ""
     lowered = body.lower()
     if status == 200 and "youtube premium is not available" not in lowered:
-        return service("YouTube Premium", "AVAILABLE", region, "页面可访问", elapsed_ms(started))
-    if status:
-        return service("YouTube Premium", "BLOCKED", region, "当前地区不可用", elapsed_ms(started))
+        return service("YouTube Premium", "REACHABLE", region, "页面可达，未验证订阅能力", elapsed_ms(started))
+    if status == 200 or status in (401, 403):
+        return service("YouTube Premium", "BLOCKED", region, "页面受限", elapsed_ms(started))
     return service("YouTube Premium", "UNKNOWN", detail="请求未完成", latency_ms=elapsed_ms(started))
 
 
@@ -140,7 +140,7 @@ def tiktok():
     status, body, _ = fetch("https://www.tiktok.com/", {"Accept-Language": "en-US,en;q=0.8"})
     match = re.search(r'"(?:region|storeCountry)"\s*:\s*"([A-Z]{2})"', body)
     region = match.group(1) if match else ""
-    return service("TikTok", "AVAILABLE" if status == 200 else "UNKNOWN", region, "主页可访问" if status == 200 else "请求未完成", elapsed_ms(started))
+    return service("TikTok", "REACHABLE" if status == 200 else "UNKNOWN", region, "主页可达，未验证播放能力" if status == 200 else "请求未完成", elapsed_ms(started))
 
 
 def prime_video():
@@ -148,14 +148,16 @@ def prime_video():
     status, body, _ = fetch("https://www.primevideo.com/")
     match = re.search(r'"currentTerritory"\s*:\s*"([A-Z]{2})"', body)
     region = match.group(1) if match else ""
-    return service("Prime Video", "AVAILABLE" if status == 200 else "UNKNOWN", region, "页面可访问" if status == 200 else "请求未完成", elapsed_ms(started))
+    return service("Prime Video", "REACHABLE" if status == 200 else "UNKNOWN", region, "页面可达，未验证播放能力" if status == 200 else "请求未完成", elapsed_ms(started))
 
 
 def endpoint(name, url):
     started = time.monotonic()
     status, _, _ = fetch(url)
-    if 200 <= status < 500:
-        return service(name, "AVAILABLE", detail="服务端点可达", latency_ms=elapsed_ms(started))
+    if 200 <= status < 300:
+        return service(name, "REACHABLE", detail="页面可达，未验证实际服务能力", latency_ms=elapsed_ms(started))
+    if status in (401, 403):
+        return service(name, "BLOCKED", detail="访问被拒绝，不能据此判断地区限制", latency_ms=elapsed_ms(started))
     return service(name, "UNKNOWN", detail="请求未完成", latency_ms=elapsed_ms(started))
 
 
@@ -185,6 +187,11 @@ def main():
     ipv6_payload = discovery_values["ipv6"][1] if isinstance(discovery_values["ipv6"][1], dict) else {}
     ipv4_address = valid_ip(ipv4_payload.get("ip"), 4) or next((valid_ip(value, 4) for value in ip_candidates if valid_ip(value, 4)), "")
     ipv6_address = valid_ip(ipv6_payload.get("ip"), 6) or next((valid_ip(value, 6) for value in ip_candidates if valid_ip(value, 6)), "")
+    # Bind all identity/risk facts to this exact address, never merge other exits.
+    public_ip = ipv4_address or ipv6_address
+    observed_ipwho, observed_ipapi = ipwho, ipapi
+    ipwho = ipwho if public_ip and safe_text(ipwho.get("ip"), 64) == public_ip else {}
+    ipapi = ipapi if public_ip and safe_text(ipapi.get("ip"), 64) == public_ip else {}
     ippure_for_ip = ippure if safe_text(ippure.get("ip"), 64) == public_ip else {}
 
     tasks = {
@@ -264,8 +271,6 @@ def main():
         purity_sources.append("ipapi.is")
     purity_score = max(0, min(100, round(100 - risk_score))) if risk_score is not None else None
     purity_label = "纯净" if purity_score is not None and purity_score >= 85 else "较纯净" if purity_score is not None and purity_score >= 65 else "一般" if purity_score is not None and purity_score >= 40 else "高风险" if purity_score is not None else "待判断"
-    confidence_score = min(100, round(len(purity_sources) / 3 * 100))
-    confidence = "high" if len(purity_sources) >= 3 else "medium" if len(purity_sources) == 2 else "low"
     attributes = [
         {"label": "IP 类型", "value": network["ipVersion"] or "待判断"},
         {"label": "网络类型", "value": network["type"] or "待判断"},
@@ -275,8 +280,8 @@ def main():
     ]
     observations = []
     observation_specs = [
-        ("IPWho", ipwho.get("ip"), ipwho.get("country_code"), ipwho.get("city"), discovery_latency.get("ipwho")),
-        ("ipapi.is", ipapi.get("ip"), ipapi_location.get("country_code"), ipapi_location.get("city"), discovery_latency.get("ipapi")),
+        ("IPWho", observed_ipwho.get("ip"), observed_ipwho.get("country_code"), observed_ipwho.get("city"), discovery_latency.get("ipwho")),
+        ("ipapi.is", observed_ipapi.get("ip"), (observed_ipapi.get("location") or observed_ipapi).get("country_code"), (observed_ipapi.get("location") or observed_ipapi).get("city"), discovery_latency.get("ipapi")),
         ("Cloudflare", trace.get("ip"), trace.get("loc"), "", discovery_latency.get("trace")),
         ("IPPure", ippure.get("ip"), ippure.get("countryCode"), ippure.get("city"), discovery_latency.get("ippure")),
     ]
@@ -298,7 +303,7 @@ def main():
         "location": location,
         "network": network,
         "risk": {"score": risk_score, "level": risk_level, "proxy": proxy_value or "unknown", "residential": residential},
-        "purity": {"score": purity_score, "label": purity_label, "confidence": confidence, "confidenceScore": confidence_score, "sourceCount": len(purity_sources), "sources": purity_sources, "networkClass": network_class, "proxyDetected": proxy_detected},
+        "purity": {"score": purity_score, "label": purity_label, "sourceCount": len(purity_sources), "sources": purity_sources, "networkClass": network_class, "proxyDetected": proxy_detected},
         "attributes": attributes,
         "observations": observations,
         "services": list(checked.values()),

@@ -4204,7 +4204,6 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
   const profile = selectedMachine?.ipProfile;
   const profileLocation = [profile?.location?.city, profile?.location?.region, profile?.location?.country].filter((value, index, list) => value && !/[?？�]{2,}/.test(value) && list.indexOf(value) === index).join(" · ");
   const profileCountryCode = profile?.location?.countryCode || selectedMachine?.countryCode || "";
-  const riskLabel = { low: "低风险", medium: "中等风险", high: "高风险", unknown: "待判断" }[profile?.risk?.level || "unknown"];
   const serviceLabel = { AVAILABLE: "可用", PARTIAL: "部分可用", BLOCKED: "受限", UNKNOWN: "未知" };
   const serviceReady = (profile?.services || []).filter((item) => item.status === "AVAILABLE").length;
   const observationMatched = (profile?.observations || []).filter((item) => item.matched).length;
@@ -4356,7 +4355,6 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
                 <span>EXIT IDENTITY</span>
                 <strong>{flag(profileCountryCode)} {profileLocation || profileCountryCode || "位置未知"}</strong>
                 <small className="sensitive-value">{profile.publicIp || "IP 未知"}</small>
-                <div className="ip-profile-risk"><b className={`risk-${profile.risk?.level || "unknown"}`}>{profile.risk?.score == null ? "—" : Math.round(profile.risk.score)}</b><span>{riskLabel}<small>RISK SCORE</small></span></div>
                 <div className="ip-profile-identity-meta"><span>{profile.location?.continent || "—"}</span><span>{profile.location?.postalCode || "—"}</span></div>
               </section>
               <section className="ip-profile-network">

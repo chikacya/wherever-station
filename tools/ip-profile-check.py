@@ -1,6 +1,7 @@
 import base64
 import concurrent.futures
 import collections
+import ipaddress
 import json
 import re
 import sys
@@ -14,10 +15,10 @@ MAX_BODY = 512 * 1024
 UA = "Mozilla/5.0 (Wherever Station IP Profile)"
 
 
-def fetch(url, headers=None):
+def fetch(url, headers=None, timeout=TIMEOUT):
     request = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*", **(headers or {})})
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.status, response.read(MAX_BODY).decode("utf-8", "replace"), response.geturl()
     except urllib.error.HTTPError as error:
         return error.code, error.read(MAX_BODY).decode("utf-8", "replace"), url
@@ -25,8 +26,8 @@ def fetch(url, headers=None):
         return 0, "", f"{type(error).__name__}: {error}"
 
 
-def fetch_json(url):
-    status, body, final_url = fetch(url, {"Accept": "application/json"})
+def fetch_json(url, timeout=TIMEOUT):
+    status, body, final_url = fetch(url, {"Accept": "application/json"}, timeout)
     try:
         return status, json.loads(body), final_url
     except Exception:
@@ -48,6 +49,14 @@ def number(value):
         return result if result >= 0 else None
     except Exception:
         return None
+
+
+def valid_ip(value, version):
+    try:
+        address = ipaddress.ip_address(str(value or "").strip())
+        return str(address) if address.version == version else ""
+    except Exception:
+        return ""
 
 
 def boolean(value):
@@ -157,6 +166,8 @@ def main():
         "ipwho": lambda: fetch_json("https://ipwho.is/"),
         "ipapi": lambda: fetch_json("https://api.ipapi.is/"),
         "trace": lambda: fetch("https://www.cloudflare.com/cdn-cgi/trace"),
+        "ipv4": lambda: fetch_json("https://api4.ipify.org?format=json", 2),
+        "ipv6": lambda: fetch_json("https://api6.ipify.org?format=json", 2),
     }
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(discovery)) as pool:
         futures = {name: pool.submit(timed, fn) for name, fn in discovery.items()}
@@ -170,6 +181,10 @@ def main():
     trace = dict(re.findall(r"^([^=\n]+)=([^\n]*)$", discovery_values["trace"][1], re.M))
     ip_candidates = [safe_text(value, 64) for value in (ipwho.get("ip"), ipapi.get("ip"), trace.get("ip"), ippure.get("ip")) if value]
     public_ip = collections.Counter(ip_candidates).most_common(1)[0][0] if ip_candidates else ""
+    ipv4_payload = discovery_values["ipv4"][1] if isinstance(discovery_values["ipv4"][1], dict) else {}
+    ipv6_payload = discovery_values["ipv6"][1] if isinstance(discovery_values["ipv6"][1], dict) else {}
+    ipv4_address = valid_ip(ipv4_payload.get("ip"), 4) or next((valid_ip(value, 4) for value in ip_candidates if valid_ip(value, 4)), "")
+    ipv6_address = valid_ip(ipv6_payload.get("ip"), 6) or next((valid_ip(value, 6) for value in ip_candidates if valid_ip(value, 6)), "")
     ippure_for_ip = ippure if safe_text(ippure.get("ip"), 64) == public_ip else {}
 
     tasks = {
@@ -276,8 +291,9 @@ def main():
             "matched": bool(observed_ip and observed_ip == public_ip),
         })
     result = {
-        "version": "builtin-2026.09.1",
+        "version": "builtin-2026.09.2",
         "public_ip": public_ip,
+        "addresses": {"ipv4": ipv4_address, "ipv6": ipv6_address},
         "elapsed_ms": int((time.monotonic() - started) * 1000),
         "location": location,
         "network": network,

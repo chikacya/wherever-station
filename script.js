@@ -99,7 +99,7 @@ function cleanIpProfile(value) {
   if (!value || typeof value !== "object" || value.ok !== true) return null;
   const textMap = (input, keys, max = 160) => Object.fromEntries(keys.map((key) => [key, cleanText(input && input[key], max)]));
   return {
-    ok: true, version: cleanText(value.version, 32), publicIp: cleanText(value.publicIp, 64), elapsedMs: Math.max(0, Number(value.elapsedMs) || 0), checkedAt: cleanIsoDate(value.checkedAt),
+    ok: true, version: cleanText(value.version, 32), publicIp: cleanText(value.publicIp, 64), addresses: textMap(value.addresses, ["ipv4", "ipv6"], 64), elapsedMs: Math.max(0, Number(value.elapsedMs) || 0), checkedAt: cleanIsoDate(value.checkedAt),
     location: {
       ...textMap(value.location, ["countryCode", "country", "region", "city", "timezone", "continent", "postalCode"]),
       latitude: value.location && value.location.latitude !== null && value.location.latitude !== "" && Number.isFinite(Number(value.location.latitude)) ? Number(value.location.latitude) : null,

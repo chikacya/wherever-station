@@ -7,7 +7,7 @@ assert(!command.includes("curl "));
 assert(!command.includes("raw.githubusercontent.com"));
 
 const report = {
-  version: "builtin-2026.09.1", public_ip: "203.0.113.8", elapsed_ms: 8421,
+  version: "builtin-2026.09.2", public_ip: "203.0.113.8", addresses: { ipv4: "203.0.113.8", ipv6: "2001:db8::8" }, elapsed_ms: 8421,
   location: { countryCode: "US", country: "United States", region: "California", city: "Los Angeles", timezone: "America/Los_Angeles", continent: "North America", postalCode: "90001", latitude: 34.05, longitude: -118.24 },
   network: { asn: "AS64500", organization: "Example", isp: "Example ISP", domain: "example.test", type: "hosting", range: "203.0.113.0/24", ipVersion: "IPv4" },
   risk: { score: 12, level: "low", proxy: "no", residential: false },
@@ -18,7 +18,7 @@ const report = {
 };
 const output = `noise\n${PREFIX}${Buffer.from(JSON.stringify(report)).toString("base64")}\n`;
 assert.deepEqual(parseIpProfileOutput(output), {
-  ok: true, version: "builtin-2026.09.1", publicIp: "203.0.113.8", elapsedMs: 8421,
+  ok: true, version: "builtin-2026.09.2", publicIp: "203.0.113.8", addresses: report.addresses, elapsedMs: 8421,
   location: report.location, network: report.network, risk: report.risk,
   attributes: report.attributes, purity: report.purity, observations: report.observations,
   services: [{ name: "Netflix", status: "AVAILABLE", region: "US", detail: "非自制内容可访问", latencyMs: 428 }],

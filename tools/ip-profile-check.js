@@ -22,6 +22,7 @@ function parseIpProfileOutput(output) {
       longitude: longitude !== null && longitude !== "" && Number.isFinite(Number(longitude)) ? Number(longitude) : null,
     };
     const network = cleanObject(value.network, ["asn", "organization", "isp", "domain", "type", "range", "ipVersion"]);
+    const addresses = cleanObject(value.addresses, ["ipv4", "ipv6"], 64);
     const risk = {
       score: Number.isFinite(Number(value.risk?.score)) ? Number(value.risk.score) : null,
       level: ["low", "medium", "high", "unknown"].includes(value.risk?.level) ? value.risk.level : "unknown",
@@ -40,7 +41,7 @@ function parseIpProfileOutput(output) {
     const attributes = Array.isArray(value.attributes) ? value.attributes.slice(0, 12).map((item) => ({ label: String(item.label || "").slice(0, 32), value: String(item.value || "").slice(0, 80) })) : [];
     const observations = Array.isArray(value.observations) ? value.observations.slice(0, 8).map((item) => ({ source: String(item.source || "").slice(0, 32), ip: String(item.ip || "").slice(0, 64), countryCode: String(item.countryCode || "").slice(0, 8).toUpperCase(), city: String(item.city || "").slice(0, 80), latencyMs: Math.max(0, Number(item.latencyMs) || 0), matched: item.matched === true })) : [];
     const services = Array.isArray(value.services) ? value.services.slice(0, 16).map((item) => ({ name: String(item.name || "").slice(0, 80), status: String(item.status || "UNKNOWN").slice(0, 24), region: String(item.region || "").slice(0, 16), detail: String(item.detail || "").slice(0, 120), latencyMs: Math.max(0, Number(item.latency_ms ?? item.latencyMs) || 0) })) : [];
-    return { ok: true, version: String(value.version || "").slice(0, 32), publicIp: String(value.public_ip || "").slice(0, 64), elapsedMs: Math.max(0, Number(value.elapsed_ms) || 0), location, network, risk, purity, attributes, observations, services };
+    return { ok: true, version: String(value.version || "").slice(0, 32), publicIp: String(value.public_ip || "").slice(0, 64), addresses, elapsedMs: Math.max(0, Number(value.elapsed_ms) || 0), location, network, risk, purity, attributes, observations, services };
   } catch (_) { return { ok: false, error: "检测脚本返回的数据无法解析" }; }
 }
 

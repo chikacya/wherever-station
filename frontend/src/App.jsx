@@ -4217,7 +4217,6 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
     ["ISP", profile.network?.isp || "待判断"],
     ["网段", profile.network?.range || "待判断"],
     ["时区", profile.location?.timezone || "待判断"],
-    ["IP 类型", profile.network?.ipVersion || "待判断"],
   ] : [];
   useEffect(() => {
     if (!state.machines.length) {
@@ -4354,7 +4353,7 @@ function Machines({ state, clients, statuses = {}, persist, notify, onRefresh, m
               <section className="ip-profile-identity">
                 <span>EXIT IDENTITY</span>
                 <strong>{flag(profileCountryCode)} {profileLocation || profileCountryCode || "位置未知"}</strong>
-                <small className="sensitive-value">{profile.publicIp || "IP 未知"}</small>
+                <div className="ip-profile-addresses"><span><small>IPv4</small><b className="sensitive-value">{profile.addresses?.ipv4 || profile.publicIp || "未检测到"}</b></span><span><small>IPv6</small><b className={profile.addresses?.ipv6 ? "sensitive-value" : "unavailable"}>{profile.addresses?.ipv6 || "未检测到"}</b></span></div>
                 <div className="ip-profile-identity-meta"><span>{profile.location?.continent || "—"}</span><span>{profile.location?.postalCode || "—"}</span></div>
               </section>
               <section className="ip-profile-network">

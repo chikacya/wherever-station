@@ -559,6 +559,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .subscription-switches { display: flex; align-items: center; justify-content: flex-end; gap: 14px; flex-wrap: wrap; }
 .subscription-switches .check-line { white-space: nowrap; }
 .inline-fields { display: grid; grid-template-columns: minmax(0, 1fr) 92px; gap: 8px; }
+.expiry-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.expiry-control button { min-height: 42px; padding: 8px 11px; border: 1px solid var(--border-strong); border-radius: 4px; color: var(--text); background: var(--surface); white-space: nowrap; }
+.expiry-control button:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.expiry-control button:focus-visible { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent); }
+.expiry-control button:disabled { color: var(--faint); background: var(--surface-2); cursor: default; opacity: .72; }
 .template-presets { margin: 16px 16px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .template-presets button { min-height: 40px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--surface); text-align: left; font-size: 11px; }
 .template-presets button:hover { border-color: var(--border-strong); color: var(--text); background: var(--surface-2); }

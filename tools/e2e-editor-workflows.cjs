@@ -107,10 +107,13 @@ async function main() {
     await dialog.locator('input[type="date"]').fill('2026-12-31');
     await dialog.dispatchEvent('click');
     if (!(await dialog.isVisible())) throw new Error('Dialog closed after a date/backdrop click');
+    await dialog.getByRole('button', { name: '长期有效', exact: true }).click();
+    if (await dialog.locator('input[type="date"]').inputValue()) throw new Error('Subscription expiry could not be cleared');
     await dialog.getByRole('button', { name: '取消', exact: true }).click();
     await page.getByRole('button', { name: '新建订阅', exact: true }).click();
     dialog = page.locator('dialog[open]');
     if (await dialog.locator('label').filter({ hasText: /^订阅名称/ }).locator('input').inputValue() !== '临时编排草稿') throw new Error('Subscription draft was not restored');
+    if (await dialog.locator('input[type="date"]').inputValue()) throw new Error('Cleared subscription expiry was not preserved');
     await dialog.getByRole('tab', { name: /2\. 代理组/ }).click();
     await dialog.getByRole('button', { name: '添加代理组' }).click();
     const source = dialog.locator('.palette-node').first();

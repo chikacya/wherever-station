@@ -3036,15 +3036,25 @@ function SubscriptionEditor({
         </Field>
         <Field
           label="到期日期（可选）"
-          hint="到期当天 23:59 后返回 404；留空为长期有效。"
+          hint={form.expiryDate ? "到期当天 23:59 后返回 404。" : "当前为长期有效。"}
         >
-          <input
-            type="date"
-            value={form.expiryDate}
-            onChange={(event) =>
-              setForm({ ...form, expiryDate: event.target.value })
-            }
-          />
+          <span className="expiry-control">
+            <input
+              type="date"
+              autoComplete="off"
+              value={form.expiryDate || ""}
+              onChange={(event) =>
+                setForm({ ...form, expiryDate: event.target.value || "" })
+              }
+            />
+            <button
+              type="button"
+              disabled={!form.expiryDate}
+              onClick={() => setForm({ ...form, expiryDate: "" })}
+            >
+              长期有效
+            </button>
+          </span>
         </Field>
         <div className="subscription-switches">
           <label className="check-line">

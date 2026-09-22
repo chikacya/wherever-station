@@ -7,7 +7,7 @@ This manual follows the actual interface. Read it in order for a first setup, or
 1. [Getting started](01-getting-started.md): entry paths, full screen, themes, privacy and drafts.
 2. [Servers](02-servers.md): Agent onboarding, metrics, traffic plans, IP checks, discovery and services.
 3. [Nodes](03-nodes.md): import, filters, bulk tools, connectivity, URIs and QR codes.
-4. [Subscriptions](04-subscriptions.md): scope, groups, rules, quotas, devices, preflight and history.
+4. [Subscriptions](04-subscriptions.md): scope, groups, rules, traffic display, devices, preflight and history.
 5. [Sources](05-sources.md): upstream subscriptions, traffic metadata, deduplication and rule sets.
 6. [Deploy](06-deployment.md): Nowhere, sing-box, presets, certificates, lifecycle, telemetry and adoption.
 7. [Providers](07-providers.md): S-UI / 2S-UI connections and controlled synchronization.

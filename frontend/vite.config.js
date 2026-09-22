@@ -6,6 +6,7 @@ export default defineConfig({
   base: "./",
   plugins: [react()],
   build: {
+    commonjsOptions: { include: [/node_modules/, /tools\/subscription-traffic\.js$/] },
     outDir: "../pages",
     emptyOutDir: true,
     rollupOptions: {

@@ -64,7 +64,7 @@ Managed files stay under `/var/lib/proxy-console/`. Existing service names and c
 
 - Server rates and resource usage come from Komari.
 - A server traffic plan uses Agent counters and describes a VPS allowance.
-- Subscription quota metadata comes from a selected source, provider client, or manual values.
+- When all output nodes (including groups) belong to one Agent-linked VPS, opt in to whole-server traffic display (off by default). This includes other services, not just this subscription. Mixed or unknown ownership suspends display. Statistics failures and traffic exhaustion never block downloads; only expiry or disabling closes the URL.
 - Process status is not proof of client connectivity.
 - Nowhere protocol telemetry is shown only for a known instance and a supported interface.
 - Per-node traffic is not claimed when no reliable per-node data source exists.

@@ -8,6 +8,8 @@ import React, {
 } from "react";
 import { version as pluginVersion } from "../../package.json";
 import RuleEditor from "./RuleEditor.jsx";
+import subscriptionTrafficHelpers from "../../tools/subscription-traffic.js";
+const { subscriptionMachine } = subscriptionTrafficHelpers;
 import { exitGroups } from "./ip-profile.js";
 import { buildPreflightReport } from "./preflight.js";
 import {
@@ -1952,26 +1954,17 @@ function BatchDialog({
   );
 }
 
-function effectiveSubscriptionTraffic(state, subscription) {
-  const quota = subscription.quota || { mode: "none" };
-  let traffic = null;
-  if (quota.mode === "manual") traffic = quota;
-  if (quota.mode === "external") traffic = state.externalSources.find((item) => item.id === quota.sourceId)?.traffic || null;
-  if (quota.mode === "provider") {
-    const provider = state.providers.find((item) => item.id === quota.sourceId);
-    traffic = provider?.clients?.find((item) => item.id === quota.clientId) || null;
-  }
-  if (!traffic && !subscription.expiresAt) return null;
-  const configuredExpire = subscription.expiresAt ? Math.floor(Date.parse(subscription.expiresAt) / 1000) : 0;
-  return {
-    upload: Number(traffic?.upload || 0), download: Number(traffic?.download || 0), total: Number(traffic?.total || 0),
-    expire: configuredExpire && (!traffic?.expire || configuredExpire < traffic.expire) ? configuredExpire : Number(traffic?.expire || 0),
-  };
-}
 function Subscriptions({ state, persist, notify, onOpenSettings }) {
   const [editor, setEditor] = useState(null);
   const [qr, setQr] = useState(null);
   const [access, setAccess] = useState({});
+  const [serverTraffic, setServerTraffic] = useState({});
+  useEffect(() => {
+    let active = true;
+    const load = () => rpc("proxyConsole:getSubscriptionTraffic").then(value => { if (active) setServerTraffic(value || {}); }).catch(() => { if (active) setServerTraffic({}); });
+    load(); const timer = setInterval(load, 60000);
+    return () => { active = false; clearInterval(timer); };
+  }, [state.revision]);
   const [preflight, setPreflight] = useState(null);
   const [history, setHistory] = useState(null);
   const [devices, setDevices] = useState(null);
@@ -2092,10 +2085,10 @@ function Subscriptions({ state, persist, notify, onOpenSettings }) {
         {state.subscriptions.map((sub) => {
           const url = subscriptionUrl(state, sub);
           const stats = access[sub.id];
-          const traffic = effectiveSubscriptionTraffic(state, sub);
+          const eligibleMachine = subscriptionMachine(sub, state.nodes, state.machines);
+          const traffic = sub.quota?.mode === "machine" && eligibleMachine ? serverTraffic[sub.id] : null;
           const used = Number(traffic?.upload || 0) + Number(traffic?.download || 0);
-          const expired = Boolean(traffic?.expire && traffic.expire * 1000 <= Date.now());
-          const exhausted = Boolean(traffic?.total && used >= traffic.total);
+          const expired = Boolean(sub.expiresAt && Date.parse(sub.expiresAt) <= Date.now());
           return (
             <article className="sub-card" key={sub.id}>
               <div className="sub-main">
@@ -2115,11 +2108,11 @@ function Subscriptions({ state, persist, notify, onOpenSettings }) {
                       : ""}
                   </p>
                 </div>
-                <Status ok={sub.enabled && !expired && !exhausted}>
-                  {expired ? "已到期" : exhausted ? "额度已用尽" : sub.enabled ? "已启用" : "已停用"}
+                <Status ok={sub.enabled && !expired}>
+                  {expired ? "已到期" : sub.enabled ? "已启用" : "已停用"}
                 </Status>
               </div>
-              {traffic && <div className="subscription-traffic" aria-label="订阅流量额度"><span>上传 <strong>{bytes(traffic.upload)}</strong></span><span>下载 <strong>{bytes(traffic.download)}</strong></span><span>剩余 <strong>{traffic.total ? bytes(Math.max(0, traffic.total - used)) : "不限"}</strong></span>{traffic.expire ? <span>到期 <strong>{new Date(traffic.expire * 1000).toLocaleDateString("zh-CN")}</strong></span> : null}</div>}
+              {sub.quota?.mode === "machine" && <div className="subscription-traffic" aria-label="服务器流量"><span>服务器流量 · {eligibleMachine?.name || "暂停展示"}</span>{!eligibleMachine ? <span>输出节点不再全部归属于同一 VPS</span> : !traffic ? <span>暂无新鲜统计</span> : <><span>{traffic.basis === "cycle-estimate" ? "周期估算已用" : "Agent 累计"} <strong>{bytes(used)}</strong></span>{traffic.total > 0 && <span>服务器总额度 <strong>{bytes(traffic.total)}</strong></span>}<span>包含整台 VPS 的流量</span></>}</div>}
               <code className="url-preview">
                 {url.replace(sub.token, "••••••••••••")}
               </code>
@@ -2669,13 +2662,7 @@ function SubscriptionEditor({
       enabled: subscription?.enabled !== false,
       expiryDate: localDateInput(subscription?.expiresAt),
       quota: {
-        mode: subscription?.quota?.mode || "none",
-        upload: Number(subscription?.quota?.upload || 0),
-        download: Number(subscription?.quota?.download || 0),
-        total: Number(subscription?.quota?.total || 0),
-        expire: Number(subscription?.quota?.expire || 0),
-        sourceId: subscription?.quota?.sourceId || "",
-        clientId: subscription?.quota?.clientId || "",
+        mode: subscription?.quota?.mode === "machine" ? "machine" : "none",
       },
       policyMode: subscription?.policyMode || "proxy-all",
       customRules: (subscription?.customRules || []).map((rule) => ({ ...rule })),
@@ -2683,7 +2670,7 @@ function SubscriptionEditor({
       devices: (subscription?.devices || []).map((device) => ({ ...device })),
     };
     const draft = readSessionDraft(draftKey)?.value;
-    setForm(draft ? { ...initial, ...draft, id: initial.id, token: initial.token } : initial);
+    setForm(draft ? { ...initial, ...draft, id: initial.id, token: initial.token, quota: { mode: draft.quota?.mode === "machine" ? "machine" : "none" } } : initial);
     setSearch("");
   }, [open, subscription?.id]);
   useEffect(() => {
@@ -2713,6 +2700,7 @@ function SubscriptionEditor({
     };
   }, [recentNodeId, stage, form?.nodeIds.length]);
   if (!form) return null;
+  const trafficMachine = subscriptionMachine(form, nodes, machines);
   const visible = nodes.filter(
     (node) =>
       node.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -3002,8 +2990,6 @@ function SubscriptionEditor({
     if (saving) return;
     if (!form.name.trim()) return setSaveError("请填写订阅名称");
     if (!form.nodeIds.length) return setSaveError("请至少纳入一个节点");
-    if (["external", "provider"].includes(form.quota.mode) && !form.quota.sourceId) return setSaveError("请选择额度来源");
-    if (form.quota.mode === "provider" && !form.quota.clientId) return setSaveError("请选择额度对应的客户端");
     setSaving(true);
     setSaveError("");
     try {
@@ -3074,25 +3060,12 @@ function SubscriptionEditor({
         </div>
       </div>
       <details className="quota-editor">
-        <summary>流量额度与订阅失效</summary>
-        <p>额度只控制这条订阅链接，不会停止节点或改写 VPS。多个来源不会相加。</p>
-        <div className="form-grid">
-          <Field label="额度依据">
-            <select value={form.quota.mode} onChange={(event) => setForm((current) => ({ ...current, quota: { ...current.quota, mode: event.target.value, sourceId: "", clientId: "" } }))}>
-              <option value="none">无限制</option>
-              <option value="manual">手动额度</option>
-              <option value="external">跟随外部订阅源</option>
-              <option value="provider">跟随外部面板客户端</option>
-            </select>
-          </Field>
-          {form.quota.mode === "manual" && <>
-            <Field label="已上传（GiB）"><input type="number" min="0" step="0.01" value={form.quota.upload ? form.quota.upload / 1073741824 : ""} onChange={(event) => setForm((current) => ({ ...current, quota: { ...current.quota, upload: Math.round(Number(event.target.value || 0) * 1073741824) } }))} /></Field>
-            <Field label="已下载（GiB）"><input type="number" min="0" step="0.01" value={form.quota.download ? form.quota.download / 1073741824 : ""} onChange={(event) => setForm((current) => ({ ...current, quota: { ...current.quota, download: Math.round(Number(event.target.value || 0) * 1073741824) } }))} /></Field>
-            <Field label="总额度（GiB）" hint="填 0 表示只展示用量、不按总量关闭链接。"><input type="number" min="0" step="0.01" value={form.quota.total ? form.quota.total / 1073741824 : ""} onChange={(event) => setForm((current) => ({ ...current, quota: { ...current.quota, total: Math.round(Number(event.target.value || 0) * 1073741824) } }))} /></Field>
-          </>}
-          {form.quota.mode === "external" && <Field label="外部订阅源" wide hint="使用该来源最近一次同步得到的 Subscription-Userinfo。"><select value={form.quota.sourceId} onChange={(event) => setForm((current) => ({ ...current, quota: { ...current.quota, sourceId: event.target.value } }))}><option value="">请选择来源</option>{externalSources.map((source) => <option key={source.id} value={source.id}>{source.name}{source.traffic ? ` · 剩余 ${bytes(Math.max(0, source.traffic.total - source.traffic.upload - source.traffic.download))}` : " · 暂无额度信息"}</option>)}</select></Field>}
-          {form.quota.mode === "provider" && <><Field label="外部面板" wide><select value={form.quota.sourceId} onChange={(event) => setForm((current) => ({ ...current, quota: { ...current.quota, sourceId: event.target.value, clientId: "" } }))}><option value="">请选择面板</option>{providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name} · {provider.type === "2s-ui" ? "2S-UI" : "S-UI"}</option>)}</select></Field><Field label="客户端" wide><select value={form.quota.clientId} onChange={(event) => setForm((current) => ({ ...current, quota: { ...current.quota, clientId: event.target.value } }))}><option value="">请选择客户端</option>{(providers.find((provider) => provider.id === form.quota.sourceId)?.clients || []).map((client) => <option key={client.id} value={client.id}>{client.name} · 已用 {bytes(client.upload + client.download)}{client.total ? ` / ${bytes(client.total)}` : ""}</option>)}</select></Field></>}
-        </div>
+        <summary>服务器流量展示</summary>
+        <label className="check-line">
+          <input type="checkbox" checked={form.quota?.mode === "machine"} disabled={!trafficMachine && form.quota?.mode !== "machine"} onChange={(event) => setForm(current => ({ ...current, quota: { mode: event.target.checked ? "machine" : "none" } }))} />
+          展示该 VPS 流量{trafficMachine ? " · " + trafficMachine.name : ""}
+        </label>
+        <p>{trafficMachine ? "整台 VPS 的流量，并非本订阅独占；历史不足时展示 Agent 累计。超额不会停用订阅。" : "全部输出节点归属于同一台已绑定 Agent 的 VPS 时可展示；否则暂停展示。"}</p>
       </details>
       <div className="editor-tabs" role="tablist" aria-label="订阅编辑模式">
         <button

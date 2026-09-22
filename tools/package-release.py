@@ -20,7 +20,7 @@ runtime_tools = (
     'nowhere-preflight.py', 'nowhere-read.py', 'nowhere-recover.py',
     'nowhere-status.py', 'nowhere-update.py',
     'operation-store.js', 'protocol-capabilities.js', 'provider-s-ui.js',
-    'rule-set.js', 'download-sing-box.py', 'sing-box-read.py', 'sing-box-update.py',
+    'rule-set.js', 'download-sing-box.py', 'sing-box-read.py', 'sing-box-update.py', 'subscription-traffic.js',
 )
 files += [root / 'tools' / name for name in runtime_tools]
 missing_tools = [path.name for path in files if not path.exists()]

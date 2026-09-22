@@ -31,7 +31,7 @@ Traffic allowance appears only when the response supplies a valid `Subscription-
 
 ## Public subscription is unavailable but nodes still run
 
-The subscription may be disabled, expired, or over its manual, source, or provider-client traffic allowance. These conditions close only the subscription endpoint. They never stop a node, managed instance, or host service. Update the expiration or allowance and enable the subscription again.
+When all output nodes (including groups) belong to one Agent-linked VPS, opt in to whole-server traffic display (off by default). This includes other services, not just this subscription. Mixed or unknown ownership suspends display. Statistics failures and traffic exhaustion never block downloads; only expiry or disabling closes the URL.
 
 ## A discovered service cannot become a node
 

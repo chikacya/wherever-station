@@ -59,6 +59,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .button.primary:hover { background: color-mix(in srgb, var(--focus-panel) 88%, var(--text)); box-shadow: none; }
 .button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); background: var(--danger-soft); }
 .button:disabled, .icon-button:disabled { opacity: .45; cursor: not-allowed; }
+.button[aria-busy="true"], .icon-button[aria-busy="true"] { cursor: wait; }
+.action-spinner { width: 14px; height: 14px; flex: none; display: inline-block; border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .65s linear infinite; }
 .icon-button { width: 36px; height: 36px; border: 0; border-radius: 4px; display: inline-grid; place-items: center; color: var(--muted); background: transparent; transition: color var(--fast), background var(--fast), transform var(--fast); touch-action: manipulation; }
 .icon-button:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
 .overview-panel { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px; }
@@ -1644,7 +1646,7 @@ body, button, input, select, textarea { font-family: var(--sans); }
 .modal[open]:not(.closing) { animation: modal-enter var(--motion-dialog) var(--ease-out) both; }
 .modal[open]:not(.closing)::backdrop { animation: backdrop-enter var(--motion-standard) var(--ease-out) both; }
 .modal[open].closing { pointer-events: none; animation: modal-exit var(--motion-exit) var(--ease-in-out) both; }
-.modal[open].closing::backdrop { animation: backdrop-exit var(--motion-exit) var(--ease-in-out) both; }
+.modal[open].closing::backdrop { pointer-events: none; animation: backdrop-exit var(--motion-exit) var(--ease-in-out) both; }
 @keyframes modal-exit { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(7px) scale(.985); } }
 @keyframes backdrop-exit { from { opacity: 1; } to { opacity: 0; } }
 

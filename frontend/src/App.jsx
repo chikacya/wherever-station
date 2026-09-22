@@ -283,16 +283,36 @@ function clearSessionDraft(key) {
   try { sessionStorage.removeItem(`wherever-station:draft:${key}`); }
   catch (_) { /* Draft persistence is best-effort in restricted browsers. */ }
 }
-function IconButton({ label, children, ...props }) {
+function useAsyncButton(onClick) {
+  const pendingRef = useRef(false);
+  const [pending, setPending] = useState(false);
+  const handleClick = useCallback((event) => {
+    if (!onClick || pendingRef.current) return;
+    const result = onClick(event);
+    if (!result || typeof result.then !== "function") return;
+    pendingRef.current = true;
+    setPending(true);
+    Promise.resolve(result).then(
+      () => { pendingRef.current = false; setPending(false); },
+      () => { pendingRef.current = false; setPending(false); },
+    );
+  }, [onClick]);
+  return { pending, handleClick };
+}
+function IconButton({ label, children, onClick, disabled, ...props }) {
+  const { pending, handleClick } = useAsyncButton(onClick);
   return (
     <button
       className="icon-button"
       type="button"
       aria-label={label}
       title={label}
+      aria-busy={pending || undefined}
+      disabled={disabled || pending}
+      onClick={onClick ? handleClick : undefined}
       {...props}
     >
-      {children}
+      {pending ? <span className="action-spinner" aria-hidden="true" /> : children}
     </button>
   );
 }
@@ -313,10 +333,11 @@ function StationMark({ size = 36, className = "" }) {
     </svg>
   );
 }
-function Button({ icon: Icon, children, variant = "secondary", ...props }) {
+function Button({ icon: Icon, children, variant = "secondary", onClick, disabled, ...props }) {
+  const { pending, handleClick } = useAsyncButton(onClick);
   return (
-    <button className={`button ${variant}`} type="button" {...props}>
-      {Icon && <Icon size={16} aria-hidden="true" />}
+    <button className={`button ${variant}`} type="button" aria-busy={pending || undefined} disabled={disabled || pending} onClick={onClick ? handleClick : undefined} {...props}>
+      {pending ? <span className="action-spinner" aria-hidden="true" /> : Icon && <Icon size={16} aria-hidden="true" />}
       {children}
     </button>
   );
@@ -778,6 +799,7 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
   const [batch, setBatch] = useState(null);
   const [directOutput, setDirectOutput] = useState(null);
   const [recentId, setRecentId] = useState("");
+  const recentTimerRef = useRef(null);
   const [connection, setConnection] = useState(null);
   const [draftRepair, setDraftRepair] = useState(null);
   const [draftError, setDraftError] = useState("");
@@ -788,6 +810,7 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
     sessionStorage.removeItem("wherever-node-focus");
     if (node) { setSearch(node.name); setRecentId(node.id); }
   }, []);
+  useEffect(() => () => clearTimeout(recentTimerRef.current), []);
   const machineMap = useMemo(
     () => new Map(state.machines.map((machine) => [machine.id, machine])),
     [state.machines],
@@ -1262,6 +1285,7 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
         parseUris={parseUris}
         onClose={() => setImporting(false)}
         onSave={async (created) => {
+          const importedId = created[0]?.id || "";
           await persist(
             { ...state, nodes: [...state.nodes, ...created] },
             `已导入 ${created.length} 个节点`,
@@ -1271,7 +1295,8 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
           setCountry("");
           setProtocol("");
           setSource("");
-          setRecentId(created[0]?.id || "");
+          clearTimeout(recentTimerRef.current);
+          recentTimerRef.current = setTimeout(() => setRecentId(importedId), 240);
         }}
       />
       <BatchDialog

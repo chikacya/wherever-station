@@ -54,6 +54,17 @@ const server = http.createServer((request, response) => {
   assert.equal(result.created, 2); const providerNodes = result.state.nodes.filter((item) => item.sourceId === providerId); assert.equal(new Set(providerNodes.map((item) => item.name)).size, 2, "same remote names get a deterministic local suffix");
   assert(providerNodes.every((item) => item.remoteClientName === "Same"), "provider client identity must remain visible after sync");
   assert(providerNodes.some((item) => item.remoteInboundName === "A"), "provider inbound identity must remain visible after sync");
+  const locallyRemoved = providerNodes.find((item) => item.protocol === "trojan");
+  let removedState = methods.get("proxyConsole:removeProviderNode")({ providerId, nodeId: locallyRemoved.id, expectedRevision: result.state.revision });
+  assert(!removedState.nodes.some((item) => item.id === locallyRemoved.id));
+  assert(removedState.providers.find((item) => item.id === providerId).ignoredRemoteIds.includes(locallyRemoved.remoteId));
+  preview = await providerOperation("preview", { providerId });
+  assert.equal(preview.candidates.find((item) => item.remoteId === locallyRemoved.remoteId).action, "ignored");
+  result = await providerOperation("apply", { providerId });
+  assert(!result.state.nodes.some((item) => item.remoteId === locallyRemoved.remoteId), "default sync keeps locally removed provider nodes ignored");
+  result = await providerOperation("apply", { providerId, remoteIds: [locallyRemoved.remoteId] });
+  assert(result.state.nodes.some((item) => item.remoteId === locallyRemoved.remoteId), "explicit selection restores an ignored provider node");
+  assert(!result.state.providers.find((item) => item.id === providerId).ignoredRemoteIds.includes(locallyRemoved.remoteId));
   result = await providerOperation("apply", { providerId });
   assert.equal(result.created, 0); assert.equal(result.unchanged, 2);
   let state = result.state; const renamed = state.nodes.find((item) => item.protocol === "vless"); renamed.name = "我的本地名称";

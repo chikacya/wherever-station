@@ -1148,6 +1148,7 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
             ["manual", "手动"],
             ["import", "批量导入"],
             ["external", "外部订阅"],
+            ["provider", "外部面板"],
           ]}
         />
       </div>
@@ -3808,7 +3809,7 @@ function Providers({ state, setState, notify, onNavigate }) {
     try {
       const result = await providerRpc("preview", { providerId: provider.id });
       setPreview(result);
-      setSelected(Object.fromEntries(result.candidates.map((item) => [item.remoteId, true])));
+      setSelected(Object.fromEntries(result.candidates.map((item) => [item.remoteId, item.action !== "ignored"])));
       setMissingActions(Object.fromEntries(result.missing.map((item) => [item.localId, "retain"])));
     } catch (error) { notify(error.message, true); } finally { setBusy(""); }
   };
@@ -3818,6 +3819,15 @@ function Providers({ state, setState, notify, onNavigate }) {
       const result = await providerRpc("geolocate", { providerId: provider.id });
       setState(result?.state || await rpc("proxyConsole:getState"));
       notify(`地区识别完成：更新 ${result.updated} 个${result.unresolved ? `，${result.unresolved} 个未识别` : ""}`);
+    } catch (error) { notify(error.message, true); }
+    finally { setBusy(""); }
+  };
+  const removeProviderNode = async (provider, node) => {
+    if (!confirm(`从本地移除“${node.name}”？远端面板不会受影响，后续同步会默认忽略该节点。`)) return;
+    setBusy(`remove-node:${node.id}`);
+    try {
+      setState(await rpc("proxyConsole:removeProviderNode", { providerId: provider.id, nodeId: node.id, expectedRevision: state.revision }));
+      notify("节点已从本地移除，并加入该面板的忽略清单");
     } catch (error) { notify(error.message, true); }
     finally { setBusy(""); }
   };
@@ -3870,7 +3880,7 @@ function Providers({ state, setState, notify, onNavigate }) {
             <div><span className={`protocol ${node.protocol === "nowhere" ? "special" : ""}`}>{node.protocol}</span><small>{hostFromUri(node)}</small></div>
             <div><span>{node.remoteClientName || `${provider.type === "2s-ui" ? "2S-UI" : "S-UI"} 客户端`}</span><small>{node.remoteInboundName || "分享链接"}</small></div>
             <div><Status tone={node.providerMissing ? "bad" : node.enabled ? "ok" : "warning"}>{node.providerMissing ? "远端已移除" : node.enabled ? "可输出" : "已停用"}</Status></div>
-            <div className="provider-node-actions"><IconButton label={`复制 ${node.name} URI`} onClick={() => { navigator.clipboard.writeText(node.uri); notify("节点 URI 已复制"); }}><Copy size={15} /></IconButton><IconButton label={`显示 ${node.name} 二维码`} onClick={() => setQr(node)}><QrCode size={15} /></IconButton><IconButton label={`在节点库查看 ${node.name}`} onClick={() => locate(node)}><ExternalLink size={15} /></IconButton></div>
+            <div className="provider-node-actions"><IconButton label={`复制 ${node.name} URI`} onClick={() => { navigator.clipboard.writeText(node.uri); notify("节点 URI 已复制"); }}><Copy size={15} /></IconButton><IconButton label={`显示 ${node.name} 二维码`} onClick={() => setQr(node)}><QrCode size={15} /></IconButton><IconButton label={`在节点库查看 ${node.name}`} onClick={() => locate(node)}><ExternalLink size={15} /></IconButton><IconButton label={`从本地移除 ${node.name}`} disabled={!!busy} onClick={() => removeProviderNode(provider, node)}><Trash2 size={15} /></IconButton></div>
           </div>)}
           {!providerNodes.length && <div className="provider-node-empty"><Network size={18} /><span>还没有同步节点。点击“同步”读取远端分享链接并选择导入。</span></div>}
         </div>}
@@ -3885,7 +3895,7 @@ function Providers({ state, setState, notify, onNavigate }) {
     <Modal open={!!preview} title={`同步预览 · ${preview?.provider.name || ""}`} eyebrow="同步确认" onClose={() => !busy && setPreview(null)} size="large">
       {preview && <><div className="provider-preview-summary"><span><strong>{preview.summary.create}</strong>新增</span><span><strong>{preview.summary.update}</strong>更新</span><span><strong>{preview.summary.unchanged}</strong>无变化</span><span><strong>{preview.summary.pending || 0}</strong>待完善</span><span><strong>{preview.summary.missing}</strong>远端消失</span><span><strong>{preview.summary.unsupported}</strong>无法导入</span></div>
       {!!preview.inbounds?.length && <details className="provider-readiness" open={preview.inbounds.some((item) => item.readiness !== "ready")}><summary>入站状态 · {preview.inbounds.filter((item) => item.readiness === "ready").length}/{preview.inbounds.length} 已就绪</summary><div>{preview.inbounds.map((item) => <div className="provider-readiness-row" key={item.id}><span className="protocol">{item.type}</span><span><strong>{item.tag || `Inbound ${item.id}`}</strong><small>{item.listen || "::"}:{item.port || "—"}{item.clients?.length ? ` · ${item.clients.join("、")}` : ""}</small></span><Status tone={item.readiness === "ready" ? "ok" : "warning"}>{item.readiness === "ready" ? "可同步" : item.readiness === "needs-link" ? "等待分享链接" : "等待客户端"}</Status>{item.readiness !== "ready" && <small className="provider-readiness-reason">{item.reason}</small>}</div>)}</div></details>}
-      <div className="provider-preview-list">{preview.candidates.map((item) => <label key={item.remoteId} className="provider-candidate"><input type="checkbox" checked={selected[item.remoteId] !== false} onChange={(event) => setSelected({ ...selected, [item.remoteId]: event.target.checked })} /><span className="protocol">{item.protocol}</span><div><strong>{item.localName || item.remoteName}</strong><small>{item.clientName} · {item.inboundName || "外部链接"} · {hostFromUri(item)}</small></div><Status tone={item.action === "create" ? "warning" : item.action === "update" ? "ok" : ""}>{{ create: "新增", update: "更新", unchanged: "无变化" }[item.action]}</Status><IconButton label="复制远端分享链接" onClick={(event) => { event.preventDefault(); navigator.clipboard.writeText(item.uri); notify("分享链接已复制"); }}><Copy size={15} /></IconButton></label>)}</div>
+      <div className="provider-preview-list">{preview.candidates.map((item) => <label key={item.remoteId} className="provider-candidate"><input type="checkbox" checked={selected[item.remoteId] === true} onChange={(event) => setSelected({ ...selected, [item.remoteId]: event.target.checked })} /><span className="protocol">{item.protocol}</span><div><strong>{item.localName || item.remoteName}</strong><small>{item.clientName} · {item.inboundName || "外部链接"} · {hostFromUri(item)}</small></div><Status tone={item.action === "create" ? "warning" : item.action === "update" ? "ok" : item.action === "ignored" ? "warning" : ""}>{{ create: "新增", update: "更新", unchanged: "无变化", ignored: "已忽略" }[item.action]}</Status><IconButton label="复制远端分享链接" onClick={(event) => { event.preventDefault(); navigator.clipboard.writeText(item.uri); notify("分享链接已复制"); }}><Copy size={15} /></IconButton></label>)}</div>
       {!!preview.missing.length && <div className="provider-missing"><div className="provider-missing-head"><strong>远端已消失</strong><span>逐项选择本地记录的处理方式</span></div>{preview.missing.map((item) => <label className="provider-missing-row" key={item.localId}><span><strong>{item.name}</strong><small>{item.alreadyMissing ? "当前已停用" : "本次同步发现"}</small></span><select aria-label={`${item.name} 的处理方式`} value={missingActions[item.localId] || "retain"} onChange={(event) => setMissingActions({ ...missingActions, [item.localId]: event.target.value })}><option value="retain">停用并保留</option><option value="delete">删除本地记录</option><option value="detach">转为手动节点</option></select></label>)}</div>}
       {!!preview.unsupported.length && <details className="provider-unsupported"><summary>{preview.unsupported.length} 项无法导入</summary>{preview.unsupported.map((item) => <p key={item.remoteId}><strong>{item.name || item.remoteId}</strong> · {item.reason}</p>)}</details>}</>}
       <div className="dialog-actions"><Button onClick={() => setPreview(null)}>取消</Button><Button icon={RefreshCw} variant="primary" onClick={apply} disabled={busy === "apply" || (!Object.values(selected).some(Boolean) && !preview?.missing.length)}>{busy === "apply" ? "同步中…" : `执行同步 · ${Object.values(selected).filter(Boolean).length} 项`}</Button></div>

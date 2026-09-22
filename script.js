@@ -194,7 +194,8 @@ function cleanProvider(item) {
     id: cleanText(client && client.id, 64), name: cleanText(client && client.name, 160), enabled: client && client.enabled !== false,
     upload: cleanByteCount(client && client.upload), download: cleanByteCount(client && client.download), total: cleanByteCount(client && client.total), expire: cleanByteCount(client && client.expire),
   })).filter((client) => client.id && client.name).slice(0, 1000);
-  return { id: cleanText(item && item.id, 64), name: cleanText(item && item.name, 80), type, baseUrl, enabled: item && item.enabled !== false, hasToken: item && item.hasToken === true, lastTestAt: cleanText(item && item.lastTestAt, 64), lastSyncAt: cleanText(item && item.lastSyncAt, 64), lastSuccessAt: cleanText(item && item.lastSuccessAt, 64), lastError: cleanText(item && item.lastError, 240), status: cleanText(item && item.status, 48), inboundCount: Math.max(0, Number(item && item.inboundCount) || 0), clientCount: Math.max(0, Number(item && item.clientCount) || 0), linkCount: Math.max(0, Number(item && item.linkCount) || 0), clients };
+  const ignoredRemoteIds = [...new Set((Array.isArray(item && item.ignoredRemoteIds) ? item.ignoredRemoteIds : []).map((id) => cleanText(id, 240)).filter(Boolean))].slice(0, 2000);
+  return { id: cleanText(item && item.id, 64), name: cleanText(item && item.name, 80), type, baseUrl, enabled: item && item.enabled !== false, hasToken: item && item.hasToken === true, lastTestAt: cleanText(item && item.lastTestAt, 64), lastSyncAt: cleanText(item && item.lastSyncAt, 64), lastSuccessAt: cleanText(item && item.lastSuccessAt, 64), lastError: cleanText(item && item.lastError, 240), status: cleanText(item && item.status, 48), inboundCount: Math.max(0, Number(item && item.inboundCount) || 0), clientCount: Math.max(0, Number(item && item.clientCount) || 0), linkCount: Math.max(0, Number(item && item.linkCount) || 0), clients, ignoredRemoteIds };
 }
 function defaultState() {
   return { version: 14, revision: 0, settings: { publicBaseUrl: "", monitoring: { cpuPercent: 85, memoryPercent: 90, diskPercent: 90 } }, machines: [], nodes: [], nodeDrafts: [], subscriptions: [], externalSources: [], ruleSets: [], serviceBindings: [], managedInstances: [], certificates: [], deploymentPresets: clone(DEFAULT_DEPLOYMENT_PRESETS), providers: [] };
@@ -1063,6 +1064,20 @@ function deleteProvider(params) {
   const secrets = readProviderSecrets(); delete secrets[id];
   state.revision += 1; writeProviderSecrets(secrets); writeState(cleanState(state)); return readState();
 }
+function removeProviderNode(params) {
+  const providerId = cleanText(params && params.providerId, 64); const nodeId = cleanText(params && params.nodeId, 64); const state = readState();
+  if (Number(params && params.expectedRevision) !== state.revision) throw new Error("数据已在其他页面更新，请刷新后重试");
+  const provider = state.providers.find((item) => item.id === providerId); const node = state.nodes.find((item) => item.id === nodeId);
+  if (!provider || !node || node.source !== "provider" || node.sourceId !== providerId || !node.remoteId) throw new Error("外部面板节点已经不存在");
+  const before = clone(state); provider.ignoredRemoteIds = [...new Set([...(provider.ignoredRemoteIds || []), node.remoteId])];
+  state.nodes = state.nodes.filter((item) => item.id !== nodeId);
+  state.subscriptions = state.subscriptions.map((subscription) => ({
+    ...subscription,
+    nodeIds: (subscription.nodeIds || []).filter((id) => id !== nodeId),
+    groups: (subscription.groups || []).map((group) => ({ ...group, entries: (group.entries || []).filter((entry) => entry.kind !== "node" || entry.id !== nodeId) })),
+  }));
+  state.revision += 1; const cleaned = cleanState(state); writeState(cleaned); recordSubscriptionChanges(before, cleaned); return cleaned;
+}
 async function testProvider(params) {
   const { provider, secret } = providerAndSecret(params && params.providerId); const checkedAt = new Date().toISOString();
   try {
@@ -1077,12 +1092,13 @@ async function testProvider(params) {
 }
 function providerPreview(state, provider, discovery) {
   const existing = new Map(state.nodes.filter((node) => node.source === "provider" && node.sourceId === provider.id && node.remoteId).map((node) => [node.remoteId, node]));
+  const ignored = new Set(provider.ignoredRemoteIds || []);
   const candidates = []; const unsupported = [...discovery.unsupported];
   for (const candidate of discovery.candidates) {
     const parsed = parseNodeUris({ text: candidate.uri }); const incoming = parsed.nodes[0];
     if (!incoming) { unsupported.push({ remoteId: candidate.remoteId, name: candidate.remoteName, reason: parsed.errors[0]?.message || "分享链接无法导入" }); continue; }
-    const current = existing.get(candidate.remoteId); const changed = current && (current.uri !== candidate.uri || current.remoteName !== candidate.remoteName || current.providerMissing);
-    candidates.push({ ...candidate, protocol: incoming.protocol, action: !current ? "create" : changed ? "update" : "unchanged", localId: current?.id || "", localName: current?.name || "", locallyRenamed: Boolean(current && current.remoteName && current.name !== current.remoteName) });
+    const current = existing.get(candidate.remoteId); const changed = current && (current.uri !== candidate.uri || current.remoteName !== candidate.remoteName || current.providerMissing); const isIgnored = !current && ignored.has(candidate.remoteId);
+    candidates.push({ ...candidate, protocol: incoming.protocol, action: isIgnored ? "ignored" : !current ? "create" : changed ? "update" : "unchanged", ignored: isIgnored, localId: current?.id || "", localName: current?.name || "", locallyRenamed: Boolean(current && current.remoteName && current.name !== current.remoteName) });
   }
   const remoteIds = new Set(discovery.candidates.map((item) => item.remoteId));
   const missing = [...existing.values()].filter((node) => !remoteIds.has(node.remoteId)).map((node) => ({ localId: node.id, remoteId: node.remoteId, name: node.name, alreadyMissing: node.providerMissing }));
@@ -1099,7 +1115,7 @@ function uniqueProviderNodeName(state, desired, ownId = "") {
 async function applyProviderSync(params) {
   const { provider, secret } = providerAndSecret(params && params.providerId); const discovery = await providerAdapter(provider).discover(provider, secret); const state = readState(); const currentProvider = state.providers.find((item) => item.id === provider.id);
   if (!currentProvider || currentProvider.baseUrl !== provider.baseUrl) throw new Error("外部面板已在同步期间变化，请重新预览");
-  const preview = providerPreview(state, currentProvider, discovery); const selected = new Set(Array.isArray(params && params.remoteIds) ? params.remoteIds.map((id) => cleanText(id, 240)) : preview.candidates.map((item) => item.remoteId));
+  const preview = providerPreview(state, currentProvider, discovery); const selected = new Set(Array.isArray(params && params.remoteIds) ? params.remoteIds.map((id) => cleanText(id, 240)) : preview.candidates.filter((item) => !item.ignored).map((item) => item.remoteId));
   const byRemote = new Map(state.nodes.filter((node) => node.source === "provider" && node.sourceId === provider.id && node.remoteId).map((node) => [node.remoteId, node]));
   const missingActions = params && params.missingActions && typeof params.missingActions === "object" ? params.missingActions : {};
   let created = 0; let updated = 0; let unchanged = 0; let disabled = 0; let deleted = 0; let detached = 0;
@@ -1115,6 +1131,7 @@ async function applyProviderSync(params) {
       Object.assign(node, { name, protocol: incoming.protocol, uri: candidate.uri, enabled: candidate.enabled, source: "provider", sourceId: provider.id, remoteId: candidate.remoteId, remoteName: candidate.remoteName, remoteClientName: candidate.clientName, remoteInboundName: candidate.inboundName, providerMissing: false });
       if (changed) updated += 1; else unchanged += 1;
     }
+    currentProvider.ignoredRemoteIds = (currentProvider.ignoredRemoteIds || []).filter((id) => id !== candidate.remoteId);
   }
   const remoteIds = new Set(discovery.candidates.map((item) => item.remoteId));
   const deleteIds = new Set();
@@ -1936,6 +1953,7 @@ function load() {
   server.registerRPC("proxyConsole:recordMachineIpProfile", recordMachineIpProfile);
   server.registerRPC("proxyConsole:discardManagedNowhereDraft", discardManagedNowhereDraft);
   server.registerRPC("proxyConsole:deleteProvider", deleteProvider);
+  server.registerRPC("proxyConsole:removeProviderNode", removeProviderNode);
   server.registerRPC("proxyConsole:startProviderOperation", startProviderOperation);
   server.registerRPC("proxyConsole:getProviderOperation", getProviderOperation);
   server.registerRPC("proxyConsole:deleteNodes", deleteNodes);

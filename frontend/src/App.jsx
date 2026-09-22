@@ -4860,6 +4860,78 @@ function withTelemetryRate(row, previous) {
   return { ...row, telemetry: { ...row.telemetry, upBytesPerSecond: Math.round(Number(up - oldUp) / elapsed), downBytesPerSecond: Math.round(Number(down - oldDown) / elapsed) } };
 }
 
+function NowhereCarrierFields({ values, onPatch, error = "" }) {
+  const changePort = (kind, value) => {
+    const next = Number(value);
+    const tcpPort = kind === "tcp" ? next : Number(values.tcpPort || 0);
+    const udpPort = kind === "udp" ? next : Number(values.udpPort || 0);
+    onPatch({
+      [`${kind}Port`]: next,
+      port: tcpPort || udpPort || Number(values.port || 2077),
+      network: tcpPort && udpPort ? "mix" : tcpPort ? "tcp" : "udp",
+    });
+  };
+  return <>
+    <Field label="TCP Carrier 端口" hint="填 0 关闭 TCP" error={error}><input type="number" min="0" max="65535" value={values.tcpPort ?? values.port ?? 2077} onChange={(event) => changePort("tcp", event.target.value)} /></Field>
+    <Field label="UDP Carrier 端口" hint="填 0 关闭 UDP" error={error}><input type="number" min="0" max="65535" value={values.udpPort ?? values.port ?? 2077} onChange={(event) => changePort("udp", event.target.value)} /></Field>
+    <Field label="TCP Carrier"><select value={values.tcpCarrier || "tcp"} onChange={(event) => onPatch({ tcpCarrier: event.target.value })}><option value="tcp">TCP · 自动地址族</option><option value="tcp4">TCP · IPv4</option><option value="tcp6">TCP · IPv6</option></select></Field>
+    <Field label="UDP Carrier"><select value={values.udpCarrier || "udp"} onChange={(event) => onPatch({ udpCarrier: event.target.value })}><option value="udp">UDP · 自动地址族</option><option value="udp4">UDP · IPv4</option><option value="udp6">UDP · IPv6</option></select></Field>
+  </>;
+}
+
+const NOWHERE_RESERVED_EXTENSION_KEYS = new Set([
+  "NOWHERE_PORTAL", "NOWHERE_VERSION_VALUE", "NOWHERE_PUBLIC_HOST_VALUE", "NOWHERE_LISTEN_HOST_VALUE",
+  "NOWHERE_PORT_VALUE", "NOWHERE_KEY_VALUE", "NOWHERE_NET_VALUE", "NOWHERE_CLIENT_VALUE", "NOWHERE_ALPN_VALUE",
+  "NOWHERE_TLS_VALUE", "NOWHERE_CRT_VALUE", "NOWHERE_TLS_KEY_VALUE", "NOWHERE_RATE_VALUE", "NOWHERE_ETAR_VALUE",
+  "NOWHERE_DIAL_VALUE", "NOWHERE_SOCKS_VALUE", "NOWHERE_LOG_VALUE", "NOWHERE_TELEMETRY_INTERVAL_VALUE",
+  "NOWHERE_VECTOR_SOCKS_VALUE", "NOWHERE_VECTOR_SNI_VALUE", "NOWHERE_VECTOR_PIN_VALUE", "NOWHERE_VECTOR_MUX_VALUE",
+  "NOWHERE_TCP_PORT_VALUE", "NOWHERE_UDP_PORT_VALUE", "NOWHERE_TCP_CARRIER_VALUE", "NOWHERE_UDP_CARRIER_VALUE",
+  "NOWHERE_MORPH_VALUE", "NOWHERE_TRANSPORT_MEMORY_PROFILE_VALUE", "NOWHERE_CERTIFICATE_MODE_VALUE",
+  "NOWHERE_CERTIFICATE_HOST_VALUE", "NOWHERE_CERTIFICATE_DAYS_VALUE", "NOW_TELEMETRY_INTERVAL", "NOW_TRANSPORT_MEMORY_PROFILE",
+]);
+
+function NowhereExtensionEditor({ value, onChange }) {
+  const [keyName, setKeyName] = useState("");
+  const [settingValue, setSettingValue] = useState("");
+  const [error, setError] = useState("");
+  const entries = Object.entries(value || {});
+  const add = () => {
+    const key = keyName.trim().toUpperCase();
+    if (!/^NOW(?:HERE)?_[A-Z0-9_]{1,80}$/.test(key)) return setError("名称必须以 NOW_ 或 NOWHERE_ 开头，并只包含大写字母、数字和下划线");
+    if (NOWHERE_RESERVED_EXTENSION_KEYS.has(key)) return setError("该名称已由标准配置项管理，请使用上方对应字段");
+    if (Object.hasOwn(value || {}, key)) return setError("该扩展参数已经存在");
+    onChange({ ...(value || {}), [key]: settingValue });
+    setKeyName(""); setSettingValue(""); setError("");
+  };
+  return <Field label="兼容扩展参数" wide hint="用于保留新版 Nowhere 暂未进入标准表单的环境变量；最多 32 项。">
+    <div className="nowhere-extension-editor">
+      {!!entries.length && <div className="nowhere-extension-list">{entries.map(([key, current]) => <div key={key}><code>{key}</code><input aria-label={`${key} 的值`} value={current} onChange={(event) => onChange({ ...(value || {}), [key]: event.target.value })} /><IconButton label={`移除 ${key}`} onClick={() => onChange(Object.fromEntries(entries.filter(([name]) => name !== key)))}><Trash2 size={15} /></IconButton></div>)}</div>}
+      <div className="nowhere-extension-add"><input aria-label="扩展参数名称" value={keyName} onChange={(event) => { setKeyName(event.target.value); setError(""); }} placeholder="NOWHERE_EXAMPLE" /><input aria-label="扩展参数值" value={settingValue} onChange={(event) => setSettingValue(event.target.value)} placeholder="值" /><Button icon={Plus} onClick={add} disabled={!keyName.trim() || entries.length >= 32}>添加</Button></div>
+      {error && <small className="field-error">{error}</small>}
+    </div>
+  </Field>;
+}
+
+function NowhereAdvancedFields({ values, onPatch, capabilities }) {
+  const update = (key, value) => onPatch({ [key]: value });
+  return <>
+    <Field label="Wire protocol"><input value="nw2（固定）" disabled /></Field>
+    <Field label="上传限速 Mbps"><input type="number" min="0" value={values.rate || 0} onChange={(event) => update("rate", Number(event.target.value))} /></Field>
+    <Field label="下载限速 Mbps"><input type="number" min="0" value={values.etar || 0} onChange={(event) => update("etar", Number(event.target.value))} /></Field>
+    <Field label="拨号地址"><input value={values.dial || "auto"} onChange={(event) => update("dial", event.target.value)} /></Field>
+    <Field label="SOCKS"><input value={values.socks || "none"} onChange={(event) => update("socks", event.target.value)} /></Field>
+    <Field label="日志级别"><select value={values.log || "info"} onChange={(event) => update("log", event.target.value)}>{["none", "debug", "info", "warn", "error", "event"].map((option) => <option key={option}>{option}</option>)}</select></Field>
+    <Field label="遥测间隔" hint="允许 250ms–60s"><input value={values.telemetryInterval || "1s"} onChange={(event) => update("telemetryInterval", event.target.value)} placeholder="例如 1s" /></Field>
+    <Field label="Vector SOCKS"><input value={values.vectorSocks || "127.0.0.1:1080"} onChange={(event) => update("vectorSocks", event.target.value)} /></Field>
+    <Field label="Vector SNI"><input value={values.vectorSni || "none"} onChange={(event) => update("vectorSni", event.target.value)} /></Field>
+    {capabilities.vectorPin && <Field label="Vector Pin"><input value={values.vectorPin || "none"} onChange={(event) => update("vectorPin", event.target.value)} /></Field>}
+    {capabilities.vectorMux && <Field label="Vector Mux"><select value={values.vectorMux || 0} onChange={(event) => update("vectorMux", Number(event.target.value))}><option value={0}>关闭</option><option value={1}>开启</option></select></Field>}
+    {capabilities.morph && <Field label="Morph" hint={values.morph === 1 && capabilities.morphTcpPrelude ? "2.1 传输格式；所有同路径客户端与下一跳必须使用兼容版本" : "两端必须一致；跨 Morph 传输格式升级需要协同进行"}><select value={values.morph || 0} onChange={(event) => update("morph", Number(event.target.value))}><option value={0}>关闭</option><option value={1}>开启（两端必须一致）</option></select></Field>}
+    {capabilities.transportMemoryProfile && <Field label="Transport 内存策略"><select value={values.transportMemoryProfile || "throughput"} onChange={(event) => update("transportMemoryProfile", event.target.value)}><option value="memory">节省内存</option><option value="balanced">平衡</option><option value="throughput">吞吐优先</option></select></Field>}
+    <NowhereExtensionEditor value={values.extensionEnvironment} onChange={(next) => update("extensionEnvironment", next)} />
+  </>;
+}
+
 function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, onNavigate, onDiscover }) {
   const [liveStates, setLiveStates] = useState([]);
   const [telemetryDetail, setTelemetryDetail] = useState("");
@@ -5407,6 +5479,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
   const nowhereSaving = Boolean(configEdit && hasBusy(`update:${configEdit.instanceId}`));
   const singSaving = Boolean(singConfigEdit && hasBusy(`update:${singConfigEdit.instanceId}`));
   const formCapabilities = nowhereVersionCapabilities(form.version);
+  const configCapabilities = nowhereVersionCapabilities(configEdit?.values?.version || "");
   const managerCurrentCapabilities = nowhereVersionCapabilities(nowhereManager?.instance?.version);
   const managerTargetCapabilities = nowhereVersionCapabilities(nowhereManager?.targetVersion);
   const nowhereV2Releases = nowhereReleases.releases.filter((release) => nowhereVersionCapabilities(release.tag).verified);
@@ -5557,13 +5630,15 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       <p>修改仅应用到此托管实例。运行中的实例会重启；停止的实例保持停止。保存失败会尝试恢复旧配置，成功后同步订阅链接。</p>
       {configEdit && <div className="form-grid">
         <Field label="节点名称" wide><input autoFocus value={configEdit.values.name || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, name: event.target.value } }))} /></Field>
-        {[["publicHost", "公网域名或 IP"], ["listenHost", "监听地址"], ["rate", "上传限速 Mbps", "number"], ["etar", "下载限速 Mbps", "number"]].map(([key, label, type]) => <Field key={key} label={label}><input type={type || "text"} value={configEdit.values[key] ?? ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, [key]: type === "number" ? Number(event.target.value) : event.target.value } }))} /></Field>)}
+        {[["publicHost", "公网域名或 IP"], ["listenHost", "监听地址"]].map(([key, label]) => <Field key={key} label={label}><input value={configEdit.values[key] ?? ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, [key]: event.target.value } }))} /></Field>)}
+        <Field label="客户端输出"><select value={configEdit.values.client || "anywhere"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, client: event.target.value } }))}><option value="anywhere">Anywhere</option><option value="both">Anywhere + Vector</option></select></Field>
         <Field label="共享密钥"><SecretInput value={configEdit.values.key || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, key: event.target.value } }))} /></Field>
-        <Field label="TCP Carrier 端口"><input type="number" min="0" max="65535" value={configEdit.values.tcpPort || 0} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, tcpPort: Number(event.target.value) } }))} /></Field><Field label="UDP Carrier 端口"><input type="number" min="0" max="65535" value={configEdit.values.udpPort || 0} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, udpPort: Number(event.target.value) } }))} /></Field><Field label="TCP Carrier"><select value={configEdit.values.tcpCarrier || "tcp"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, tcpCarrier: event.target.value } }))}><option value="tcp">TCP · 自动地址族</option><option value="tcp4">TCP · IPv4</option><option value="tcp6">TCP · IPv6</option></select></Field><Field label="UDP Carrier"><select value={configEdit.values.udpCarrier || "udp"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, udpCarrier: event.target.value } }))}><option value="udp">UDP · 自动地址族</option><option value="udp4">UDP · IPv4</option><option value="udp6">UDP · IPv6</option></select></Field><Field label="Morph"><select value={configEdit.values.morph || 0} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, morph: Number(event.target.value) } }))}><option value={0}>关闭</option><option value={1}>开启（两端必须一致）</option></select></Field><Field label="Transport 内存策略"><select value={configEdit.values.transportMemoryProfile || "throughput"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, transportMemoryProfile: event.target.value } }))}><option value="memory">节省内存</option><option value="balanced">平衡</option><option value="throughput">吞吐优先</option></select></Field>
+        <NowhereCarrierFields values={configEdit.values} onPatch={(patch) => setConfigEdit(old => ({ ...old, values: { ...old.values, ...patch } }))} />
         <Field label="TLS 与证书"><select value={certificateSelection(configEdit.values, "ephemeral")} onChange={event => selectCertificate((updater) => setConfigEdit((old) => ({ ...old, values: updater(old.values) })), event.target.value, "nowhere")}><option value="ephemeral">临时自签</option><option value="managed">为此实例生成稳定自签</option><option value="existing">手动填写已有 PEM</option>{!!usableCertificates(configEdit.values.machineId).length && <optgroup label="证书工作台">{certificateAssetOptions(configEdit.values.machineId)}</optgroup>}</select></Field>
         {!configEdit.values.certificateAssetId && configEdit.values.certificateMode === "managed" && <><Field label="证书名称"><input value={configEdit.values.certificateHost || configEdit.values.publicHost || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, certificateHost: event.target.value } }))} /></Field><Field label="有效天数"><input type="number" min="1" max="3650" value={configEdit.values.certificateDays || 825} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, certificateDays: Number(event.target.value) } }))} /></Field></>}
         {!configEdit.values.certificateAssetId && configEdit.values.certificateMode === "existing" && <><Field label="证书链路径"><input value={configEdit.values.certificatePath || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, certificatePath: event.target.value } }))} /></Field><Field label="私钥路径"><input value={configEdit.values.privateKeyPath || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, privateKeyPath: event.target.value } }))} /></Field></>}
       </div>}
+      {configEdit && <details className="deploy-advanced"><summary>高级运行参数</summary><div className="form-grid"><NowhereAdvancedFields values={configEdit.values} capabilities={configCapabilities} onPatch={(patch) => setConfigEdit(old => ({ ...old, values: { ...old.values, ...patch } }))} /></div></details>}
       {configError && <p role="alert" className="managed-error">{configError}</p>}
       <div className="dialog-actions"><Button onClick={() => setConfigEdit(null)} disabled={nowhereSaving}>取消</Button><Button variant="primary" icon={Save} onClick={saveNowhereConfig} disabled={nowhereSaving}>{nowhereSaving ? "正在应用…" : "保存并应用"}</Button></div>
     </Modal>
@@ -5599,8 +5674,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
           {form.binarySource !== "copy" && !formCapabilities.verified && <small className="warning-text">此版本尚未进入已验证适配清单，只能识别，不能创建实例。</small>}
         </Field>
         <Field label="公网域名或 IP" hint={form.publicHost ? "已从 Komari 自动带出，可手动覆盖" : "Komari 未提供公网地址，请手动填写"}><input value={form.publicHost || ""} onChange={(event) => update("publicHost", event.target.value)} placeholder="example.com 或公网 IP" /></Field>
-        <Field label="TCP Carrier 端口" hint="填 0 关闭 TCP" error={formErrors.port}><input type="number" min="0" max="65535" value={form.tcpPort ?? form.port ?? 2077} onChange={(event) => { const value = Number(event.target.value); setForm((old) => ({ ...old, tcpPort: value, port: value || old.udpPort || old.port, network: value ? old.udpPort ? "mix" : "tcp" : "udp" })); setFormErrors({}); setPreview(null); }} /></Field>
-        <Field label="UDP Carrier 端口" hint="填 0 关闭 UDP" error={formErrors.port}><input type="number" min="0" max="65535" value={form.udpPort ?? form.port ?? 2077} onChange={(event) => { const value = Number(event.target.value); setForm((old) => ({ ...old, udpPort: value, port: old.tcpPort || value || old.port, network: value ? old.tcpPort ? "mix" : "udp" : "tcp" })); setFormErrors({}); setPreview(null); }} /></Field>
+        <NowhereCarrierFields values={form} error={formErrors.port} onPatch={(patch) => { setForm((old) => ({ ...old, ...patch })); setFormErrors({}); setPreview(null); }} />
         <Field label="监听地址"><input value={form.listenHost || "0.0.0.0"} onChange={(event) => update("listenHost", event.target.value)} /></Field>
         <Field label="客户端输出"><select value={form.client || "anywhere"} onChange={(event) => update("client", event.target.value)}><option value="anywhere">Anywhere</option><option value="both">Anywhere + Vector</option></select></Field>
         <Field label="TLS 与证书" hint={form.certificateAssetId ? "复用证书工作台资产，并输出固定 Pin" : form.certificateMode === "ephemeral" ? "每次启动由 Nowhere 生成临时证书" : form.certificateMode === "managed" ? "为此实例生成并长期保留" : "手动填写目标机 PEM 路径"}><select value={certificateSelection(form, "ephemeral")} onChange={(event) => { selectCertificate(setForm, event.target.value, "nowhere"); setPreview(null); }}><option value="ephemeral">临时自签</option><option value="managed">为此实例生成稳定自签</option><option value="existing">手动填写已有 PEM</option>{!!usableCertificates(form.machineId).length && <optgroup label="证书工作台">{certificateAssetOptions(form.machineId)}</optgroup>}</select></Field>
@@ -5608,21 +5682,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
         {!form.certificateAssetId && form.certificateMode === "managed" && <><Field label="证书名称"><input value={form.certificateHost || form.publicHost || ""} onChange={(event) => update("certificateHost", event.target.value)} /></Field><Field label="有效天数"><input type="number" min="1" max="3650" value={form.certificateDays || 825} onChange={(event) => update("certificateDays", Number(event.target.value))} /></Field></>}
         {!form.certificateAssetId && form.certificateMode === "existing" && <><Field label="证书链路径"><input value={form.certificatePath || ""} onChange={(event) => update("certificatePath", event.target.value)} /></Field><Field label="私钥路径"><input value={form.privateKeyPath || ""} onChange={(event) => update("privateKeyPath", event.target.value)} /></Field></>}
       </div>
-      <details className="deploy-advanced"><summary>高级参数</summary><div className="form-grid">
-        <Field label="Wire protocol"><input value="nw2（固定）" disabled /></Field>
-        <Field label="上传限速 Mbps"><input type="number" min="0" value={form.rate || 0} onChange={(event) => update("rate", Number(event.target.value))} /></Field>
-        <Field label="下载限速 Mbps"><input type="number" min="0" value={form.etar || 0} onChange={(event) => update("etar", Number(event.target.value))} /></Field>
-        <Field label="拨号地址"><input value={form.dial || "auto"} onChange={(event) => update("dial", event.target.value)} /></Field>
-        <Field label="SOCKS"><input value={form.socks || "none"} onChange={(event) => update("socks", event.target.value)} /></Field>
-        <Field label="日志级别"><select value={form.log || "info"} onChange={(event) => update("log", event.target.value)}>{["none", "debug", "info", "warn", "error", "event"].map((value) => <option key={value}>{value}</option>)}</select></Field>
-        <Field label="遥测间隔"><input value={form.telemetryInterval || "1s"} onChange={(event) => update("telemetryInterval", event.target.value)} placeholder="250ms–60s" /></Field>
-        <Field label="Vector SOCKS"><input value={form.vectorSocks || "127.0.0.1:1080"} onChange={(event) => update("vectorSocks", event.target.value)} /></Field>
-        <Field label="Vector SNI"><input value={form.vectorSni || "none"} onChange={(event) => update("vectorSni", event.target.value)} /></Field>
-        {formCapabilities.vectorPin && <Field label="Vector Pin"><input value={form.vectorPin || "none"} onChange={(event) => update("vectorPin", event.target.value)} /></Field>}
-        {formCapabilities.vectorMux && <Field label="Vector Mux"><select value={form.vectorMux || 0} onChange={(event) => update("vectorMux", Number(event.target.value))}><option value={0}>关闭</option><option value={1}>开启</option></select></Field>}
-        {formCapabilities.morph && <Field label="Morph" hint={form.morph === 1 && formCapabilities.morphTcpPrelude ? "2.1 传输格式；所有同路径客户端与下一跳必须使用兼容版本" : "两端必须一致；跨 Morph 传输格式升级需要协同进行"}><select value={form.morph || 0} onChange={(event) => update("morph", Number(event.target.value))}><option value={0}>关闭</option><option value={1}>开启（两端必须一致）</option></select></Field>}
-        {formCapabilities.transportMemoryProfile && <Field label="Transport 内存策略"><select value={form.transportMemoryProfile || "throughput"} onChange={(event) => update("transportMemoryProfile", event.target.value)}><option value="memory">节省内存</option><option value="balanced">平衡</option><option value="throughput">吞吐优先</option></select></Field>}
-      </div></details>
+      <details className="deploy-advanced"><summary>高级运行参数</summary><div className="form-grid"><NowhereAdvancedFields values={form} capabilities={formCapabilities} onPatch={(patch) => { setForm((old) => ({ ...old, ...patch })); setPreview(null); }} /></div></details>
       {preview && <div className="deploy-preview"><Check size={17} /><div><strong>参数可生成 · NW2</strong><p>{[preview.summary.tcpPort ? `TCP ${preview.summary.tcpPort}` : "", preview.summary.udpPort ? `UDP ${preview.summary.udpPort}` : ""].filter(Boolean).join(" · ")} · TLS {preview.summary.tls} · {preview.links.anywhere.length} 条 Anywhere 链接</p></div></div>}
       <div className="dialog-actions"><DraftStatus onDiscard={() => { clearSessionDraft("deploy:nowhere"); setEditor(false); }} /><Button onClick={() => setEditor(false)} disabled={nowhereCreating}>取消</Button><Button icon={Search} onClick={previewForm} disabled={nowhereCreating || !formCapabilities.verified}>预览</Button><Button icon={Download} variant="primary" onClick={create} disabled={nowhereCreating || !formCapabilities.verified || !form.machineId || !form.publicHost || !form.name}>{nowhereCreating ? "检查并创建中…" : "检查并创建（不启动）"}</Button></div>
     </Modal>

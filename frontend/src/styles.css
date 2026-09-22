@@ -538,6 +538,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .helper { color: var(--muted); font-size: 11px; font-weight: 400; }
 .field-error { color: var(--danger); font-size: 11px; font-weight: 500; }
 .deploy-field-error { margin: 8px 16px 0; }
+.nowhere-extension-editor { display: grid; gap: 8px; }
+.nowhere-extension-list { display: grid; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.nowhere-extension-list > div { min-width: 0; padding: 7px 8px; display: grid; grid-template-columns: minmax(170px, .8fr) minmax(0, 1.4fr) auto; align-items: center; gap: 8px; background: var(--surface); border-top: 1px solid var(--border); }
+.nowhere-extension-list > div:first-child { border-top: 0; }
+.nowhere-extension-list code { min-width: 0; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nowhere-extension-list input, .nowhere-extension-add input { min-height: 36px; }
+.nowhere-extension-add { display: grid; grid-template-columns: minmax(170px, .8fr) minmax(0, 1.4fr) auto; gap: 8px; align-items: center; }
 .field-invalid :is(input, select, .secret-input) { border-color: var(--danger); }
 .secret-input { min-width: 0; position: relative; display: block; }
 .secret-input input { padding-right: 46px; }
@@ -825,6 +832,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
   .toolbar { grid-template-columns: 1fr; }
   .batch-qr-toolbar { align-items: flex-start; flex-direction: column; }
   .batch-qr-grid { grid-template-columns: 1fr 1fr; }
+  .nowhere-extension-list > div { grid-template-columns: minmax(0, 1fr) auto; }
+  .nowhere-extension-list code { grid-column: 1 / -1; white-space: normal; overflow-wrap: anywhere; }
+  .nowhere-extension-add { grid-template-columns: 1fr; }
   .search { grid-column: auto; }
   .compact-select { min-width: 0; }
   .bulk { top: 60px; overflow-x: auto; flex-wrap: nowrap; }

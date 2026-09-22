@@ -19,12 +19,13 @@ try {
   const decoded = decodeNowhereConfig(read.configuration);
   const restored = planManagedNowhere({ ...decoded, id: plan.id, name: '测试' });
   assert.equal(restored.environment, plan.environment);
-  const v2Plan = planManagedNowhere({ id: 'nw-read-v2', version: 'v2.0.2', name: 'V2', key: 'test-only-v2-key', publicHost: 'example.com', port: 32078, tcpPort: 32078, udpPort: 32079, tcpCarrier: 'tcp4', udpCarrier: 'udp6', morph: 1, transportMemoryProfile: 'memory' });
+  const v2Plan = planManagedNowhere({ id: 'nw-read-v2', version: 'v2.0.2', name: 'V2', key: 'test-only-v2-key', publicHost: 'example.com', port: 32078, tcpPort: 32078, udpPort: 32079, tcpCarrier: 'tcp4', udpCarrier: 'udp6', client: 'both', rate: 120, etar: 80, dial: '127.0.0.1', socks: '127.0.0.1:1081', log: 'warn', telemetryInterval: '2s', vectorSocks: '127.0.0.1:1082', vectorSni: 'example.org', vectorMux: 1, morph: 1, transportMemoryProfile: 'memory', extensionEnvironment: { NOWHERE_FUTURE_SWITCH: 'enabled' } });
   const v2Values = Object.fromEntries(v2Plan.environment.trim().split('\n').map(line => { const index = line.indexOf('='); return [line.slice(0, index), JSON.parse(line.slice(index + 1))]; }));
   const v2Decoded = decodeNowhereConfig(v2Values);
   const v2Restored = planManagedNowhere({ ...v2Decoded, id: v2Plan.id, name: 'V2' });
   assert.equal(v2Restored.environment, v2Plan.environment);
   assert.equal(v2Decoded.tcpCarrier, 'tcp4'); assert.equal(v2Decoded.udpCarrier, 'udp6'); assert.equal(v2Decoded.morph, 1);
+  assert.equal(v2Decoded.client, 'both'); assert.equal(v2Decoded.telemetryInterval, '2s'); assert.equal(v2Decoded.extensionEnvironment.NOWHERE_FUTURE_SWITCH, 'enabled');
   assert.throws(() => decodeNowhereConfig({}), /缺少字段/);
   console.log('Nowhere private config read and lossless planning passed');
 } finally { fs.rmSync(directory, { recursive: true, force: true }); }

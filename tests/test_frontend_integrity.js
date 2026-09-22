@@ -40,6 +40,9 @@ assert.match(source, /名称：升序/, "node management must expose determinist
 assert.match(source, /const samples = await Promise\.all\(machineIds\.map/, "managed telemetry must sample hosts concurrently");
 assert.match(source, /batchObservedAt/, "fresh managed telemetry rows must share a batch timestamp");
 assert.match(source, /reviewRef\.current\?\.scrollIntoView/, "subscription previews must reveal their result automatically");
+assert.equal((source.match(/<NowhereAdvancedFields\b/g) || []).length, 2, "Nowhere create and edit must share one advanced-field component");
+assert.match(source, /兼容扩展参数/, "Nowhere configuration must preserve future extension settings");
+assert.match(source, /高级运行参数/, "managed Nowhere instances must expose advanced runtime settings");
 assert.match(source, /deploymentPresets/, "sing-box deployment presets must come from persisted state");
 assert.match(source, /sing-box 预设/, "deployment presets must have a management surface");
 assert.match(source, /面板连接/, "external panels must have a provider surface");

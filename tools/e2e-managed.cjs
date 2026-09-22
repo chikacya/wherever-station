@@ -208,7 +208,7 @@ async function main() {
       stage = 'stopped-edit';
       await card.getByRole('button', { name: '编辑运行配置', exact: true }).click();
       const editor = frame.locator('dialog[open]');
-      await editor.getByLabel('监听端口', { exact: true }).fill(String(port + 1));
+      await editor.getByLabel('TCP Carrier 端口', { exact: true }).fill(String(port + 1));
       const updatePromise = page.waitForResponse(response => {
         try { return response.request().postDataJSON()?.method === 'proxyConsole:prepareManagedNowhereUpdate'; } catch { return false; }
       });
@@ -237,8 +237,8 @@ async function main() {
       if (!setupDone) throw new Error('Could not stage interrupted test transaction');
       await card.getByRole('button', { name: '编辑运行配置', exact: true }).click();
       const editor = frame.locator('dialog[open]');
-      await editor.getByLabel('监听端口', { exact: true }).waitFor({ timeout: 30000 });
-      if (Number(await editor.getByLabel('监听端口', { exact: true }).inputValue()) !== activePlan.summary.port) throw new Error('Interrupted configuration was not restored before read');
+      await editor.getByLabel('TCP Carrier 端口', { exact: true }).waitFor({ timeout: 30000 });
+      if (Number(await editor.getByLabel('TCP Carrier 端口', { exact: true }).inputValue()) !== activePlan.summary.port) throw new Error('Interrupted configuration was not restored before read');
       await editor.getByRole('button', { name: '取消', exact: true }).click();
       console.log(JSON.stringify({ stage: 'interrupted-update-recovery', ok: true }));
     }
@@ -342,7 +342,9 @@ async function main() {
       stage = 'edit';
       await card.getByRole('button', { name: '编辑运行配置', exact: true }).click();
       const editor = frame.locator('dialog[open]');
-      await editor.getByLabel('监听端口', { exact: true }).fill(String(port + 1));
+      await editor.getByLabel('TCP Carrier 端口', { exact: true }).fill(String(port + 1));
+      await editor.getByText('高级运行参数', { exact: true }).click();
+      await editor.getByLabel('遥测间隔', { exact: true }).fill('2s');
       const updatePromise = page.waitForResponse(response => {
         try { return response.request().postDataJSON()?.method === 'proxyConsole:prepareManagedNowhereUpdate'; } catch { return false; }
       });
@@ -353,7 +355,7 @@ async function main() {
       const latest = await rpc('proxyConsole:getState');
       const instance = latest.managedInstances.find(item => item.name === testName);
       const node = latest.nodes.find(item => item.id === instance?.nodeId);
-      if (instance?.port !== port + 1 || Number(new URL(node.uri).port) !== port + 1) throw new Error('Edited endpoint and published node differ');
+      if (instance?.port !== port + 1 || instance?.telemetryInterval !== '2s' || Number(new URL(node.uri).port) !== port + 1) throw new Error('Edited endpoint, advanced settings and published node differ');
       fs.writeFileSync(input, updated.result.plan.links.vector[0].uri, { mode: 0o600 });
       const checked = spawnSync(process.execPath, probeArgs, { encoding: 'utf8', timeout: 45000 });
       if (checked.status !== 0) throw new Error('Edited client connection failed: ' + checked.stderr.trim());

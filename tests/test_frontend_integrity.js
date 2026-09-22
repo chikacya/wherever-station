@@ -41,7 +41,8 @@ assert.match(source, /const samples = await Promise\.all\(machineIds\.map/, "man
 assert.match(source, /batchObservedAt/, "fresh managed telemetry rows must share a batch timestamp");
 assert.match(source, /reviewRef\.current\?\.scrollIntoView/, "subscription previews must reveal their result automatically");
 assert.equal((source.match(/<NowhereAdvancedFields\b/g) || []).length, 2, "Nowhere create and edit must share one advanced-field component");
-assert.match(source, /兼容扩展参数/, "Nowhere configuration must preserve future extension settings");
+assert.match(source, /实验性环境变量/, "Nowhere configuration must preserve future extension settings behind progressive disclosure");
+assert.match(source, /仅在 Nowhere 官方文档明确要求时使用/, "experimental Nowhere settings must explain when they are appropriate");
 assert.match(source, /高级运行参数/, "managed Nowhere instances must expose advanced runtime settings");
 assert.match(source, /deploymentPresets/, "sing-box deployment presets must come from persisted state");
 assert.match(source, /sing-box 预设/, "deployment presets must have a management surface");

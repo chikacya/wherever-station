@@ -4903,7 +4903,7 @@ function NowhereExtensionEditor({ value, onChange }) {
     onChange({ ...(value || {}), [key]: settingValue });
     setKeyName(""); setSettingValue(""); setError("");
   };
-  return <Field label="兼容扩展参数" wide hint="用于保留新版 Nowhere 暂未进入标准表单的环境变量；最多 32 项。">
+  return <Field label="环境变量" wide hint="最多 32 项；名称必须以 NOW_ 或 NOWHERE_ 开头。">
     <div className="nowhere-extension-editor">
       {!!entries.length && <div className="nowhere-extension-list">{entries.map(([key, current]) => <div key={key}><code>{key}</code><input aria-label={`${key} 的值`} value={current} onChange={(event) => onChange({ ...(value || {}), [key]: event.target.value })} /><IconButton label={`移除 ${key}`} onClick={() => onChange(Object.fromEntries(entries.filter(([name]) => name !== key)))}><Trash2 size={15} /></IconButton></div>)}</div>}
       <div className="nowhere-extension-add"><input aria-label="扩展参数名称" value={keyName} onChange={(event) => { setKeyName(event.target.value); setError(""); }} placeholder="NOWHERE_EXAMPLE" /><input aria-label="扩展参数值" value={settingValue} onChange={(event) => setSettingValue(event.target.value)} placeholder="值" /><Button icon={Plus} onClick={add} disabled={!keyName.trim() || entries.length >= 32}>添加</Button></div>
@@ -4928,7 +4928,11 @@ function NowhereAdvancedFields({ values, onPatch, capabilities }) {
     {capabilities.vectorMux && <Field label="Vector Mux"><select value={values.vectorMux || 0} onChange={(event) => update("vectorMux", Number(event.target.value))}><option value={0}>关闭</option><option value={1}>开启</option></select></Field>}
     {capabilities.morph && <Field label="Morph" hint={values.morph === 1 && capabilities.morphTcpPrelude ? "2.1 传输格式；所有同路径客户端与下一跳必须使用兼容版本" : "两端必须一致；跨 Morph 传输格式升级需要协同进行"}><select value={values.morph || 0} onChange={(event) => update("morph", Number(event.target.value))}><option value={0}>关闭</option><option value={1}>开启（两端必须一致）</option></select></Field>}
     {capabilities.transportMemoryProfile && <Field label="Transport 内存策略"><select value={values.transportMemoryProfile || "throughput"} onChange={(event) => update("transportMemoryProfile", event.target.value)}><option value="memory">节省内存</option><option value="balanced">平衡</option><option value="throughput">吞吐优先</option></select></Field>}
-    <NowhereExtensionEditor value={values.extensionEnvironment} onChange={(next) => update("extensionEnvironment", next)} />
+    <details className="nowhere-experimental">
+      <summary>实验性环境变量{Object.keys(values.extensionEnvironment || {}).length ? ` · ${Object.keys(values.extensionEnvironment).length}` : ""}</summary>
+      <p>仅在 Nowhere 官方文档明确要求时使用。这里会原样保留尚未进入标准表单的环境变量；普通部署无需填写。</p>
+      <NowhereExtensionEditor value={values.extensionEnvironment} onChange={(next) => update("extensionEnvironment", next)} />
+    </details>
   </>;
 }
 

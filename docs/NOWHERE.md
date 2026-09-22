@@ -22,7 +22,7 @@ The version selector reads official GitHub releases, while compatibility status 
 
 Downloads are verified against the checksum supplied by the official release when available. An upgrade changes only the selected managed instance and retains rollback metadata.
 
-Before editing, a managed instance reads its current configuration from the target host. Connection, carrier, client-output, certificate and advanced runtime fields are then applied with a configuration fingerprint to prevent overwriting concurrent changes; failure restores the previous configuration. Host assignment, instance identity, binary source and adoption provenance belong to separate lifecycle controls. Creation and editing share the same advanced field definitions, while not-yet-standardized upstream environment variables can be retained as forward-compatible extension settings.
+Before editing, a managed instance reads its current configuration from the target host. Connection, carrier, client-output, certificate and advanced runtime fields are then applied with a configuration fingerprint to prevent overwriting concurrent changes; failure restores the previous configuration. Host assignment, instance identity, binary source and adoption provenance belong to separate lifecycle controls. Creation and editing share the same advanced field definitions. Not-yet-standardized upstream variables can be retained under **Experimental environment variables**, which should only be used when explicitly required by the official Nowhere documentation.
 
 ## Certificates and telemetry
 

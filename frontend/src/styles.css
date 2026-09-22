@@ -539,6 +539,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .field-error { color: var(--danger); font-size: 11px; font-weight: 500; }
 .deploy-field-error { margin: 8px 16px 0; }
 .nowhere-extension-editor { display: grid; gap: 8px; }
+.nowhere-experimental { grid-column: 1 / -1; margin-top: 4px; border: 1px solid var(--border); border-radius: 8px; background: color-mix(in srgb, var(--surface) 82%, transparent); }
+.nowhere-experimental > summary { min-height: 44px; padding: 10px 12px; display: flex; align-items: center; color: var(--muted); cursor: pointer; font-weight: 600; }
+.nowhere-experimental[open] > summary { color: var(--text); border-bottom: 1px solid var(--border); }
+.nowhere-experimental > p { margin: 12px 12px 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.nowhere-experimental > label { margin: 12px; }
 .nowhere-extension-list { display: grid; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .nowhere-extension-list > div { min-width: 0; padding: 7px 8px; display: grid; grid-template-columns: minmax(170px, .8fr) minmax(0, 1.4fr) auto; align-items: center; gap: 8px; background: var(--surface); border-top: 1px solid var(--border); }
 .nowhere-extension-list > div:first-child { border-top: 0; }

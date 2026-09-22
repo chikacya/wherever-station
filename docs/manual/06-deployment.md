@@ -6,7 +6,7 @@ This page manages isolated instances created or adopted by Wherever Station. It 
 
 ![Managed deployment](../assets/screenshots/deploy-light.png)
 
-Nowhere creation selects server, name, public address, ports, client output, shared key and certificate mode. Shared advanced runtime fields cover rate limits, dial/SOCKS, logging, telemetry, Vector options, Morph, memory profile and forward-compatible environment variables. Only releases in the verified compatibility catalog can be deployed. Certificates may be ephemeral, stable self-signed, existing PEM, or a registered asset.
+Nowhere creation selects server, name, public address, ports, client output, shared key and certificate mode. Shared advanced runtime fields cover rate limits, dial/SOCKS, logging, telemetry, Vector options, Morph and memory profile. A second-level **Experimental environment variables** section is reserved for settings explicitly required by the official Nowhere documentation but not yet represented by the standard form; normal deployments leave it empty. Only releases in the verified compatibility catalog can be deployed. Certificates may be ephemeral, stable self-signed, existing PEM, or a registered asset.
 
 sing-box creation starts from a visible preset, then configures binary source, host, port and protocol-specific Reality/TLS/transport credentials. Presets are convenience specifications, not protocol recommendations. Creation checks port conflicts and runs `sing-box check`. Both flows create stopped services so the user can review before starting.
 

@@ -6,17 +6,21 @@ test('public downloads survive missing telemetry; fresh traffic is cached', asyn
   const fs = require('node:fs'), os = require('node:os'), path = require('node:path'), vm = require('node:vm');
   const root = path.resolve(__dirname, '..'), storage = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-traffic-'));
   let calls = 0, fail = false;
-  const server = { route() {}, registerRPC() {}, async call() {
+  const methods = new Map();
+  const server = { route() {}, registerRPC(name, handler) { methods.set(name, handler); }, async call() {
     calls++; if (fail) throw Error('unavailable');
     return { agent: { time: new Date().toISOString(), net_total_up: 200, net_total_down: 300 } };
   } };
   const sandbox = { console, Buffer, setTimeout, clearTimeout, __dirname: root, __storageDir__: storage, require: name => name === 'server' ? server : require(name) };
   try {
-    vm.createContext(sandbox); vm.runInContext(fs.readFileSync(path.join(root, 'script.js'), 'utf8'), sandbox);
+    vm.createContext(sandbox); vm.runInContext(fs.readFileSync(path.join(root, 'script.js'), 'utf8'), sandbox); sandbox.load();
     const state = sandbox.readState(); state.machines = [machine];
     state.nodes = [{ id: 'n', name: 'N', machineId: 'a', protocol: 'ss', uri: 'ss://' + Buffer.from('aes-128-gcm:password').toString('base64') + '@example.com:443', enabled: true }];
     state.subscriptions = [{ id: 's', name: 'S', token: 'a'.repeat(48), nodeIds: ['n'], quota: { mode: 'machine' }, enabled: true }];
     sandbox.saveState(state);
+    assert.equal(Object.keys(methods.get('proxyConsole:getSubscriptionTraffic')()).length, 0);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.match(methods.get('proxyConsole:getSubscriptionTraffic')().s['machineName'], /A/);
     async function download() {
       const res = { headers: {}, statusCode: 200, setHeader(k, v) { this.headers[k] = v; }, end(body) { this.body = body; } };
       await sandbox.publicSubscription({ url: '/proxy/sub/' + 'a'.repeat(48), query: { format: 'raw' }, headers: {} }, res);

@@ -995,14 +995,15 @@ function subscriptionAvailability(state, subscription, now = Date.now()) {
   if (traffic.expire && traffic.expire * 1000 <= now) return { available: false, reason: "expired", traffic };
   return { available: true, reason: "", traffic };
 }
-async function machineSubscriptionTraffic(state, subscription) {
+function subscriptionTrafficEntry(state, subscription) {
   if (subscription?.quota?.mode !== 'machine') return null;
   const machine = subscriptionMachine(subscription, state.nodes, state.machines);
   if (!machine) return null;
   const key = JSON.stringify([machine.id, machine.monitorClientId, machine.trafficPlan, cycleStart(machine.trafficPlan?.resetDay)]);
   const cached = SUBSCRIPTION_TRAFFIC_CACHE.get(key);
-  if (cached && Date.now() - cached.at < 60000) return cached.promise;
-  const promise = (async () => {
+  if (cached && Date.now() - cached.at < 60000) return cached;
+  const entry = { at: Date.now(), result: null, promise: null };
+  entry.promise = (async () => {
     let timer;
     try {
       const request = async () => {
@@ -1019,14 +1020,25 @@ async function machineSubscriptionTraffic(state, subscription) {
       };
       return await Promise.race([request(), new Promise(resolve => { timer = setTimeout(() => resolve(null), 2500); })]);
     } catch (_) { return null; } finally { clearTimeout(timer); }
-  })();
+  })().then(result => {
+    if (SUBSCRIPTION_TRAFFIC_CACHE.get(key) === entry) entry.result = result;
+    return result;
+  });
   if (SUBSCRIPTION_TRAFFIC_CACHE.size >= 128) SUBSCRIPTION_TRAFFIC_CACHE.delete(SUBSCRIPTION_TRAFFIC_CACHE.keys().next().value);
-  SUBSCRIPTION_TRAFFIC_CACHE.set(key, { at: Date.now(), promise });
-  return promise;
+  SUBSCRIPTION_TRAFFIC_CACHE.set(key, entry);
+  return entry;
 }
-async function getSubscriptionTraffic() {
+async function machineSubscriptionTraffic(state, subscription) {
+  return (subscriptionTrafficEntry(state, subscription)?.promise) || null;
+}
+function getSubscriptionTraffic() {
   const state = readState();
-  return Object.fromEntries(await Promise.all(state.subscriptions.filter(sub => sub.quota.mode === 'machine').map(async sub => [sub.id, await machineSubscriptionTraffic(state, sub)])));
+  const result = {};
+  for (const subscription of state.subscriptions.filter(sub => sub.quota.mode === 'machine')) {
+    const entry = subscriptionTrafficEntry(state, subscription);
+    if (entry?.result) result[subscription.id] = entry.result;
+  }
+  return result;
 }
 function subscriptionUserinfo(traffic) {
   if (!traffic || !(traffic.upload || traffic.download || traffic.total || traffic.expire)) return "";

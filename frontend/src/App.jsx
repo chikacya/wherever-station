@@ -1962,8 +1962,10 @@ function Subscriptions({ state, persist, notify, onOpenSettings }) {
   useEffect(() => {
     let active = true;
     const load = () => rpc("proxyConsole:getSubscriptionTraffic").then(value => { if (active) setServerTraffic(value || {}); }).catch(() => { if (active) setServerTraffic({}); });
-    load(); const timer = setInterval(load, 60000);
-    return () => { active = false; clearInterval(timer); };
+    load();
+    const warmup = [setTimeout(load, 1200), setTimeout(load, 3600)];
+    const timer = setInterval(load, 60000);
+    return () => { active = false; warmup.forEach(clearTimeout); clearInterval(timer); };
   }, [state.revision]);
   const [preflight, setPreflight] = useState(null);
   const [history, setHistory] = useState(null);

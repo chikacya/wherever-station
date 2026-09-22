@@ -41,6 +41,8 @@ Review the parse result before saving. The optional server field is only for org
 
 The node library supports direct URI copy, a single-node QR code, filters, ordering, bulk enable/disable, tags, server reassignment, regular-expression replacement, and naming templates. A default name follows the selected server until the name is edited manually. The header privacy mode masks node addresses, server IPs, and source URLs before taking a screenshot without changing saved data.
 
+Only independent nodes that were added manually or detached from their source can be permanently deleted from the node library. Manage hosted nodes from **Managed deployment** and let each subscription source or external panel synchronize, disable, or remove its own nodes. The server rejects any state update that would orphan a managed instance from its maintenance record.
+
 Unknown URI schemes are stored as opaque values. They can be sent through URI-based outputs but are not automatically converted to structured formats.
 
 ## External subscription sources

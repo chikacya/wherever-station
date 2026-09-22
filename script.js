@@ -563,8 +563,28 @@ function restorePortableBackup(params) {
   }
   return readState();
 }
+function assertStateOwnershipPreserved(current, input) {
+  const rawNodes = Array.isArray(input && input.nodes) ? input.nodes : [];
+  const rawInstances = Array.isArray(input && input.managedInstances) ? input.managedInstances : [];
+  const nodeIds = new Set(rawNodes.map((item) => cleanText(item && item.id, 64)).filter(Boolean));
+  const instances = new Map(rawInstances.map((item) => [cleanText(item && item.id, 64), item]));
+  const externalSourceIds = new Set((Array.isArray(input && input.externalSources) ? input.externalSources : []).map((item) => cleanText(item && item.id, 64)).filter(Boolean));
+  const providerIds = new Set((Array.isArray(input && input.providers) ? input.providers : []).map((item) => cleanText(item && item.id, 64)).filter(Boolean));
+  for (const instance of current.managedInstances) {
+    const incoming = instances.get(instance.id);
+    if (!incoming) throw new Error(`托管实例“${instance.name}”只能在部署节点页面删除`);
+    if (cleanText(incoming.nodeId, 64) !== instance.nodeId || !nodeIds.has(instance.nodeId)) throw new Error(`托管节点“${instance.name}”不能从节点库删除`);
+  }
+  for (const node of current.nodes) {
+    if (nodeIds.has(node.id) || !node.sourceId) continue;
+    if (node.source === "external" && externalSourceIds.has(node.sourceId)) throw new Error(`订阅源节点“${node.name}”请在外部订阅源中管理`);
+    if (node.source === "provider" && providerIds.has(node.sourceId)) throw new Error(`面板节点“${node.name}”请在外部面板同步中管理`);
+  }
+}
 function saveState(input) {
   const current = readState();
+  if (Number(input && input.revision) !== current.revision) throw new Error("数据已在其他页面更新，请刷新后重试");
+  assertStateOwnershipPreserved(current, input);
   const incoming = cleanState(input);
   if (incoming.revision !== current.revision) throw new Error("数据已在其他页面更新，请刷新后重试");
   // Node metadata is the single display-name source. Renaming never submits a
@@ -577,6 +597,33 @@ function saveState(input) {
   writeState(incoming);
   recordSubscriptionChanges(current, incoming);
   return incoming;
+}
+function deleteNodes(params) {
+  const state = readState();
+  if (Number(params && params.expectedRevision) !== state.revision) throw new Error("数据已在其他页面更新，请刷新后重试");
+  const ids = [...new Set((Array.isArray(params && params.nodeIds) ? params.nodeIds : []).map((id) => cleanText(id, 64)).filter(Boolean))].slice(0, 500);
+  if (!ids.length) throw new Error("请选择需要删除的节点");
+  const selected = state.nodes.filter((node) => ids.includes(node.id));
+  if (selected.length !== ids.length) throw new Error("部分节点已经不存在，请刷新后重试");
+  const managedNodeIds = new Set(state.managedInstances.map((item) => item.nodeId));
+  const managed = selected.find((node) => managedNodeIds.has(node.id));
+  if (managed) throw new Error(`托管节点“${managed.name}”只能在部署节点页面删除`);
+  const sourced = selected.find((node) => node.sourceId && (node.source === "external" || node.source === "provider"));
+  if (sourced) throw new Error(sourced.source === "external" ? `订阅源节点“${sourced.name}”请在外部订阅源中管理` : `面板节点“${sourced.name}”请在外部面板同步中管理`);
+  const removing = new Set(ids);
+  const before = clone(state);
+  state.nodes = state.nodes.filter((node) => !removing.has(node.id));
+  state.subscriptions = state.subscriptions.map((subscription) => ({
+    ...subscription,
+    nodeIds: (subscription.nodeIds || []).filter((id) => !removing.has(id)),
+    groups: (subscription.groups || []).map((group) => ({ ...group, entries: (group.entries || []).filter((entry) => entry.kind !== "node" || !removing.has(entry.id)) })),
+  }));
+  state.externalSources = state.externalSources.map((source) => ({ ...source, nodeIds: (source.nodeIds || []).filter((id) => !removing.has(id)) }));
+  state.revision += 1;
+  const cleaned = cleanState(state);
+  writeState(cleaned);
+  recordSubscriptionChanges(before, cleaned);
+  return cleaned;
 }
 
 async function saveMachineTrafficPlan(params) {
@@ -1892,5 +1939,6 @@ function load() {
   server.registerRPC("proxyConsole:deleteProvider", deleteProvider);
   server.registerRPC("proxyConsole:startProviderOperation", startProviderOperation);
   server.registerRPC("proxyConsole:getProviderOperation", getProviderOperation);
+  server.registerRPC("proxyConsole:deleteNodes", deleteNodes);
 readState(); server.route("GET", "/proxy/sub/:token", publicSubscription); server.route("GET", "/proxy/backup/:token", downloadPortableBackup); server.registerRPC("proxyConsole:getState", () => readState()); server.registerRPC("proxyConsole:exportPortableBackup", exportPortableBackup); server.registerRPC("proxyConsole:preparePortableBackupDownload", preparePortableBackupDownload); server.registerRPC("proxyConsole:previewPortableBackup", previewPortableBackup); server.registerRPC("proxyConsole:restorePortableBackup", restorePortableBackup); server.registerRPC("proxyConsole:getCompatibilityCatalog", () => ({ nowhere: compatibilityCatalog(), protocols: protocolCatalog() })); server.registerRPC("proxyConsole:saveState", (params) => saveState(params && params.state)); server.registerRPC("proxyConsole:validateNode", validateNode); server.registerRPC("proxyConsole:parseNodeUris", parseNodeUris); server.registerRPC("proxyConsole:newToken", () => ({ token: crypto.randomBytes(24).toString("hex") })); server.registerRPC("proxyConsole:getAccessStats", accessStats); server.registerRPC("proxyConsole:getSubscriptionHistory", subscriptionHistory); server.registerRPC("proxyConsole:previewSubscriptionChange", subscriptionChangePreview); server.registerRPC("proxyConsole:subscriptionPreflight", subscriptionPreflight); server.registerRPC("proxyConsole:syncExternalSource", syncExternalSource); server.registerRPC("proxyConsole:startExternalSourceOperation", startExternalSourceOperation); server.registerRPC("proxyConsole:getExternalSourceOperation", getExternalSourceOperation); server.registerRPC("proxyConsole:syncRuleSet", syncRuleSet); server.registerRPC("proxyConsole:deleteRuleSet", deleteRuleSet); server.registerRPC("proxyConsole:serviceCommand", serviceCommand); server.registerRPC("proxyConsole:statusCommand", statusCommand); server.registerRPC("proxyConsole:newManagedNowhereValues", newManagedNowhereValues); server.registerRPC("proxyConsole:previewManagedNowhere", previewManagedNowhere); server.registerRPC("proxyConsole:createManagedNowhereDraft", createManagedNowhereDraft); server.registerRPC("proxyConsole:prepareManagedNowhereAction", prepareManagedNowhereAction); server.registerRPC("proxyConsole:recordManagedNowhereResult", recordManagedNowhereResult); server.registerRPC("proxyConsole:newManagedSingBoxValues", newManagedSingBoxValues); server.registerRPC("proxyConsole:previewManagedSingBox", previewManagedSingBox); server.registerRPC("proxyConsole:prepareManagedSingBoxCreate", prepareManagedSingBoxCreate); server.registerRPC("proxyConsole:prepareManagedSingBoxAction", prepareManagedSingBoxAction); server.registerRPC("proxyConsole:prepareManagedSingBoxUpdate", prepareManagedSingBoxUpdate); server.registerRPC("proxyConsole:recordManagedSingBoxResult", recordManagedSingBoxResult); if (typeof server.cron === "function") server.cron("17 * * * *", syncDueSources);
 }

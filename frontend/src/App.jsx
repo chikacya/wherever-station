@@ -800,6 +800,16 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
     () => new Map((state.providers || []).map((item) => [item.id, item])),
     [state.providers],
   );
+  const managedNodeIds = useMemo(
+    () => new Set((state.managedInstances || []).map((item) => item.nodeId)),
+    [state.managedInstances],
+  );
+  const deletionBlock = (node) => {
+    if (managedNodeIds.has(node.id)) return "托管节点请在部署节点页面管理生命周期";
+    if (node.source === "external" && node.sourceId) return "订阅源节点请在外部订阅源页面管理";
+    if (node.source === "provider" && node.sourceId) return "面板节点请在外部面板同步中管理";
+    return "";
+  };
   const rows = useMemo(
     () =>
       state.nodes.filter((node) => {
@@ -830,29 +840,23 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
     };
   }, [recentId, rows.length]);
   const removeNodes = async (ids) => {
+    const blocked = ids.map((id) => state.nodes.find((node) => node.id === id)).filter(Boolean).map((node) => ({ node, reason: deletionBlock(node) })).find((item) => item.reason);
+    if (blocked) {
+      notify(`${blocked.node.name}：${blocked.reason}`, true);
+      return;
+    }
     if (
       !confirm(
-        `删除选中的 ${ids.length} 个节点？它们也会从订阅和代理组中移除。`,
+        `永久删除选中的 ${ids.length} 个独立节点？它们也会从订阅和代理组中移除。`,
       )
     )
       return;
-    const set = new Set(ids);
-    const next = {
-      ...state,
-      nodes: state.nodes.filter((node) => !set.has(node.id)),
-      subscriptions: state.subscriptions.map((sub) => ({
-        ...sub,
-        nodeIds: sub.nodeIds.filter((id) => !set.has(id)),
-        groups: (sub.groups || []).map((group) => ({
-          ...group,
-          entries: group.entries.filter(
-            (entry) => entry.kind !== "node" || !set.has(entry.id),
-          ),
-        })),
-      })),
-    };
-    setSelected({});
-    await persist(next, `已删除 ${ids.length} 个节点`);
+    try {
+      const next = await rpc("proxyConsole:deleteNodes", { nodeIds: ids, expectedRevision: state.revision });
+      setState(next);
+      setSelected({});
+      notify(`已删除 ${ids.length} 个独立节点`);
+    } catch (error) { notify(error.message, true); }
   };
   const columns = useMemo(
     () => [
@@ -1000,7 +1004,8 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
               <Edit3 size={16} />
             </IconButton>
             <IconButton
-              label="删除节点"
+              label={deletionBlock(row.original) || "删除节点"}
+              disabled={!!deletionBlock(row.original)}
               onClick={() => removeNodes([row.original.id])}
             >
               <Trash2 size={16} />
@@ -1021,6 +1026,7 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
     enableRowSelection: true,
   });
   const selectedIds = Object.keys(selected).filter((id) => selected[id]);
+  const selectedDeletionBlock = selectedIds.map((id) => state.nodes.find((node) => node.id === id)).filter(Boolean).map(deletionBlock).find(Boolean) || "";
   const countryCodes = [...new Set(state.nodes.map((node) => inferNodeCountryCode(node, machineMap.get(node.machineId))).filter(Boolean))].sort();
   const probeSources = state.machines.filter((machine) => machine.monitorClientId && clients[machine.monitorClientId]);
   async function openConnection(nodeIds) {
@@ -1159,6 +1165,8 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
           <Button
             variant="danger"
             icon={Trash2}
+            disabled={!!selectedDeletionBlock}
+            title={selectedDeletionBlock || "永久删除所选独立节点"}
             onClick={() => removeNodes(selectedIds)}
           >
             删除

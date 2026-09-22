@@ -203,11 +203,7 @@ async function main() {
     const enterDuration = await presetDialog.evaluate(element => getComputedStyle(element).animationDuration);
     if (enterDuration !== '0.3s') throw new Error(`Dialog enter duration is not calibrated: ${enterDuration}`);
     await presetDialog.getByRole('button', { name: '关闭', exact: true }).click();
-    if (!(await presetDialog.evaluate(element => element.classList.contains('closing')))) throw new Error('Dialog exit state was not applied');
-    await page.waitForTimeout(100);
-    if (!(await presetDialog.evaluate(element => element.open))) throw new Error('Dialog closed before its exit motion completed');
-    await page.waitForTimeout(140);
-    if (await page.locator('dialog[open]').count()) throw new Error('Dialog remained open after its exit motion');
+    if (await page.locator('dialog[open]').count()) throw new Error('Dialog did not release the top layer immediately');
     console.log(JSON.stringify({ ok: true, themes: ['light', 'dark'], darkColors, modules: machines.length + 8, results, pages: pageResults }));
   } finally {
     await browser.close();

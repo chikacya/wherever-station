@@ -374,41 +374,26 @@ function SecretInput({ value, onChange, ...props }) {
 }
 function Modal({ open, title, eyebrow, onClose, children, size = "normal" }) {
   const ref = useRef(null);
-  const closeTimer = useRef(null);
-  const [closing, setClosing] = useState(false);
   const requestClose = useCallback((notifyParent = true) => {
     const dialog = ref.current;
-    if (!dialog?.open) {
-      if (notifyParent) onClose();
-      return;
-    }
-    clearTimeout(closeTimer.current);
-    setClosing(true);
-    closeTimer.current = setTimeout(() => {
-      dialog.close();
-      setClosing(false);
-      if (notifyParent) onClose();
-    }, 200);
+    if (dialog?.open) dialog.close();
+    if (notifyParent) onClose();
   }, [onClose]);
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
     if (open) {
-      clearTimeout(closeTimer.current);
-      setClosing(false);
       if (!dialog.open) dialog.showModal();
-    } else if (dialog.open) requestClose(false);
+    } else if (dialog.open) dialog.close();
   }, [open]);
-  useEffect(() => () => clearTimeout(closeTimer.current), []);
   return (
     <dialog
       ref={ref}
-      className={`modal ${size} ${closing ? "closing" : ""}`}
+      className={`modal ${size}`}
       onCancel={(event) => {
         event.preventDefault();
         requestClose();
       }}
-      onClose={() => setClosing(false)}
     >
       <div className="dialog-head">
         <div>

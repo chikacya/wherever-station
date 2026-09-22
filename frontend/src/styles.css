@@ -1638,17 +1638,12 @@ body, button, input, select, textarea { font-family: var(--sans); }
   --motion-fast: 160ms;
   --motion-standard: 280ms;
   --motion-dialog: 300ms;
-  --motion-exit: 200ms;
 }
 
 .route-view { animation-duration: var(--motion-standard); }
 .nav button.active::after { animation-duration: 240ms; }
-.modal[open]:not(.closing) { animation: modal-enter var(--motion-dialog) var(--ease-out) both; }
-.modal[open]:not(.closing)::backdrop { animation: backdrop-enter var(--motion-standard) var(--ease-out) both; }
-.modal[open].closing { pointer-events: none; animation: modal-exit var(--motion-exit) var(--ease-in-out) both; }
-.modal[open].closing::backdrop { pointer-events: none; animation: backdrop-exit var(--motion-exit) var(--ease-in-out) both; }
-@keyframes modal-exit { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(7px) scale(.985); } }
-@keyframes backdrop-exit { from { opacity: 1; } to { opacity: 0; } }
+.modal[open] { animation: modal-enter var(--motion-dialog) var(--ease-out) both; }
+.modal[open]::backdrop { animation: backdrop-enter var(--motion-standard) var(--ease-out) both; }
 
 .service-observatory-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px; }
 .service-observatory { grid-column: span 6; min-width: 0; min-height: 252px; padding: 24px 26px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border); }
@@ -1809,7 +1804,6 @@ body, button, input, select, textarea { font-family: var(--sans); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .modal[open].closing, .modal[open].closing::backdrop { animation: none !important; }
   .deploy-launch-card, .service-resource-line i { transition-duration: .01ms !important; }
 }
 

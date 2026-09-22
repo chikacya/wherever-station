@@ -1203,7 +1203,19 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
               <tr
                 key={row.id}
                 data-node-id={row.original.id}
-                className={recentId === row.original.id ? "recent" : ""}
+                className={`${recentId === row.original.id ? "recent" : ""} ${row.getIsSelected() ? "selected" : ""}`.trim()}
+                aria-selected={row.getIsSelected()}
+                tabIndex={0}
+                onClick={(event) => {
+                  if (event.target.closest?.("button, a, input, select, textarea, label, [role='button'], [data-row-selection-ignore]")) return;
+                  if (window.getSelection()?.type === "Range") return;
+                  row.toggleSelected(!row.getIsSelected());
+                }}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget || !["Enter", " "].includes(event.key)) return;
+                  event.preventDefault();
+                  row.toggleSelected(!row.getIsSelected());
+                }}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id}>

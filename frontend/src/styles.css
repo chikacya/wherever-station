@@ -126,8 +126,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 table { width: 100%; border-collapse: collapse; }
 th { height: 42px; padding: 0 12px; background: var(--surface-2); color: var(--muted); text-align: left; font-size: 11px; font-weight: 650; white-space: nowrap; }
 td { padding: 10px 12px; border-top: 1px solid var(--border); vertical-align: middle; }
-tbody tr { transition: background var(--fast); }
+tbody tr { cursor: pointer; transition: background var(--fast), box-shadow var(--fast); }
 tbody tr:hover { background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
+tbody tr.selected { background: color-mix(in srgb, var(--primary-soft) 72%, var(--surface)); box-shadow: inset 3px 0 0 var(--primary); }
+tbody tr:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 28%, transparent); outline-offset: -3px; }
+tbody tr :is(button, a, input, select, textarea, label) { cursor: auto; }
+tbody tr :is(button, a, label, input[type="checkbox"]) { cursor: pointer; }
 th:first-child, td:first-child { width: 42px; text-align: center; }
 .node-name, .host-cell { display: flex; flex-direction: column; min-width: 140px; max-width: 330px; }
 .node-name strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -816,7 +820,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
   table, thead, tbody, tr, td { display: block; }
   thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
   tbody { display: grid; gap: 8px; }
-  tbody tr { padding: 10px 11px; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  tbody tr { padding: 10px 11px; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); -webkit-tap-highlight-color: color-mix(in srgb, var(--primary) 12%, transparent); touch-action: manipulation; }
+  tbody tr.selected { border-color: color-mix(in srgb, var(--primary) 58%, var(--border)); background: color-mix(in srgb, var(--primary-soft) 72%, var(--surface)); }
   td { padding: 0; border: 0; }
   td:first-child { width: auto; grid-row: 1; align-self: center; }
   td:nth-child(2) { grid-row: 1; }

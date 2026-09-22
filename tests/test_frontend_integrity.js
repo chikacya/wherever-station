@@ -35,6 +35,11 @@ assert.doesNotMatch(icon, /station-letter/, "compact brand mark must remain text
 assert.doesNotMatch(icon, /M17 18h7a8 8/, "superseded route-and-stations symbol must not return");
 assert.match(source, /function StationMark\b/, "header must use the Wherever Station mark");
 assert.match(source, /单节点输出/, "nodes must expose direct URI and QR output");
+assert.match(source, /批量 URI \/ 二维码/, "selected nodes must expose batch URI and QR output");
+assert.match(source, /名称：升序/, "node management must expose deterministic sorting");
+assert.match(source, /const samples = await Promise\.all\(machineIds\.map/, "managed telemetry must sample hosts concurrently");
+assert.match(source, /batchObservedAt/, "fresh managed telemetry rows must share a batch timestamp");
+assert.match(source, /reviewRef\.current\?\.scrollIntoView/, "subscription previews must reveal their result automatically");
 assert.match(source, /deploymentPresets/, "sing-box deployment presets must come from persisted state");
 assert.match(source, /sing-box 预设/, "deployment presets must have a management surface");
 assert.match(source, /面板连接/, "external panels must have a provider surface");

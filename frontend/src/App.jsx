@@ -778,11 +778,14 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
   const [country, setCountry] = useState("");
   const [protocol, setProtocol] = useState("");
   const [source, setSource] = useState("");
+  const [sort, setSort] = useState("name-asc");
   const [selected, setSelected] = useState({});
   const [editor, setEditor] = useState(null);
   const [importing, setImporting] = useState(false);
   const [batch, setBatch] = useState(null);
   const [directOutput, setDirectOutput] = useState(null);
+  const [batchOutput, setBatchOutput] = useState([]);
+  const [batchQrPage, setBatchQrPage] = useState(0);
   const [recentId, setRecentId] = useState("");
   const recentTimerRef = useRef(null);
   const [connection, setConnection] = useState(null);
@@ -818,9 +821,8 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
     if (node.source === "provider" && node.sourceId) return "面板节点请在外部面板同步中管理";
     return "";
   };
-  const rows = useMemo(
-    () =>
-      state.nodes.filter((node) => {
+  const rows = useMemo(() => {
+      const filtered = state.nodes.filter((node) => {
         const machine = machineMap.get(node.machineId) || {};
         const haystack =
           `${node.name} ${node.protocol} ${node.uri} ${(node.tags || []).join(" ")} ${machine.name || ""}`.toLowerCase();
@@ -831,8 +833,18 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
           (!protocol || node.protocol === protocol) &&
           (!source || node.source === source)
         );
-      }),
-    [state.nodes, machineMap, deferredSearch, country, protocol, source],
+      });
+      const [key, direction] = sort.split("-");
+      const multiplier = direction === "desc" ? -1 : 1;
+      const value = (node) => {
+        if (key === "country") return inferNodeCountryCode(node, machineMap.get(node.machineId));
+        if (key === "protocol") return node.protocol || "";
+        if (key === "source") return node.source || "";
+        return node.name || "";
+      };
+      return [...filtered].sort((left, right) => multiplier * String(value(left)).localeCompare(String(value(right)), "zh-CN", { numeric: true, sensitivity: "base" }));
+    },
+    [state.nodes, machineMap, deferredSearch, country, protocol, source, sort],
   );
   useEffect(() => {
     if (!recentId) return undefined;
@@ -1159,6 +1171,18 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
             ["provider", "外部面板"],
           ]}
         />
+        <Filter
+          value={sort}
+          onChange={setSort}
+          label="节点名称升序"
+          options={[
+            ["name-asc", "名称：升序"],
+            ["name-desc", "名称：降序"],
+            ["country-asc", "地区：升序"],
+            ["protocol-asc", "协议：升序"],
+            ["source-asc", "来源：升序"],
+          ]}
+        />
       </div>
       {selectedIds.length > 0 && (
         <div className="bulk">
@@ -1169,6 +1193,10 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
           <Button onClick={() => setBatch("move")}>移动宿主</Button>
           <Button onClick={() => setBatch("tags")}>替换标签</Button>
           <Button icon={Activity} onClick={() => openConnection(selectedIds)}>连接检查</Button>
+          <Button icon={QrCode} onClick={() => {
+            setBatchQrPage(0);
+            setBatchOutput(state.nodes.filter((node) => selectedIds.includes(node.id) && node.uri));
+          }}>批量直出</Button>
           <Button onClick={() => quickBatch("enable")}>允许订阅输出</Button>
           <Button onClick={() => quickBatch("disable")}>停止订阅输出</Button>
           <Button
@@ -1274,6 +1302,34 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
             try { await navigator.clipboard.writeText(directOutput?.uri || ""); notify("节点 URI 已复制"); }
             catch (_) { notify("复制失败，请手动选择 URI", true); }
           }}>复制 URI</Button>
+        </div>
+      </Modal>
+      <Modal
+        open={batchOutput.length > 0}
+        title={`${batchOutput.length} 个节点 · 批量直出`}
+        eyebrow="批量 URI / 二维码"
+        size="large"
+        onClose={() => setBatchOutput([])}
+      >
+        <p>多行 URI 可直接粘贴进支持批量导入的客户端；二维码按节点逐个生成。</p>
+        <label className="direct-uri batch-uri"><span>批量节点 URI</span><textarea readOnly rows={7} value={batchOutput.map((node) => node.uri).join("\n")} onFocus={(event) => event.currentTarget.select()} /></label>
+        <div className="batch-qr-toolbar">
+          <strong>二维码 {batchQrPage * 6 + 1}–{Math.min((batchQrPage + 1) * 6, batchOutput.length)} / {batchOutput.length}</strong>
+          <div>
+            <Button disabled={batchQrPage === 0} onClick={() => setBatchQrPage((page) => Math.max(0, page - 1))}>上一页</Button>
+            <Button disabled={(batchQrPage + 1) * 6 >= batchOutput.length} onClick={() => setBatchQrPage((page) => page + 1)}>下一页</Button>
+          </div>
+        </div>
+        <div className="batch-qr-grid">
+          {batchOutput.slice(batchQrPage * 6, batchQrPage * 6 + 6).map((node) => <article key={node.id}><QRCodeSVG value={node.uri} size={148} level="M" bgColor="#ffffff" fgColor="#171717" /><strong title={node.name}>{node.name}</strong></article>)}
+        </div>
+        <p className="warning">二维码和 URI 均包含节点凭据，请勿公开分享。</p>
+        <div className="dialog-actions">
+          <Button onClick={() => setBatchOutput([])}>关闭</Button>
+          <Button icon={Copy} variant="primary" onClick={async () => {
+            try { await navigator.clipboard.writeText(batchOutput.map((node) => node.uri).join("\n")); notify(`已复制 ${batchOutput.length} 条 URI`); }
+            catch (_) { notify("复制失败，请手动选择 URI", true); }
+          }}>复制全部 URI</Button>
         </div>
       </Modal>
       <ImportDialog
@@ -2582,6 +2638,7 @@ function SubscriptionEditor({
   const [handleOnly, setHandleOnly] = useState(() => window.matchMedia("(max-width: 760px), (pointer: coarse)").matches);
   const [recentNodeId, setRecentNodeId] = useState("");
   const [review, setReview] = useState(null);
+  const reviewRef = useRef(null);
   const draftKey = `subscription:${subscription?.id || "new"}`;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -2634,6 +2691,14 @@ function SubscriptionEditor({
     const { token: _token, ...draft } = form;
     writeSessionDraft(draftKey, draft);
   }, [draftKey, form, open]);
+  useEffect(() => {
+    if (!review) return;
+    const frame = requestAnimationFrame(() => {
+      reviewRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      reviewRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [review]);
   useEffect(() => {
     if (!recentNodeId || stage !== "nodes") return undefined;
     const frame = requestAnimationFrame(() =>
@@ -3269,7 +3334,7 @@ function SubscriptionEditor({
           {saveError}
         </p>
       )}
-      {review && <div className="change-review" role="status"><div><strong>{subscription?.id ? "确认本次修改" : "确认创建内容"}</strong><span>{review.diff.fields.length ? review.diff.fields.join("；") : "没有变化"}</span></div><dl><div><dt>节点</dt><dd>{review.diff.before.nodes} → {review.diff.after.nodes}</dd></div><div><dt>代理组</dt><dd>{review.diff.before.groups} → {review.diff.after.groups}</dd></div><div><dt>规则</dt><dd>{review.diff.before.rules} → {review.diff.after.rules}</dd></div><div><dt>设备</dt><dd>{review.diff.before.devices} → {review.diff.after.devices}</dd></div></dl>{!!review.diff.addedNodes.length && <small>新增：{review.diff.addedNodes.join("、")}</small>}{!!review.diff.removedNodes.length && <small>移除：{review.diff.removedNodes.join("、")}</small>}</div>}
+      {review && <div ref={reviewRef} className="change-review" role="status" tabIndex={-1}><div><strong>{subscription?.id ? "确认本次修改" : "确认创建内容"}</strong><span>{review.diff.fields.length ? review.diff.fields.join("；") : "没有变化"}</span></div><dl><div><dt>节点</dt><dd>{review.diff.before.nodes} → {review.diff.after.nodes}</dd></div><div><dt>代理组</dt><dd>{review.diff.before.groups} → {review.diff.after.groups}</dd></div><div><dt>规则</dt><dd>{review.diff.before.rules} → {review.diff.after.rules}</dd></div><div><dt>设备</dt><dd>{review.diff.before.devices} → {review.diff.after.devices}</dd></div></dl>{!!review.diff.addedNodes.length && <small>新增：{review.diff.addedNodes.join("、")}</small>}{!!review.diff.removedNodes.length && <small>移除：{review.diff.removedNodes.join("、")}</small>}</div>}
       <div className="dialog-actions sticky-actions">
         <span className="save-summary">
           {form.nodeIds.length} 个节点 · {form.groups.length}{" "}
@@ -4815,17 +4880,22 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
         const allMachineIds = [...new Set(statusTargets.split('|').filter(Boolean).map(value => value.split(':')[0]))];
         const focusedMachineId = telemetryDetail ? state.managedInstances.find((item) => item.id === telemetryDetail)?.machineId : "";
         const machineIds = focusedMachineId ? [focusedMachineId] : allMachineIds;
-        for (const machineId of machineIds) {
-          if (cancelled) break;
+        const samples = await Promise.all(machineIds.map(async (machineId) => {
+          if (cancelled) return null;
           try {
             const spec = await rpc('proxyConsole:prepareInstanceStates', { machineId });
             const task = await executeTask(spec.clientId, spec.command);
             const line = String(task.result || '').split(/\r?\n/).find(value => value.startsWith('PCSTATES\t1\t'));
-            if (!line) continue;
+            if (!line) return null;
             const payload = JSON.parse(atob(line.slice('PCSTATES\t1\t'.length)));
-            await rpc('proxyConsole:recordInstanceStates', { machineId, states: payload.states });
-          } catch (_) { /* One offline host must not block fresh samples from other hosts. */ }
-        }
+            return { machineId, states: payload.states };
+          } catch (_) { return null; /* One offline host must not block fresh samples from other hosts. */ }
+        }));
+        const batchObservedAt = new Date().toISOString();
+        await Promise.all(samples.filter(Boolean).map(({ machineId, states }) => rpc('proxyConsole:recordInstanceStates', {
+          machineId,
+          states: states.map((row) => ({ ...row, observedAt: batchObservedAt })),
+        })));
         if (!cancelled) setLiveStates(await rpc('proxyConsole:listInstanceStates'));
       } catch (_) { /* Retain explicitly timestamped cached values. */ }
       finally { querying = false; }
@@ -5163,11 +5233,11 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
   const act = async (kind, instance, action) => {
     const busyKey = `${kind}:${instance.id}:${action}`;
     if ([...busy].some(key => key.split(":").includes(instance.id))) return;
-    const label = { start: "启动", stop: "停止", restart: "重启", status: "刷新", logs: "读取日志", delete: "删除", adopt: "切换接管", "rollback-adoption": "恢复原服务" }[action];
+    const label = { start: "启动", stop: "停止", restart: "重启", status: "刷新", logs: "读取日志", delete: "删除", adopt: "切换接管", "rollback-adoption": "退出接管" }[action];
     const confirmation = action === "adopt"
       ? `切换接管“${instance.name}”？\n\n原服务会先停止，再启动已核对的托管实例；原文件会保留。若新实例启动失败，系统会自动尝试恢复原服务。`
       : action === "rollback-adoption"
-        ? `恢复“${instance.name}”的原 Nowhere 服务？\n\n托管实例会停止，原服务会重新启动；托管记录与文件仍会保留。`
+        ? `退出对“${instance.name}”的接管？\n\n托管实例会停止，原 Nowhere 服务会重新启动；托管记录与文件仍会保留，之后可以再次切换接管。`
         : `${label}托管实例“${instance.name}”？${action === "delete" ? "\n\n实例目录与对应节点记录会被删除。" : ""}`;
     if (["start", "stop", "restart", "delete", "adopt", "rollback-adoption"].includes(action) && !confirm(confirmation)) return;
     const otp = operationOtp(); if (otp === null) return;
@@ -5366,7 +5436,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       {kind === "nowhere" && !["draft", "validated"].includes(instance.status) && <div className="managed-primary-actions"><Button icon={Edit3} onClick={() => editNowhere(instance)} disabled={instanceBusy}>{hasBusy(`read:${instance.id}`) ? "正在读取配置…" : "编辑运行配置"}</Button><Button icon={PackageOpen} onClick={() => openNowhereManager(instance)} disabled={instanceBusy}>版本与证书</Button></div>}
       {kind === "sing-box" && <div className="managed-primary-actions"><Button icon={Edit3} onClick={() => editSingBox(instance)} disabled={instanceBusy}>{hasBusy(`read:${instance.id}`) ? "正在读取配置…" : "编辑运行配置"}</Button></div>}
       {kind === "nowhere" && ["draft", "validated", "failed"].includes(instance.status) && <div className="managed-primary-actions"><Button onClick={() => retryNowhere(instance)} disabled={instanceBusy}>检查并继续创建</Button><small>先核对远端结果；已创建的实例只恢复状态。</small></div>}
-      <footer><div className="managed-primary-actions">{adoptionStaged ? <Button icon={ShieldCheck} variant="primary" onClick={() => act(kind, instance, "adopt")} disabled={instanceBusy}>切换接管</Button> : canStart ? <Button icon={Play} variant="primary" onClick={() => act(kind, instance, "start")} disabled={instanceBusy}>启动</Button> : <Button icon={Square} onClick={() => act(kind, instance, "stop")} disabled={instanceBusy || instance.status !== "running"}>停止</Button>}<Button icon={RotateCw} onClick={() => act(kind, instance, "restart")} disabled={instanceBusy || instance.status !== "running" || adoptionStaged}>重启</Button>{adopted && <Button icon={Undo2} onClick={() => act(kind, instance, "rollback-adoption")} disabled={instanceBusy}>恢复原服务</Button>}<Button icon={Activity} onClick={() => checkConnection(instance)} disabled={instanceBusy || instance.status !== "running"}>{hasBusy(`probe:${instance.id}`) ? "正在检测…" : "测试连接"}</Button><Button icon={Link2} onClick={() => node && setSubscriptionEdit({ nodeId: node.id, nodeName: node.name, subscriptionId: state.subscriptions[0]?.id || "new", name: `${machine?.region || machine?.name || "我的"}节点` })} disabled={!node}>加入订阅</Button></div><div className="managed-secondary-actions"><IconButton disabled={instanceBusy} label="刷新状态" onClick={() => act(kind, instance, "status")}><RefreshCw size={16} /></IconButton><IconButton disabled={instanceBusy} label="查看日志" onClick={() => act(kind, instance, "logs")}><Clipboard size={16} /></IconButton><IconButton label="复制客户端链接" onClick={() => copyUri(instance)}><Copy size={16} /></IconButton><IconButton label="显示二维码" onClick={() => node?.uri && setQr({ name: instance.name, uri: node.uri })}><QrCode size={16} /></IconButton><IconButton disabled={instanceBusy || adopted} label={adopted ? "请先恢复原服务" : "删除托管实例"} onClick={() => act(kind, instance, "delete")}><Trash2 size={16} /></IconButton></div></footer>
+      <footer><div className="managed-primary-actions">{adoptionStaged ? <Button icon={ShieldCheck} variant="primary" onClick={() => act(kind, instance, "adopt")} disabled={instanceBusy}>切换接管</Button> : canStart ? <Button icon={Play} variant="primary" onClick={() => act(kind, instance, "start")} disabled={instanceBusy}>启动</Button> : <Button icon={Square} onClick={() => act(kind, instance, "stop")} disabled={instanceBusy || instance.status !== "running"}>停止</Button>}<Button icon={RotateCw} onClick={() => act(kind, instance, "restart")} disabled={instanceBusy || instance.status !== "running" || adoptionStaged}>重启</Button><Button icon={Activity} onClick={() => checkConnection(instance)} disabled={instanceBusy || instance.status !== "running"}>{hasBusy(`probe:${instance.id}`) ? "正在检测…" : "测试连接"}</Button><Button icon={Link2} onClick={() => node && setSubscriptionEdit({ nodeId: node.id, nodeName: node.name, subscriptionId: state.subscriptions[0]?.id || "new", name: `${machine?.region || machine?.name || "我的"}节点` })} disabled={!node}>加入订阅</Button></div><div className="managed-secondary-actions"><IconButton disabled={instanceBusy} label="刷新状态" onClick={() => act(kind, instance, "status")}><RefreshCw size={16} /></IconButton><IconButton disabled={instanceBusy} label="查看日志" onClick={() => act(kind, instance, "logs")}><Clipboard size={16} /></IconButton><IconButton label="复制客户端链接" onClick={() => copyUri(instance)}><Copy size={16} /></IconButton><IconButton label="显示二维码" onClick={() => node?.uri && setQr({ name: instance.name, uri: node.uri })}><QrCode size={16} /></IconButton>{adopted && <IconButton disabled={instanceBusy} label="退出接管并恢复原服务" onClick={() => act(kind, instance, "rollback-adoption")}><Undo2 size={16} /></IconButton>}<IconButton disabled={instanceBusy || adopted} label={adopted ? "请先退出接管" : "删除托管实例"} onClick={() => act(kind, instance, "delete")}><Trash2 size={16} /></IconButton></div></footer>
     </article>;
   };
   return <section className="workspace-page deploy-panel">

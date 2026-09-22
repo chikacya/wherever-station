@@ -1188,7 +1188,7 @@ async function geolocateProviderNodes(params) {
   finally { if (timer) clearTimeout(timer); }
 }
 function startProviderOperation(params) {
-  const action = cleanText(params && params.action, 24); const runners = { test: testProvider, preview: previewProviderSync, apply: applyProviderSync };
+  const action = cleanText(params && params.action, 24); const runners = { test: testProvider, preview: previewProviderSync, apply: applyProviderSync, geolocate: geolocateProviderNodes };
   if (!runners[action]) throw new Error("不支持的外部面板操作");
   const input = params && params.input || {}; const signature = crypto.createHash("sha256").update(JSON.stringify({ action, input })).digest("hex").slice(0, 24);
   const operationId = requestOperationId(params); const existing = PROVIDER_OPERATIONS.get(operationId);
@@ -1931,7 +1931,6 @@ function load() {
   MANAGED_TASKS.resume();
   server.registerRPC("proxyConsole:previewPolicy", previewPolicy);
   server.registerRPC("proxyConsole:saveProvider", saveProvider);
-  server.registerRPC("proxyConsole:geolocateProviderNodes", geolocateProviderNodes);
   server.registerRPC("proxyConsole:saveMachineTrafficPlan", saveMachineTrafficPlan);
   server.registerRPC("proxyConsole:prepareMachineIpProfile", prepareMachineIpProfile);
   server.registerRPC("proxyConsole:recordMachineIpProfile", recordMachineIpProfile);

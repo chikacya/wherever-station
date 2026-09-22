@@ -53,7 +53,15 @@ test("provider nodes can derive a reusable region profile from their resolved IP
   });
   state = methods.get("proxyConsole:saveState")({ state });
 
-  const result = await methods.get("proxyConsole:geolocateProviderNodes")({ providerId: "provider-geo" });
+  const started = methods.get("proxyConsole:startProviderOperation")({ action: "geolocate", input: { providerId: "provider-geo" } });
+  let operation;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    operation = methods.get("proxyConsole:getProviderOperation")({ operationId: started.operationId });
+    if (operation.phase !== "running") break;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.equal(operation.phase, "completed");
+  const result = operation.result;
   const node = result.state.nodes.find((item) => item.id === "provider-node");
   assert.equal(result.updated, 1);
   assert.equal(node.countryCode, "US");

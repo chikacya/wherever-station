@@ -3815,8 +3815,8 @@ function Providers({ state, setState, notify, onNavigate }) {
   const identifyRegions = async (provider) => {
     setBusy(`geo:${provider.id}`);
     try {
-      const result = await rpc("proxyConsole:geolocateProviderNodes", { providerId: provider.id });
-      setState(result.state);
+      const result = await providerRpc("geolocate", { providerId: provider.id });
+      setState(result?.state || await rpc("proxyConsole:getState"));
       notify(`地区识别完成：更新 ${result.updated} 个${result.unresolved ? `，${result.unresolved} 个未识别` : ""}`);
     } catch (error) { notify(error.message, true); }
     finally { setBusy(""); }
@@ -3856,7 +3856,7 @@ function Providers({ state, setState, notify, onNavigate }) {
         <header><button className="provider-expand" type="button" aria-label={`${isExpanded ? "收起" : "展开"} ${provider.name} 节点`} aria-expanded={isExpanded} onClick={() => setExpanded((value) => ({ ...value, [provider.id]: !isExpanded }))}>{isExpanded ? <ChevronUp size={17} /> : <ChevronDown size={17} />}</button><div><h3>{provider.name}</h3><p>{provider.type === "2s-ui" ? "2S-UI" : "S-UI"} · <span className="sensitive-value">{provider.baseUrl}</span></p><div className="provider-meta"><span>{providerNodes.length} 个节点</span><span>{provider.inboundCount} 入站</span><span>{provider.clientCount} 客户端</span>{provider.status && <span>{provider.status.startsWith("running:") ? `sing-box 运行中 · ${provider.status.slice(8)}` : provider.status.startsWith("stopped:") ? `sing-box 已停止 · ${provider.status.slice(8)}` : provider.status}</span>}<span>{provider.lastSyncAt ? `同步于 ${new Date(provider.lastSyncAt).toLocaleString("zh-CN", { hour12: false })}` : "尚未同步"}</span></div></div><Status tone={provider.lastError ? "bad" : provider.lastSuccessAt ? "ok" : "warning"}>{provider.lastError ? "连接异常" : provider.lastSuccessAt ? "连接正常" : "待检查"}</Status><div className="provider-head-actions">
           <Button icon={RefreshCw} onClick={() => test(provider)} disabled={!!busy}>{busy === `test:${provider.id}` ? "检查中…" : "检查"}</Button>
           <Button icon={RefreshCw} variant="primary" onClick={() => inspect(provider)} disabled={!!busy}>{busy === `sync:${provider.id}` ? "正在读取…" : "同步"}</Button>
-          <Button icon={Globe2} onClick={() => identifyRegions(provider)} disabled={!!busy || !providerNodes.length}>{busy === `geo:${provider.id}` ? "识别中…" : "识别地区"}</Button>
+          <Button icon={Globe2} title="根据节点域名或 IP 归类，不会通过代理测试出口" onClick={() => identifyRegions(provider)} disabled={!!busy || !providerNodes.length}>{busy === `geo:${provider.id}` ? "识别中…" : "识别节点地区"}</Button>
           <a className="icon-button" aria-label="打开原面板" title="打开原面板" href={provider.baseUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} /></a>
           <IconButton label="编辑连接" onClick={() => setEditor(provider)}><Edit3 size={16} /></IconButton>
           <IconButton label="删除连接" onClick={() => remove(provider)}><Trash2 size={16} /></IconButton>

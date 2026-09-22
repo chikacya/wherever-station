@@ -53,7 +53,7 @@ function nowhereCapabilities(version) {
       adapter: "", verified: false, compatibility: "invalid",
       vectorPin: false, vectorMux: false, localTelemetry: false,
       protocolGeneration: 0, wireProtocol: "", carrierEndpoints: false,
-      morph: false, transportMemoryProfile: false,
+      morph: false, morphWireGeneration: 0, morphTcpPrelude: false, transportMemoryProfile: false,
     };
   }
   const normalized = parsed.text;
@@ -64,7 +64,7 @@ function nowhereCapabilities(version) {
       adapter: "", verified: false, compatibility: "unverified",
       vectorPin: false, vectorMux: false, localTelemetry: false,
       protocolGeneration: 0, wireProtocol: "", carrierEndpoints: false,
-      morph: false, transportMemoryProfile: false,
+      morph: false, morphWireGeneration: 0, morphTcpPrelude: false, transportMemoryProfile: false,
     };
   }
   const verified = adapter.verifiedVersions.includes(normalized);
@@ -78,6 +78,8 @@ function nowhereCapabilities(version) {
     wireProtocol: "nw2",
     carrierEndpoints: true,
     morph: true,
+    morphWireGeneration: atLeast(normalized, "v2.1.0") ? 2 : 1,
+    morphTcpPrelude: atLeast(normalized, "v2.1.0"),
     transportMemoryProfile: true,
   };
 }

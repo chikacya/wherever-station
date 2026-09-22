@@ -85,7 +85,7 @@ function validateAbsoluteFile(value, label) {
 }
 
 function buildAnywhereLink(input) {
-  const capabilities = nowhereCapabilities(input.version || "v2.0.2");
+  const capabilities = nowhereCapabilities(input.version || "v2.1.0");
   if (!capabilities.supported) throw new Error("Nowhere 2.x or newer is required");
   const host = buildNowhereEndpoint(input.publicHost, input);
   const key = encodeURIComponent(text(input.key, "shared key"));
@@ -99,7 +99,7 @@ function buildAnywhereLink(input) {
 }
 
 function buildVectorLink(input) {
-  const capabilities = nowhereCapabilities(input.version || "v2.0.2");
+  const capabilities = nowhereCapabilities(input.version || "v2.1.0");
   if (!capabilities.supported) throw new Error("Nowhere 2.x or newer is required");
   const host = buildNowhereEndpoint(input.publicHost, input);
   const key = encodeURIComponent(text(input.key, "shared key"));
@@ -117,7 +117,7 @@ function buildVectorLink(input) {
 function planManagedNowhere(input = {}) {
   const id = cleanInstanceId(input.id);
   const name = text(input.name || `Nowhere ${id}`, "display name", 160);
-  const version = text(input.version || "v2.0.2", "version", 64);
+  const version = text(input.version || "v2.1.0", "version", 64);
   if (!VERSION_PATTERN.test(version) || !versionAtLeast(version, 2, 0, 0)) throw new Error("Nowhere 2.x or newer is required");
   const capabilities = nowhereCapabilities(version);
   if (!capabilities.supported) throw new Error("Unsupported Nowhere version adapter");
@@ -221,7 +221,7 @@ function planManagedNowhere(input = {}) {
     unitName, unitPath, environment, unit, links, certificateMode, certificatePath,
     privateKeyPath, certificateHost, certificateDays,
     clientLink: links.anywhere[0]?.uri || links.vector[0]?.uri || "",
-    summary: { name, publicHost, listenHost: listenHost || "全部地址", port, tcpPort, udpPort, tcpCarrier, udpCarrier, client, network, tls, version, protocolGeneration: capabilities.protocolGeneration, wireProtocol: capabilities.wireProtocol, alpn, morph, transportMemoryProfile, rate, etar, log, unitName, certificateMode, certificateHost, certificateDays },
+    summary: { name, publicHost, listenHost: listenHost || "全部地址", port, tcpPort, udpPort, tcpCarrier, udpCarrier, client, network, tls, version, protocolGeneration: capabilities.protocolGeneration, wireProtocol: capabilities.wireProtocol, morphWireGeneration: capabilities.morphWireGeneration, alpn, morph, transportMemoryProfile, rate, etar, log, unitName, certificateMode, certificateHost, certificateDays },
     safeguards: ["create-new-directory", "copy-or-download-private-binary", "managed-unit-prefix-only", "never-touch-existing-nowhere-service"],
   };
 }

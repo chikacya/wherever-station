@@ -43,6 +43,10 @@ assert(carriers.links.anywhere[0].uri.includes('@example.com/tcp:52080/udp:52081
 assert.equal(buildNowhereEndpoint("example.com", { tcpPort: 52080, udpPort: 52080 }), "example.com:52080");
 assert.equal(buildNowhereEndpoint("2001:db8::1", { tcpPort: 52080, udpPort: 0, tcpCarrier: "tcp6" }), "[2001:db8::1]/tcp6:52080");
 
+const v21 = planManagedNowhere({ id: "v21-test-node", version: "v2.1.0", publicHost: "example.com", port: 52082, key: "secret", morph: 1 });
+assert.equal(v21.summary.morphWireGeneration, 2);
+assert(v21.environment.includes('NOWHERE_VERSION_VALUE="v2.1.0"'));
+
 assert.throws(() => planManagedNowhere({ id: "valid-id-0001", version: "v1.8.3", publicHost: "example.com", port: 52077, key: "secret" }), /2\.x/);
 assert.throws(() => planManagedNowhere({ id: "valid-id-0001", version: "v3.0.0", publicHost: "example.com", port: 52077, key: "secret" }), /adapter/);
 assert.throws(() => planManagedNowhere({ id: "valid-id-0001", publicHost: "example.com", port: 443, key: "secret" }), /port/);

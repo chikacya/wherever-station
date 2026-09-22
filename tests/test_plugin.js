@@ -66,8 +66,8 @@ state = methods.get("proxyConsole:recordCertificateResult")({ operationId: certI
 assert.equal(state.certificates.find((item) => item.id === certificateAsset.id).status, "warning");
 const managedDefaults = methods.get("proxyConsole:newManagedNowhereValues")();
 assert(/^nw-[a-f0-9]{24}$/.test(managedDefaults.id)); assert(managedDefaults.key.length >= 24);
-assert.equal(managedDefaults.version, "v2.0.2");
-const managedInput = { ...managedDefaults, name: "托管 Nowhere", machineId, publicHost: "managed.example.com", listenHost: "127.0.0.1", port: 52077, client: "anywhere", network: "mix", tls: 1 };
+assert.equal(managedDefaults.version, "v2.1.0");
+const managedInput = { ...managedDefaults, name: "托管 Nowhere", machineId, publicHost: "managed.example.com", listenHost: "127.0.0.1", port: 52077, client: "anywhere", network: "mix", tls: 1, morph: 1 };
 const nowhereCertificatePreview = methods.get("proxyConsole:previewManagedNowhere")({ input: { ...managedInput, certificateAssetId: certificateAsset.id } });
 assert.equal(nowhereCertificatePreview.certificate.mode, "existing");
 assert.equal(nowhereCertificatePreview.certificate.certificatePath, "/etc/ssl/example.crt");
@@ -107,7 +107,8 @@ assert.equal(state.managedInstances.find(item => item.id === managedDefaults.id)
 assert.equal(state.managedInstances.find(item => item.id === managedDefaults.id).name, 'Renamed Nowhere');
 assert.equal(state.nodes.find(item => item.id === state.managedInstances.find(item => item.id === managedDefaults.id).nodeId).name, 'Renamed Nowhere');
 assert(state.nodes.some(item => item.uri === editedPlan.links.anywhere[0].uri), 'successful edit publishes new link');
-const upgrade = methods.get("proxyConsole:prepareManagedNowhereAction")({ instanceId: managedDefaults.id, action: "upgrade", targetVersion: "v2.0.1" });
+assert.throws(() => methods.get("proxyConsole:prepareManagedNowhereAction")({ instanceId: managedDefaults.id, action: "upgrade", targetVersion: "v2.0.1" }), /协同升级/);
+const upgrade = methods.get("proxyConsole:prepareManagedNowhereAction")({ instanceId: managedDefaults.id, action: "upgrade", targetVersion: "v2.0.1", confirmation: "morph-peers-coordinated" });
 state = methods.get("proxyConsole:recordManagedNowhereResult")({ operationId: upgrade.operationId, result: { ok: true, state: "inactive", version: "v2.0.1" } }).state;
 const upgradedInstance = state.managedInstances.find(item => item.id === managedDefaults.id);
 assert.equal(upgradedInstance.version, "v2.0.1"); assert.equal(upgradedInstance.alpn, "nw2");

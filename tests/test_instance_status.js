@@ -4,7 +4,7 @@ const { buildInstanceStatus, buildServiceStatus } = require('../tools/instance-s
 const command = buildInstanceStatus([{ id: 'nw-test001', kind: 'nowhere' }, { id: 'sb-test002', kind: 'sing-box' }]);
 const parts = [...command.matchAll(/'([^']+)'/g)].map(item => item[1]);
 const script = Buffer.from(parts[1], 'base64').toString();
-const mock = `import subprocess,types,json\ncalls=[]\ndef fake(args,**kwargs):\n calls.append(args)\n if args[0]=='systemctl':\n  assert len(args)==6\n  return types.SimpleNamespace(stdout='Id=proxy-console-nowhere@nw-test001.service\\nLoadState=loaded\\nActiveState=active\\nSubState=running\\nMainPID=42\\n',returncode=0)\n if args[0]=='nsenter':\n  payload={'tcp_logical_up':'1000','tcp_logical_down':'2000','udp_logical_up':'20','udp_logical_down':'30','tls_payload_up':'900','quic_payload_down':'1800','cpu_percent':1.5,'lifecycle':'READY','lifecycle_reason':'LISTENING','role':'portal','version':'2.0.2','service_endpoint':'*:2077','config_summary':'listen=*:2077 tls=1'}\n  return types.SimpleNamespace(stdout=json.dumps(payload),returncode=0)\n raise AssertionError(args)\nsubprocess.run=fake\n`;
+const mock = `import subprocess,types,json\ncalls=[]\ndef fake(args,**kwargs):\n calls.append(args)\n if args[0]=='systemctl':\n  assert len(args)==6\n  return types.SimpleNamespace(stdout='Id=proxy-console-nowhere@nw-test001.service\\nLoadState=loaded\\nActiveState=active\\nSubState=running\\nMainPID=42\\n',returncode=0)\n if args[0]=='nsenter':\n  payload={'tcp_logical_up':'1000','tcp_logical_down':'2000','udp_logical_up':'20','udp_logical_down':'30','tls_payload_up':'900','quic_payload_down':'1800','cpu_percent':1.5,'lifecycle':'READY','lifecycle_reason':'LISTENING','role':'portal','version':'2.1.0','service_endpoint':'*:2077','config_summary':'listen=*:2077 tls=1 morph=1'}\n  return types.SimpleNamespace(stdout=json.dumps(payload),returncode=0)\n raise AssertionError(args)\nsubprocess.run=fake\n`;
 const result = spawnSync('python3', ['-c', "import shutil\nshutil.which=lambda name:'/usr/bin/nsenter'\n" + mock + script, parts[2]], { encoding: 'utf8' });
 assert.equal(result.status, 0, result.stderr);
 const states = JSON.parse(Buffer.from(result.stdout.trim().split('\t')[2], 'base64')).states;
@@ -13,7 +13,7 @@ assert.equal(states[0].telemetry.source, 'local');
 assert.equal(states[0].telemetry.tcpLogicalUp, '1000');
 assert.equal(states[0].telemetry.lifecycle, 'READY');
 assert.equal(states[0].telemetry.serviceEndpoint, '*:2077');
-assert.equal(states[0].telemetry.configSummary, 'listen=*:2077 tls=1');
+assert.equal(states[0].telemetry.configSummary, 'listen=*:2077 tls=1 morph=1');
 assert.equal(states[1].state, 'unknown'); assert.equal(states[1].loaded, false);
 assert(states.every(row => !Number.isNaN(Date.parse(row.observedAt))));
 assert(script.includes('socket.AF_UNIX'));
@@ -27,4 +27,4 @@ const serviceCommand = buildServiceStatus([{ id: 'nw-adopted01', kind: 'nowhere'
 const serviceParts = [...serviceCommand.matchAll(/'([^']+)'/g)].map(item => item[1]);
 const serviceTargets = JSON.parse(Buffer.from(serviceParts[2], 'base64'));
 assert.deepEqual(serviceTargets.map(item => item.unit), ['sing-box.service', 'nowhere.service', 'proxy-console-nowhere@nw-adopted01.service']);
-console.log('batched instance status: Nowhere 2.0.2 local telemetry subscriber passed');
+console.log('batched instance status: Nowhere 2.1.0 local telemetry subscriber passed');

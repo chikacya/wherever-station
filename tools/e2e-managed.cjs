@@ -108,7 +108,7 @@ async function main() {
       if (kind === 'nowhere') await dialog.getByText('高级参数', { exact: true }).click();
       await dialog.locator('label').filter({ hasText: /^内核来源/ }).locator('select').selectOption('download');
       if (kind === 'sing-box') await dialog.locator('label').filter({ hasText: /^下载版本/ }).locator('input').fill('1.13.11');
-      else await dialog.locator('label').filter({ hasText: /^下载版本/ }).locator('select').selectOption('v2.0.2');
+      else await dialog.locator('label').filter({ hasText: /^下载版本/ }).locator('select').selectOption('v2.1.0');
     }
     if (kind === 'nowhere') {
       const network = opt('--network', 'tcp');

@@ -74,7 +74,8 @@ describe("ui helpers", () => {
   it("shows only Nowhere settings supported by the selected release", () => {
     expect(nowhereVersionCapabilities("v1.8.3")).toMatchObject({ supported: false, verified: false });
     expect(nowhereVersionCapabilities("v2.0.1")).toMatchObject({ supported: true, verified: true, localTelemetry: false });
-    expect(nowhereVersionCapabilities("v2.0.2")).toMatchObject({ supported: true, verified: true, adapter: "nowhere-v2", isV2: true, protocolGeneration: 2, wireProtocol: "nw2", carrierEndpoints: true, morph: true, localTelemetry: true, transportMemoryProfile: true });
+    expect(nowhereVersionCapabilities("v2.0.2")).toMatchObject({ supported: true, verified: true, adapter: "nowhere-v2", isV2: true, protocolGeneration: 2, wireProtocol: "nw2", carrierEndpoints: true, morph: true, morphWireGeneration: 1, morphTcpPrelude: false, localTelemetry: true, transportMemoryProfile: true });
+    expect(nowhereVersionCapabilities("v2.1.0")).toMatchObject({ supported: true, verified: true, morphWireGeneration: 2, morphTcpPrelude: true, localTelemetry: true });
     expect(nowhereVersionCapabilities("v3.0.0")).toMatchObject({ known: true, supported: false, verified: false, protocolGeneration: 0 });
     expect(nowhereVersionCapabilities("latest").known).toBe(false);
   });
@@ -99,6 +100,7 @@ describe("ui helpers", () => {
   it("keeps only stable Nowhere releases and sorts them semantically", () => {
     expect(
       normalizeNowhereReleases([
+        { tag_name: "v2.1.0", published_at: "2026-09-22T00:00:00Z" },
         { tag_name: "v2.0.2", published_at: "2026-09-18T00:00:00Z" },
         { tag_name: "v2.0.0", published_at: "2026-09-11T00:00:00Z" },
         { tag_name: "v1.8.2", published_at: "2026-08-25T00:00:00Z" },
@@ -107,7 +109,7 @@ describe("ui helpers", () => {
         { tag_name: "v1.9.0-rc.1", prerelease: true },
         { tag_name: "v1.4.0" },
       ]).map((release) => release.tag),
-    ).toEqual(["v2.0.2", "v2.0.0"]);
+    ).toEqual(["v2.1.0", "v2.0.2", "v2.0.0"]);
   });
   it("normalizes official stable sing-box releases without a v prefix", () => {
     expect(normalizeSingBoxReleases([

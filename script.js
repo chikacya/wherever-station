@@ -1271,7 +1271,7 @@ function parseExistingServiceDiscovery(params) {
   return result;
 }
 function newManagedNowhereValues() {
-  return { id: `nw-${randomId()}`, key: crypto.randomBytes(24).toString("hex"), version: "v2.0.2", port: 2077, tcpPort: 2077, udpPort: 2077, tcpCarrier: "tcp", udpCarrier: "udp", morph: 0, transportMemoryProfile: "throughput" };
+  return { id: `nw-${randomId()}`, key: crypto.randomBytes(24).toString("hex"), version: "v2.1.0", port: 2077, tcpPort: 2077, udpPort: 2077, tcpCarrier: "tcp", udpCarrier: "udp", morph: 0, transportMemoryProfile: "throughput" };
 }
 function managedNowherePorts(value) {
   return [
@@ -1407,6 +1407,10 @@ function prepareManagedNowhereAction(params) {
     if (!capabilities.verified) throw new Error("请选择已通过适配验证的 Nowhere 版本");
     if (capabilities.version === nowhereCapabilities(instance.version).version) throw new Error("实例已经是所选版本");
     if (capabilities.protocolGeneration !== nowhereCapabilities(instance.version).protocolGeneration) throw new Error("不支持跨主版本直接替换二进制");
+    const currentCapabilities = nowhereCapabilities(instance.version);
+    if (instance.morph === 1 && capabilities.morphWireGeneration !== currentCapabilities.morphWireGeneration && params.confirmation !== "morph-peers-coordinated") {
+      throw new Error("Morph 跨传输格式升级前，必须确认 Portal、客户端与原生下一跳已协同升级");
+    }
   }
   const operationId = requestOperationId(params); const expiresAt = Date.now() + MANAGED_OPERATION_TTL_MS;
   retainOperation(MANAGED_OPERATIONS, operationId, { instanceId, machineId: machine.id, action, expiresAt, targetVersion, uri: plan.links.anywhere[0]?.uri || "" });

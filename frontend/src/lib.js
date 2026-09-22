@@ -147,6 +147,7 @@ export function normalizeNodeName(value) {
   }
 }
 export const NOWHERE_RELEASE_FALLBACK = Object.freeze([
+  "v2.1.0",
   "v2.0.2",
   "v2.0.1",
   "v2.0.0",
@@ -434,7 +435,7 @@ export function randomId() {
 }
 export function nowhereVersionCapabilities(value) {
   const match = String(value || "").trim().match(/^v?(\d+)\.(\d+)\.(\d+)(?:[.-][A-Za-z0-9._-]+)?$/);
-  if (!match) return { known: false, supported: false, adapter: "", verified: false, compatibility: "invalid", vectorPin: false, vectorMux: false, localTelemetry: false, isV2: false, protocolGeneration: 0, wireProtocol: "", carrierEndpoints: false, morph: false, transportMemoryProfile: false };
+  if (!match) return { known: false, supported: false, adapter: "", verified: false, compatibility: "invalid", vectorPin: false, vectorMux: false, localTelemetry: false, isV2: false, protocolGeneration: 0, wireProtocol: "", carrierEndpoints: false, morph: false, morphWireGeneration: 0, morphTcpPrelude: false, transportMemoryProfile: false };
   const parts = match.slice(1).map(Number);
   const version = `v${parts.join(".")}`;
   const compare = (target) => {
@@ -445,7 +446,7 @@ export function nowhereVersionCapabilities(value) {
     return 0;
   };
   const adapter = nowhereCompatibility.adapters.find((item) => item.major === parts[0] && compare(item.minimumVersion) >= 0 && compare(item.maximumVersion) <= 0);
-  if (!adapter) return { version, known: true, supported: false, adapter: "", verified: false, compatibility: "unverified", vectorPin: false, vectorMux: false, localTelemetry: false, isV2: false, protocolGeneration: 0, wireProtocol: "", carrierEndpoints: false, morph: false, transportMemoryProfile: false };
+  if (!adapter) return { version, known: true, supported: false, adapter: "", verified: false, compatibility: "unverified", vectorPin: false, vectorMux: false, localTelemetry: false, isV2: false, protocolGeneration: 0, wireProtocol: "", carrierEndpoints: false, morph: false, morphWireGeneration: 0, morphTcpPrelude: false, transportMemoryProfile: false };
   const atLeast = (major, minor, patch = 0) => {
     const target = [major, minor, patch];
     for (let index = 0; index < 3; index += 1) {
@@ -468,6 +469,8 @@ export function nowhereVersionCapabilities(value) {
     wireProtocol: "nw2",
     carrierEndpoints: true,
     morph: true,
+    morphWireGeneration: atLeast(2, 1, 0) ? 2 : 1,
+    morphTcpPrelude: atLeast(2, 1, 0),
     transportMemoryProfile: true,
   };
 }

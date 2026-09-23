@@ -14,6 +14,8 @@ test('public downloads survive missing telemetry; fresh traffic is cached', asyn
   const sandbox = { console, Buffer, setTimeout, clearTimeout, __dirname: root, __storageDir__: storage, require: name => name === 'server' ? server : require(name) };
   try {
     vm.createContext(sandbox); vm.runInContext(fs.readFileSync(path.join(root, 'script.js'), 'utf8'), sandbox); sandbox.load();
+    assert.equal(sandbox.subscriptionUserinfo({ upload: 5, download: 7, total: 100, expire: 1800000000 }), 'upload=5; download=7; total=100; expire=1800000000');
+    assert.equal(sandbox.subscriptionUserinfo({ upload: 5, download: 7, total: 0, expire: 0 }), 'upload=5; download=7');
     const state = sandbox.readState(); state.machines = [machine];
     state.nodes = [{ id: 'n', name: 'N', machineId: 'a', protocol: 'ss', uri: 'ss://' + Buffer.from('aes-128-gcm:password').toString('base64') + '@example.com:443', enabled: true }];
     state.subscriptions = [{ id: 's', name: 'S', token: 'a'.repeat(48), nodeIds: ['n'], quota: { mode: 'machine' }, enabled: true }];
@@ -26,7 +28,8 @@ test('public downloads survive missing telemetry; fresh traffic is cached', asyn
       await sandbox.publicSubscription({ url: '/proxy/sub/' + 'a'.repeat(48), query: { format: 'raw' }, headers: {} }, res);
       assert.equal(res.statusCode, 200); assert.match(res.body, /ss:\/\//); return res;
     }
-    assert.match((await download()).headers['Subscription-Userinfo'], /upload=200; download=300/);
+    const userinfo = (await download()).headers['Subscription-Userinfo'];
+    assert.equal(userinfo, 'upload=200; download=300');
     await download(); assert.equal(calls, 1);
     vm.runInContext('SUBSCRIPTION_TRAFFIC_CACHE.clear()', sandbox); fail = true;
     assert.equal((await download()).headers['Subscription-Userinfo'], undefined);

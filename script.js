@@ -1042,7 +1042,10 @@ function getSubscriptionTraffic() {
 }
 function subscriptionUserinfo(traffic) {
   if (!traffic || !(traffic.upload || traffic.download || traffic.total || traffic.expire)) return "";
-  return `upload=${cleanByteCount(traffic.upload)}; download=${cleanByteCount(traffic.download)}; total=${cleanByteCount(traffic.total)}; expire=${cleanByteCount(traffic.expire)}`;
+  const fields = [`upload=${cleanByteCount(traffic.upload)}`, `download=${cleanByteCount(traffic.download)}`];
+  if (traffic.total > 0) fields.push(`total=${cleanByteCount(traffic.total)}`);
+  if (traffic.expire > 0) fields.push(`expire=${cleanByteCount(traffic.expire)}`);
+  return fields.join("; ");
 }
 function publicSubscription(req, res) {
   try {

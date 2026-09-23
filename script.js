@@ -1024,14 +1024,15 @@ function subscriptionTrafficEntry(state, subscription) {
 async function machineSubscriptionTraffic(state, subscription) {
   return (subscriptionTrafficEntry(state, subscription)?.promise) || null;
 }
-async function getSubscriptionTraffic() {
+function getSubscriptionTraffic() {
   const state = readState();
   const result = {};
-  await Promise.all(state.subscriptions.filter(sub => sub.quota.mode === 'machine').map(async subscription => {
+  // Komari exports RPC return values synchronously; return a snapshot while
+  // server.call warms each entry on the plugin event loop.
+  for (const subscription of state.subscriptions.filter(sub => sub.quota.mode === 'machine')) {
     const entry = subscriptionTrafficEntry(state, subscription);
-    const sample = entry ? await entry.promise : null;
-    if (sample) result[subscription.id] = sample;
-  }));
+    if (entry?.result) result[subscription.id] = entry.result;
+  }
   return result;
 }
 function subscriptionUserinfo(traffic) {

@@ -39,6 +39,7 @@ async function main() {
       const request = route.request().postDataJSON();
       let result = {};
       if (request.method === 'proxyConsole:getState') result = state;
+      else if (request.method === 'proxyConsole:saveState') { Object.assign(state, request.params.state, { revision: state.revision + 1 }); result = state; }
       else if (request.method === 'proxyConsole:exportPortableBackup') result = { format: 'wherever-station-backup', schema: 1, exportedAt: '2026-09-17T00:00:00Z', state, providerSecrets: {}, ruleSetCache: {} };
       else if (request.method === 'proxyConsole:preparePortableBackupDownload') result = { url: '/proxy/backup/fixture', filename: 'wherever-station-backup-2026-09-17.json', expiresAt: '2026-09-17T00:01:00Z' };
       else if (request.method === 'proxyConsole:previewPortableBackup') result = { exportedAt: '2026-09-17T00:00:00Z', current: { machines: 2, nodes: state.nodes.length, subscriptions: 0, managedInstances: 0 }, incoming: { machines: 2, nodes: state.nodes.length, subscriptions: 0, managedInstances: 0 }, providerTokens: 0, ruleCaches: 0, boundAgents: 2 };
@@ -83,21 +84,22 @@ async function main() {
     await page.setViewportSize({ width: 1280, height: 900 });
 
     await page.getByRole('button', { name: '节点', exact: true }).click();
-    await page.getByRole('button', { name: '添加节点', exact: true }).click();
+    await page.getByRole('button', { name: '导入节点', exact: true }).click();
     dialog = page.locator('dialog[open]');
-    await page.waitForFunction(() => !!JSON.parse(sessionStorage.getItem('wherever-station:draft:node:new') || 'null')?.value?.id);
+    await dialog.getByRole('textbox', { name: /节点内容/ }).fill('vless://00000000-0000-4000-8000-000000000099@sample.example.com:443#sample');
     const hostSelect = dialog.locator('label').filter({ hasText: /^关联 VPS/ }).locator('select');
     await hostSelect.selectOption('my');
-    const nodeName = dialog.locator('label').filter({ hasText: /^节点名称/ }).locator('input');
-    if (!(await nodeName.inputValue()).startsWith('🇲🇾 马来西亚 |')) throw new Error('Manual node name did not follow the selected server');
-    const uri = dialog.locator('textarea[placeholder*="其他协议 URI"]');
-    await uri.waitFor();
     await dialog.getByRole('button', { name: '取消' }).click();
-    await page.getByRole('button', { name: '添加节点', exact: true }).click();
+    await page.getByRole('button', { name: '导入节点', exact: true }).click();
     dialog = page.locator('dialog[open]');
-    const restoredNodeName = await dialog.locator('label').filter({ hasText: /^节点名称/ }).locator('input').inputValue();
-    if (!restoredNodeName.startsWith('🇲🇾 马来西亚 |')) throw new Error(`Node draft was not restored: ${restoredNodeName}`);
+    const restoredNodeContent = await dialog.getByRole('textbox', { name: /节点内容/ }).inputValue();
+    if (!restoredNodeContent.includes('sample.example.com')) throw new Error('Import draft was not restored');
+    if ((await dialog.locator('label').filter({ hasText: /^关联 VPS/ }).locator('select').inputValue()) !== 'my') throw new Error('Import VPS was not restored');
     await dialog.getByRole('button', { name: '取消' }).click();
+    await page.locator('.node-library tbody tr').first().click();
+    await page.getByRole('button', { name: '仅添加国旗' }).click();
+    await page.locator('.bulk').waitFor({ state: 'detached' });
+    if (!(await page.locator('.node-library tbody').getAttribute('class')).includes('bulk-refreshed')) throw new Error('Bulk refresh feedback was not applied');
 
     await page.getByRole('button', { name: '订阅', exact: true }).click();
     await page.getByRole('button', { name: '新建订阅', exact: true }).click();

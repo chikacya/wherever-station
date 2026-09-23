@@ -20,10 +20,10 @@ The server workspace combines Komari metrics with Wherever Station metadata. Sel
 
 Server traffic plans are optional. Configure a quota, accounting mode (`upload + download`, maximum direction, upload only, or download only), reset day, and warning thresholds. The plan uses Komari Agent counters and can synchronize Komari's client traffic limit. Exceeding a server plan shows a warning; it does not stop a process or disable a subscription.
 
-Server plans describe whole-VPS allowances; subscriptions no longer have separate quotas.
+Server plans describe whole-VPS allowances; subscriptions may set a separate display-only allowance.
 
 - A server plan describes the VPS network allowance.
-- Subscriptions can display whole-server traffic without gating availability.
+- Same-VPS subscriptions can display cumulative Agent usage against that allowance without gating availability.
 
 Use **Discover nodes** to inspect existing sing-box or Nowhere services. Discovery never changes their configuration. A candidate with incomplete public address, credentials, TLS, or Reality data remains a repair draft. A complete Nowhere result can first create a stopped adoption copy, followed by an explicit switch from the deployment page; staging the copy does not stop the original service.
 

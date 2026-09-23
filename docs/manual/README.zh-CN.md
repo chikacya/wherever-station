@@ -8,7 +8,7 @@
 
 1. [开始使用与界面约定](01-getting-started.zh-CN.md)：三种起点、全屏、主题、隐私模式和草稿。
 2. [服务器](02-servers.zh-CN.md)：Agent 接入、实时指标、流量计划、IP 检测、发现节点和服务控制。
-3. [节点](03-nodes.zh-CN.md)：添加、批量导入、筛选、批量整理、连接检查、URI 与二维码。
+3. [节点](03-nodes.zh-CN.md)：单条或批量导入、筛选、批量整理、连接检查、URI 与二维码。
 4. [订阅](04-subscriptions.zh-CN.md)：节点范围、代理组、规则、流量展示、设备档案、预检和历史版本。
 5. [订阅源](05-sources.zh-CN.md)：机场订阅同步、流量信息、去重和远程规则集。
 6. [部署节点](06-deployment.zh-CN.md)：Nowhere、sing-box、预设、证书、生命周期、遥测与接管。

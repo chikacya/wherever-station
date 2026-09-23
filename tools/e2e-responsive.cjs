@@ -47,7 +47,7 @@ async function main() {
 
     await dialog.getByRole('button', { name: '关闭', exact: true }).click();
     await page.getByRole('button', { name: '节点', exact: true }).click();
-    await page.getByRole('button', { name: '批量导入', exact: true }).click();
+    await page.getByRole('button', { name: '导入节点', exact: true }).click();
     const importDialog = page.locator('dialog[open]');
     const importResults = [];
     for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024 }, { width: 375, height: 812 }, { width: 320, height: 720 }]) {

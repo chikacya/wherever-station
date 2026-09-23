@@ -20,9 +20,7 @@ test('public downloads survive missing telemetry; fresh traffic is cached', asyn
     state.nodes = [{ id: 'n', name: 'N', machineId: 'a', protocol: 'ss', uri: 'ss://' + Buffer.from('aes-128-gcm:password').toString('base64') + '@example.com:443', enabled: true }];
     state.subscriptions = [{ id: 's', name: 'S', token: 'a'.repeat(48), nodeIds: ['n'], quota: { mode: 'machine' }, enabled: true }];
     sandbox.saveState(state);
-    assert.equal(Object.keys(methods.get('proxyConsole:getSubscriptionTraffic')()).length, 0);
-    await new Promise(resolve => setTimeout(resolve, 0));
-    assert.match(methods.get('proxyConsole:getSubscriptionTraffic')().s['machineName'], /A/);
+    assert.match((await methods.get('proxyConsole:getSubscriptionTraffic')()).s['machineName'], /A/);
     async function download() {
       const res = { headers: {}, statusCode: 200, setHeader(k, v) { this.headers[k] = v; }, end(body) { this.body = body; } };
       await sandbox.publicSubscription({ url: '/proxy/sub/' + 'a'.repeat(48), query: { format: 'raw' }, headers: {} }, res);
@@ -30,7 +28,9 @@ test('public downloads survive missing telemetry; fresh traffic is cached', asyn
     }
     const userinfo = (await download()).headers['Subscription-Userinfo'];
     assert.equal(userinfo, 'upload=200; download=300');
-    await download(); assert.equal(calls, 1);
+    const withAllowance = sandbox.readState(); withAllowance.subscriptions[0].quota.totalBytes = 1000; sandbox.saveState(withAllowance);
+    assert.equal((await download()).headers['Subscription-Userinfo'], 'upload=200; download=300; total=1000');
+    await download(); assert.equal(calls, 2);
     vm.runInContext('SUBSCRIPTION_TRAFFIC_CACHE.clear()', sandbox); fail = true;
     assert.equal((await download()).headers['Subscription-Userinfo'], undefined);
   } finally { fs.rmSync(storage, { recursive: true, force: true }); }

@@ -167,6 +167,10 @@ th:first-child, td:first-child { width: 42px; text-align: center; }
 .subscription-traffic { margin: 10px 0 0 46px; padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 8px 18px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .subscription-traffic span { display: inline-flex; align-items: baseline; gap: 5px; }
 .subscription-traffic strong { color: var(--text); font-size: 12px; }
+.subscription-traffic progress { flex-basis: 100%; width: 100%; height: 6px; accent-color: var(--primary); }
+.node-library tbody.bulk-refreshed { animation: node-bulk-refresh 220ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+@keyframes node-bulk-refresh { from { opacity: .65; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .node-library tbody.bulk-refreshed { animation: none; } }
 .source-traffic { margin-left: 0; }
 .sub-card:hover, .source-card:hover, .machine-grid article:hover, .managed-card:hover, .provider-card:hover { border-color: var(--border-strong); background: color-mix(in srgb, var(--surface) 88%, var(--primary-soft)); box-shadow: none; }
 .managed-strip { margin-bottom: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); font-size: 11px; }

@@ -782,6 +782,7 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
   const [source, setSource] = useState("");
   const [sort, setSort] = useState("name-asc");
   const [selected, setSelected] = useState({});
+  const [listRevision, setListRevision] = useState(0);
   const [editor, setEditor] = useState(null);
   const [importing, setImporting] = useState(false);
   const [batch, setBatch] = useState(null);
@@ -833,7 +834,7 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
             haystack.includes(deferredSearch.toLowerCase())) &&
           (!country || inferNodeCountryCode(node, machine) === country) &&
           (!protocol || node.protocol === protocol) &&
-          (!source || node.source === source)
+          (!source || (source === "local" ? ["manual", "import"].includes(node.source) : node.source === source))
         );
       });
       const [key, direction] = sort.split("-");
@@ -877,6 +878,7 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
       const next = await rpc("proxyConsole:deleteNodes", { nodeIds: ids, expectedRevision: state.revision });
       setState(next);
       setSelected({});
+      setListRevision((value) => value + 1);
       notify(`已删除 ${ids.length} 个独立节点`);
     } catch (error) { notify(error.message, true); }
   };
@@ -958,7 +960,7 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
         header: "来源",
         cell: ({ row }) => (
           <div className="node-source-state"><span className="muted">
-            {row.original.providerMissing ? "远端已不存在" : ({ manual: "手动", import: "导入", external: "订阅源", provider: "外部面板" }[
+            {row.original.providerMissing ? "远端已不存在" : ({ manual: "本地", import: "本地", external: "订阅源", provider: "外部面板" }[
               row.original.source
             ] || "手动")}
           </span>{row.original.connectivity && <small className={row.original.connectivity.status === "passed" ? "probe-ok" : "probe-bad"}>{row.original.connectivity.status === "passed" ? "连接通过" : "连接失败"} · {new Date(row.original.connectivity.observedAt).toLocaleString("zh-CN", { hour12: false })}</small>}</div>
@@ -1096,6 +1098,8 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
       { ...state, nodes: changed },
       `已更新 ${selectedIds.length} 个节点`,
     );
+    setSelected({});
+    setListRevision((value) => value + 1);
   };
   const openDraftRepair = (draft) => {
     setDraftError("");
@@ -1124,15 +1128,12 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
         title="节点管理"
         description="整理节点名称、归属和标签，并选择哪些节点参与订阅。"
       >
-        <Button icon={Plus} onClick={() => setEditor({})}>
-          添加节点
-        </Button>
         <Button
           icon={Import}
           variant="primary"
           onClick={() => setImporting(true)}
         >
-          批量导入
+          导入节点
         </Button>
       </PageHead>
       {!!state.nodeDrafts?.length && <section className="draft-workbench" aria-label="待修复发现节点"><header><div><strong>待修复节点</strong><span>{state.nodeDrafts.length} 项已保留为草稿，补全前不会进入订阅。</span></div></header><div>{state.nodeDrafts.map((draft) => <article key={draft.id}><span className={`protocol ${draft.protocol === "nowhere" ? "special" : ""}`}>{draft.protocol}</span><div><strong>{draft.name}</strong><small>{draft.reason}</small><code title={draft.source}>{draft.source}</code></div><Status tone={draft.repair?.port ? "warning" : ""}>{draft.repair?.port ? "待确认" : "草稿"}</Status><div><Button icon={Edit3} variant="primary" onClick={() => openDraftRepair(draft)}>补全</Button><IconButton label={`移除 ${draft.name} 草稿`} onClick={() => removeDraft(draft)}><Trash2 size={16} /></IconButton></div></article>)}</div></section>}
@@ -1167,8 +1168,7 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
           onChange={setSource}
           label="全部来源"
           options={[
-            ["manual", "手动"],
-            ["import", "批量导入"],
+            ["local", "本地导入"],
             ["external", "外部订阅"],
             ["provider", "外部面板"],
           ]}
@@ -1228,7 +1228,7 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
               </tr>
             ))}
           </thead>
-          <tbody>
+          <tbody key={listRevision} className={listRevision ? "bulk-refreshed" : ""}>
             {table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
@@ -1371,6 +1371,8 @@ function Nodes({ state, setState, persist, notify, parseUris, clients, me }) {
             `已批量更新 ${updates.length} 个节点`,
           );
           setBatch(null);
+          setSelected({});
+          setListRevision((value) => value + 1);
         }}
       />
       <Modal open={!!connection} title="连接检查" eyebrow="节点可用性" onClose={() => !connection?.running && setConnection(null)}>
@@ -2114,7 +2116,7 @@ function Subscriptions({ state, persist, notify, onOpenSettings }) {
                   {expired ? "已到期" : sub.enabled ? "已启用" : "已停用"}
                 </Status>
               </div>
-              {sub.quota?.mode === "machine" && <div className="subscription-traffic" aria-label="服务器流量"><span>服务器流量 · {eligibleMachine?.name || "暂停展示"}</span>{!eligibleMachine ? <span>输出节点不再全部归属于同一 VPS</span> : !traffic ? <span>暂无新鲜统计</span> : <><span>{traffic.basis === "cycle-estimate" ? "周期估算已用" : "Agent 累计"} <strong>{bytes(used)}</strong></span>{traffic.total > 0 && <span>服务器总额度 <strong>{bytes(traffic.total)}</strong></span>}<span>包含整台 VPS 的流量</span></>}</div>}
+              {sub.quota?.mode === "machine" && <div className="subscription-traffic" aria-label="订阅流量展示"><span>整机 Agent 流量 · {eligibleMachine?.name || "暂停展示"}</span>{!eligibleMachine ? <span>输出节点不再全部归属于同一 VPS</span> : !traffic ? <span>Agent 暂无有效计数</span> : <><span>累计已用 <strong>{bytes(used)}</strong></span>{traffic.total > 0 && <><span>展示额度 <strong>{bytes(traffic.total)}</strong></span><span>{used > traffic.total ? "已超过展示额度" : `剩余 ${bytes(traffic.total - used)}`}</span><progress max={traffic.total} value={Math.min(used, traffic.total)} aria-label="订阅流量展示进度" /></>}<span>含整台 VPS 流量 · {new Date(traffic.observedAt).toLocaleString("zh-CN", { hour12: false })}</span></>}</div>}
               <code className="url-preview">
                 {url.replace(sub.token, "••••••••••••")}
               </code>
@@ -2665,6 +2667,7 @@ function SubscriptionEditor({
       expiryDate: localDateInput(subscription?.expiresAt),
       quota: {
         mode: subscription?.quota?.mode === "machine" ? "machine" : "none",
+        totalBytes: subscription?.quota?.totalBytes || 0,
       },
       policyMode: subscription?.policyMode || "proxy-all",
       customRules: (subscription?.customRules || []).map((rule) => ({ ...rule })),
@@ -2672,7 +2675,7 @@ function SubscriptionEditor({
       devices: (subscription?.devices || []).map((device) => ({ ...device })),
     };
     const draft = readSessionDraft(draftKey)?.value;
-    setForm(draft ? { ...initial, ...draft, id: initial.id, token: initial.token, quota: { mode: draft.quota?.mode === "machine" ? "machine" : "none" } } : initial);
+    setForm(draft ? { ...initial, ...draft, id: initial.id, token: initial.token, quota: { mode: draft.quota?.mode === "machine" ? "machine" : "none", totalBytes: draft.quota?.totalBytes || 0 } } : initial);
     setSearch("");
   }, [open, subscription?.id]);
   useEffect(() => {
@@ -3072,12 +3075,13 @@ function SubscriptionEditor({
         </div>
       </div>
       <details className="quota-editor">
-        <summary>服务器流量展示</summary>
+        <summary>订阅流量展示</summary>
         <label className="check-line">
-          <input type="checkbox" checked={form.quota?.mode === "machine"} disabled={!trafficMachine && form.quota?.mode !== "machine"} onChange={(event) => setForm(current => ({ ...current, quota: { mode: event.target.checked ? "machine" : "none" } }))} />
-          展示该 VPS 流量{trafficMachine ? " · " + trafficMachine.name : ""}
+          <input type="checkbox" checked={form.quota?.mode === "machine"} disabled={!trafficMachine && form.quota?.mode !== "machine"} onChange={(event) => setForm(current => ({ ...current, quota: { ...current.quota, mode: event.target.checked ? "machine" : "none" } }))} />
+          展示同 VPS 的 Agent 用量{trafficMachine ? " · " + trafficMachine.name : ""}
         </label>
-        <p>{trafficMachine ? "整台 VPS 的流量，并非本订阅独占；历史不足时展示 Agent 累计。超额不会停用订阅。" : "全部输出节点归属于同一台已绑定 Agent 的 VPS 时可展示；否则暂停展示。"}</p>
+        {form.quota?.mode === "machine" && <Field label="订阅展示额度 GiB（可选）"><input type="number" min="0" step="0.01" value={form.quota.totalBytes ? Math.round(form.quota.totalBytes / 1024 ** 3 * 100) / 100 : ""} onChange={(event) => setForm(current => ({ ...current, quota: { ...current.quota, totalBytes: Math.round(Math.max(0, Number(event.target.value) || 0) * 1024 ** 3) } }))} placeholder="例如 500" /></Field>}
+        <p>{trafficMachine ? "已用量为整台 VPS 的 Agent 累计，不是本订阅独占或每月重置；展示额度独立于服务器套餐，超额仅提示。" : "全部输出节点归属于同一台已绑定 Agent 的 VPS 时可展示；否则暂停展示。"}</p>
       </details>
       <div className="editor-tabs" role="tablist" aria-label="订阅编辑模式">
         <button

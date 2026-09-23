@@ -2,7 +2,7 @@
 
 [Previous](02-servers.md) · [Index](README.md) · [Next: Subscriptions](04-subscriptions.md)
 
-The node library unifies manual entries, imports, sources, providers, discovery and managed deployments. Add or edit a node with its name, complete URI, optional server, tags and output state. The URI is authoritative; changing server assignment does not rewrite its host.
+The node library unifies local imports, sources, providers, discovery and managed deployments. Use **Import nodes** for one or more URIs, then edit a node's name, complete URI, optional server, tags and output state in its row. The URI is authoritative; changing server assignment does not rewrite its host.
 
 ![Node management](../assets/screenshots/nodes-light.png)
 

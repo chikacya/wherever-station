@@ -1,7 +1,7 @@
 {
   "name": "wherever-station-ui",
   "private": true,
-  "version": "0.72.0",
+  "version": "0.72.2",
   "description": "Administrative interface for Wherever Station",
   "license": "GPL-3.0-only",
   "type": "module",

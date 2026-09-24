@@ -26,7 +26,7 @@ const { parseRuleSetText } = require(path.join(__dirname, "tools/rule-set"));
 const STATUS_CACHE = require(path.join(__dirname, "tools/instance-status-cache")).instanceStatusCache();
 const PROVIDER_OPERATIONS = new Map();
 const SOURCE_OPERATIONS = new Map();
-const { subscriptionMachine, cycleStart, serverTraffic } = require(path.join(__dirname, 'tools/subscription-traffic'));
+const { subscriptionMachine, subscriptionAllowance, cycleStart, serverTraffic } = require(path.join(__dirname, 'tools/subscription-traffic'));
 const SUBSCRIPTION_TRAFFIC_CACHE = new Map();
 
 const STATE_FILE = path.join(__storageDir__, "state.json");
@@ -387,7 +387,8 @@ function cleanState(input) {
     assertAcyclicGroups(groups);
     const expiresAt = /^\d{4}-\d\d-\d\dT/.test(String(item.expiresAt || "")) && Number.isFinite(Date.parse(item.expiresAt)) ? new Date(item.expiresAt).toISOString() : "";
     const rawQuota = item.quota && typeof item.quota === "object" ? item.quota : {};
-    const quota = { mode: rawQuota.mode === "machine" ? "machine" : "none", totalBytes: cleanByteCount(rawQuota.totalBytes) };
+    const quotaTotal = cleanByteCount(rawQuota.totalBytes);
+    const quota = { mode: rawQuota.mode === "machine" ? "machine" : "none", totalBytes: quotaTotal, customTotalEnabled: rawQuota.customTotalEnabled === true || (rawQuota.customTotalEnabled !== false && quotaTotal > 0) };
     return { id: cleanText(item.id, 64), name: cleanText(item.name), token: cleanText(item.token, 128), nodeIds: Array.isArray(item.nodeIds) ? [...new Set(item.nodeIds.map((id) => cleanText(id, 64)).filter((id) => nodeIds.has(id)))] : [], groups, enabled: item.enabled !== false, expiresAt, quota, policyMode: POLICY_MODES.has(item.policyMode) ? item.policyMode : "proxy-all", customRules: cleanCustomRules(item.customRules), ruleSetIds: Array.isArray(item.ruleSetIds) ? [...new Set(item.ruleSetIds.map((id) => cleanText(id, 64)).filter((id) => ruleSetIds.has(id)))] : [], devices: cleanDeviceProfiles(item.devices) };
   }).filter((item) => item.id && item.name && /^[A-Za-z0-9_-]{24,128}$/.test(item.token));
   const externalSources = (Array.isArray(input.externalSources) ? input.externalSources : []).map((item) => ({
@@ -434,7 +435,7 @@ function recordSubscriptionChanges(current, incoming) {
   } catch (error) { console.error("subscription history write failed", error); }
 }
 function subscriptionHistory(params) {
-  const subscriptionId = cleanText(params && params.subscriptionId, 64); return readSubscriptionHistory().filter((entry) => entry && entry.subscriptionId === subscriptionId && entry.snapshot && typeof entry.snapshot === "object").slice(-20).reverse().map((entry) => { const quota = entry.snapshot.quota && typeof entry.snapshot.quota === "object" ? entry.snapshot.quota : {}; return { id: cleanText(entry.id, 64), subscriptionId, savedAt: cleanText(entry.savedAt, 64), reason: entry.reason === "删除前" ? "删除前" : "更新前", snapshot: { name: cleanText(entry.snapshot.name), nodeIds: Array.isArray(entry.snapshot.nodeIds) ? entry.snapshot.nodeIds.map((id) => cleanText(id, 64)).filter(Boolean) : [], groups: Array.isArray(entry.snapshot.groups) ? clone(entry.snapshot.groups) : [], enabled: entry.snapshot.enabled !== false, expiresAt: cleanText(entry.snapshot.expiresAt, 64), quota: { mode: quota.mode === "machine" ? "machine" : "none", totalBytes: cleanByteCount(quota.totalBytes) }, policyMode: POLICY_MODES.has(entry.snapshot.policyMode) ? entry.snapshot.policyMode : "proxy-all", customRules: cleanCustomRules(entry.snapshot.customRules), ruleSetIds: Array.isArray(entry.snapshot.ruleSetIds) ? entry.snapshot.ruleSetIds.map((id) => cleanText(id, 64)).filter(Boolean) : [], devices: cleanDeviceProfiles(entry.snapshot.devices) } }; });
+  const subscriptionId = cleanText(params && params.subscriptionId, 64); return readSubscriptionHistory().filter((entry) => entry && entry.subscriptionId === subscriptionId && entry.snapshot && typeof entry.snapshot === "object").slice(-20).reverse().map((entry) => { const quota = entry.snapshot.quota && typeof entry.snapshot.quota === "object" ? entry.snapshot.quota : {}; const totalBytes = cleanByteCount(quota.totalBytes); return { id: cleanText(entry.id, 64), subscriptionId, savedAt: cleanText(entry.savedAt, 64), reason: entry.reason === "删除前" ? "删除前" : "更新前", snapshot: { name: cleanText(entry.snapshot.name), nodeIds: Array.isArray(entry.snapshot.nodeIds) ? entry.snapshot.nodeIds.map((id) => cleanText(id, 64)).filter(Boolean) : [], groups: Array.isArray(entry.snapshot.groups) ? clone(entry.snapshot.groups) : [], enabled: entry.snapshot.enabled !== false, expiresAt: cleanText(entry.snapshot.expiresAt, 64), quota: { mode: quota.mode === "machine" ? "machine" : "none", totalBytes, customTotalEnabled: quota.customTotalEnabled === true || (quota.customTotalEnabled !== false && totalBytes > 0) }, policyMode: POLICY_MODES.has(entry.snapshot.policyMode) ? entry.snapshot.policyMode : "proxy-all", customRules: cleanCustomRules(entry.snapshot.customRules), ruleSetIds: Array.isArray(entry.snapshot.ruleSetIds) ? entry.snapshot.ruleSetIds.map((id) => cleanText(id, 64)).filter(Boolean) : [], devices: cleanDeviceProfiles(entry.snapshot.devices) } }; });
 }
 function subscriptionChangePreview(params) {
   const state = readState(); const candidate = params && params.subscription;
@@ -454,7 +455,11 @@ function subscriptionChangePreview(params) {
   if (JSON.stringify(before.devices) !== JSON.stringify(after.devices)) fields.push(`设备档案：${before.devices.length} → ${after.devices.length}`);
   if (before.enabled !== after.enabled) fields.push(`订阅链接：${after.enabled ? "启用" : "停用"}`);
   if (before.expiresAt !== after.expiresAt) fields.push(after.expiresAt ? `有效期：${after.expiresAt.slice(0, 10)}` : "有效期：长期");
-  if (JSON.stringify(before.quota) !== JSON.stringify(after.quota)) fields.push(`服务器流量展示：${after.quota.mode === "machine" ? `开启 · 额度 ${after.quota.totalBytes ? (after.quota.totalBytes / 1024 ** 3).toFixed(2) + " GiB" : "未设置"}` : "关闭"}`);
+  if (JSON.stringify(before.quota) !== JSON.stringify(after.quota)) {
+    const machine = subscriptionMachine(next, state.nodes, state.machines);
+    const allowance = subscriptionAllowance(next, machine);
+    fields.push(`服务器流量展示：${after.quota.mode === "machine" ? `开启 · ${allowance.source === "custom" ? "自定义" : allowance.source === "server" ? "继承 VPS" : "未设置"}额度${allowance.total ? ` ${(allowance.total / 1024 ** 3).toFixed(2)} GiB` : ""}` : "关闭"}`);
+  }
   return { changed: !current || JSON.stringify(before) !== JSON.stringify(after), fields, addedNodes: state.nodes.filter((node) => added.includes(node.id)).map((node) => node.name), removedNodes: state.nodes.filter((node) => removed.includes(node.id)).map((node) => node.name), before: { nodes: before.nodeIds.length, groups: before.groups.length, rules: before.customRules.length + before.ruleSetIds.length, devices: before.devices.length }, after: { nodes: after.nodeIds.length, groups: after.groups.length, rules: after.customRules.length + after.ruleSetIds.length, devices: after.devices.length } };
 }
 function readRuleSetCache() { try { const value = JSON.parse(fs.readFileSync(RULE_SET_CACHE_FILE, "utf8")); return value && typeof value === "object" && !Array.isArray(value) ? value : {}; } catch (_) { return {}; } }
@@ -999,7 +1004,8 @@ function subscriptionTrafficEntry(state, subscription) {
   if (subscription?.quota?.mode !== 'machine') return null;
   const machine = subscriptionMachine(subscription, state.nodes, state.machines);
   if (!machine) return null;
-  const key = JSON.stringify([machine.id, machine.monitorClientId, subscription.quota.totalBytes]);
+  const allowance = subscriptionAllowance(subscription, machine);
+  const key = JSON.stringify([machine.id, machine.monitorClientId, allowance.total, allowance.source]);
   const cached = SUBSCRIPTION_TRAFFIC_CACHE.get(key);
   if (cached && Date.now() - cached.at < 60000) return cached;
   const entry = { at: Date.now(), result: null, promise: null };
@@ -1009,7 +1015,7 @@ function subscriptionTrafficEntry(state, subscription) {
       const request = async () => {
         const latest = (await server.call('common:getNodesLatestStatus', {}))?.[machine.monitorClientId];
         const traffic = serverTraffic({ ...machine, trafficPlan: { enabled: false } }, latest);
-        return traffic ? { ...traffic, total: cleanByteCount(subscription.quota.totalBytes) } : null;
+        return traffic ? { ...traffic, total: cleanByteCount(allowance.total), quotaSource: allowance.source } : null;
       };
       return await Promise.race([request(), new Promise(resolve => { timer = setTimeout(() => resolve(null), 2500); })]);
     } catch (_) { return null; } finally { clearTimeout(timer); }

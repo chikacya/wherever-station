@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { subscriptionMachine, cycleStart, serverTraffic } = require('../tools/subscription-traffic');
+const { subscriptionMachine, subscriptionAllowance, cycleStart, serverTraffic } = require('../tools/subscription-traffic');
 const machine = { id: 'a', name: 'A', monitorClientId: 'agent' };
 test('public downloads survive missing telemetry; fresh traffic is cached', async () => {
   const fs = require('node:fs'), os = require('node:os'), path = require('node:path'), vm = require('node:vm');
@@ -30,12 +30,24 @@ test('public downloads survive missing telemetry; fresh traffic is cached', asyn
     }
     const userinfo = (await download()).headers['Subscription-Userinfo'];
     assert.equal(userinfo, 'upload=200; download=300');
-    const withAllowance = sandbox.readState(); withAllowance.subscriptions[0].quota.totalBytes = 1000; sandbox.saveState(withAllowance);
+    const withPlan = sandbox.readState(); withPlan.machines[0].trafficPlan = { enabled: true, limitBytes: 2000 }; sandbox.saveState(withPlan);
+    assert.equal((await download()).headers['Subscription-Userinfo'], 'upload=200; download=300; total=2000');
+    assert.equal(methods.get('proxyConsole:getSubscriptionTraffic')().s.quotaSource, 'server');
+    const withAllowance = sandbox.readState(); withAllowance.subscriptions[0].quota.totalBytes = 1000; withAllowance.subscriptions[0].quota.customTotalEnabled = true; sandbox.saveState(withAllowance);
     assert.equal((await download()).headers['Subscription-Userinfo'], 'upload=200; download=300; total=1000');
-    await download(); assert.equal(calls, 2);
+    const backToPlan = sandbox.readState(); backToPlan.subscriptions[0].quota.customTotalEnabled = false; sandbox.saveState(backToPlan);
+    assert.equal((await download()).headers['Subscription-Userinfo'], 'upload=200; download=300; total=2000');
+    await download(); assert.equal(calls, 3);
     vm.runInContext('SUBSCRIPTION_TRAFFIC_CACHE.clear()', sandbox); fail = true;
     assert.equal((await download()).headers['Subscription-Userinfo'], undefined);
   } finally { fs.rmSync(storage, { recursive: true, force: true }); }
+});
+test('allowance inherits an enabled VPS plan and preserves legacy custom values', () => {
+  const planned = { ...machine, trafficPlan: { enabled: true, limitBytes: 2000 } };
+  assert.deepEqual(subscriptionAllowance({ quota: { mode: 'machine' } }, planned), { total: 2000, source: 'server' });
+  assert.deepEqual(subscriptionAllowance({ quota: { mode: 'machine', totalBytes: 1000 } }, planned), { total: 1000, source: 'custom' });
+  assert.deepEqual(subscriptionAllowance({ quota: { mode: 'machine', totalBytes: 1000, customTotalEnabled: false } }, planned), { total: 2000, source: 'server' });
+  assert.deepEqual(subscriptionAllowance({ quota: { mode: 'machine' } }, machine), { total: 0, source: 'none' });
 });
 test('traffic ownership covers groups, disabled nodes and unassigned nodes', () => {
   const nodes = [{ id: '1', machineId: 'a' }, { id: '2', machineId: 'b' }, { id: '3' }];

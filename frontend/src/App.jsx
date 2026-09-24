@@ -9,7 +9,7 @@ import React, {
 import { version as pluginVersion } from "../../package.json";
 import RuleEditor from "./RuleEditor.jsx";
 import subscriptionTrafficHelpers from "../../tools/subscription-traffic.js";
-const { subscriptionMachine } = subscriptionTrafficHelpers;
+const { subscriptionMachine, subscriptionAllowance } = subscriptionTrafficHelpers;
 import { exitGroups } from "./ip-profile.js";
 import { buildPreflightReport } from "./preflight.js";
 import {
@@ -2090,6 +2090,7 @@ function Subscriptions({ state, persist, notify, onOpenSettings }) {
           const url = subscriptionUrl(state, sub);
           const stats = access[sub.id];
           const eligibleMachine = subscriptionMachine(sub, state.nodes, state.machines);
+          const allowance = subscriptionAllowance(sub, eligibleMachine);
           const traffic = sub.quota?.mode === "machine" && eligibleMachine ? serverTraffic[sub.id] : null;
           const used = Number(traffic?.upload || 0) + Number(traffic?.download || 0);
           const expired = Boolean(sub.expiresAt && Date.parse(sub.expiresAt) <= Date.now());
@@ -2116,7 +2117,7 @@ function Subscriptions({ state, persist, notify, onOpenSettings }) {
                   {expired ? "已到期" : sub.enabled ? "已启用" : "已停用"}
                 </Status>
               </div>
-              {sub.quota?.mode === "machine" && <div className="subscription-traffic" aria-label="订阅流量展示"><span>整机 Agent 流量 · {eligibleMachine?.name || "暂停展示"}</span>{!eligibleMachine ? <span>输出节点不再全部归属于同一 VPS</span> : !traffic ? <span>Agent 暂无有效计数</span> : <><span>累计已用 <strong>{bytes(used)}</strong></span>{traffic.total > 0 && <><span>展示额度 <strong>{bytes(traffic.total)}</strong></span><span>{used > traffic.total ? "已超过展示额度" : `剩余 ${bytes(traffic.total - used)}`}</span><progress max={traffic.total} value={Math.min(used, traffic.total)} aria-label="订阅流量展示进度" /></>}<span>含整台 VPS 流量 · {new Date(traffic.observedAt).toLocaleString("zh-CN", { hour12: false })}</span></>}</div>}
+              {sub.quota?.mode === "machine" && <div className="subscription-traffic" aria-label="订阅流量展示"><span>整机 Agent 流量 · {eligibleMachine?.name || "暂停展示"}</span>{!eligibleMachine ? <span>输出节点不再全部归属于同一 VPS</span> : <>{allowance.total > 0 && <span>{allowance.source === "custom" ? "自定义额度" : "VPS 流量额度"} <strong>{bytes(allowance.total)}</strong></span>}{!traffic ? <span>Agent 暂无有效计数</span> : <><span>累计已用 <strong>{bytes(used)}</strong></span>{allowance.total > 0 && <><span>{used > allowance.total ? "已超过展示额度" : `参考差额 ${bytes(allowance.total - used)}`}</span><progress max={allowance.total} value={Math.min(used, allowance.total)} aria-label="订阅流量展示进度" /></>}<span>含整台 VPS 流量 · {new Date(traffic.observedAt).toLocaleString("zh-CN", { hour12: false })}</span></>}</>}</div>}
               <code className="url-preview">
                 {url.replace(sub.token, "••••••••••••")}
               </code>
@@ -2668,6 +2669,7 @@ function SubscriptionEditor({
       quota: {
         mode: subscription?.quota?.mode === "machine" ? "machine" : "none",
         totalBytes: subscription?.quota?.totalBytes || 0,
+        customTotalEnabled: subscription?.quota?.customTotalEnabled ?? Boolean(subscription?.quota?.totalBytes),
       },
       policyMode: subscription?.policyMode || "proxy-all",
       customRules: (subscription?.customRules || []).map((rule) => ({ ...rule })),
@@ -2675,7 +2677,7 @@ function SubscriptionEditor({
       devices: (subscription?.devices || []).map((device) => ({ ...device })),
     };
     const draft = readSessionDraft(draftKey)?.value;
-    setForm(draft ? { ...initial, ...draft, id: initial.id, token: initial.token, quota: { mode: draft.quota?.mode === "machine" ? "machine" : "none", totalBytes: draft.quota?.totalBytes || 0 } } : initial);
+    setForm(draft ? { ...initial, ...draft, id: initial.id, token: initial.token, quota: { mode: draft.quota?.mode === "machine" ? "machine" : "none", totalBytes: draft.quota?.totalBytes || 0, customTotalEnabled: draft.quota?.customTotalEnabled ?? Boolean(draft.quota?.totalBytes) } } : initial);
     setSearch("");
   }, [open, subscription?.id]);
   useEffect(() => {
@@ -2706,6 +2708,7 @@ function SubscriptionEditor({
   }, [recentNodeId, stage, form?.nodeIds.length]);
   if (!form) return null;
   const trafficMachine = subscriptionMachine(form, nodes, machines);
+  const trafficAllowance = subscriptionAllowance(form, trafficMachine);
   const visible = nodes.filter(
     (node) =>
       node.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -2995,6 +2998,7 @@ function SubscriptionEditor({
     if (saving) return;
     if (!form.name.trim()) return setSaveError("请填写订阅名称");
     if (!form.nodeIds.length) return setSaveError("请至少纳入一个节点");
+    if (form.quota?.mode === "machine" && form.quota.customTotalEnabled && !form.quota.totalBytes) return setSaveError("启用自定义额度后，请填写大于 0 的额度");
     setSaving(true);
     setSaveError("");
     try {
@@ -3080,8 +3084,8 @@ function SubscriptionEditor({
           <input type="checkbox" checked={form.quota?.mode === "machine"} disabled={!trafficMachine && form.quota?.mode !== "machine"} onChange={(event) => setForm(current => ({ ...current, quota: { ...current.quota, mode: event.target.checked ? "machine" : "none" } }))} />
           展示同 VPS 的 Agent 用量{trafficMachine ? " · " + trafficMachine.name : ""}
         </label>
-        {form.quota?.mode === "machine" && <Field label="订阅展示额度 GiB（可选）"><input type="number" min="0" step="0.01" value={form.quota.totalBytes ? Math.round(form.quota.totalBytes / 1024 ** 3 * 100) / 100 : ""} onChange={(event) => setForm(current => ({ ...current, quota: { ...current.quota, totalBytes: Math.round(Math.max(0, Number(event.target.value) || 0) * 1024 ** 3) } }))} placeholder="例如 500" /></Field>}
-        <p>{trafficMachine ? "已用量为整台 VPS 的 Agent 累计，不是本订阅独占或每月重置；展示额度独立于服务器套餐，超额仅提示。" : "全部输出节点归属于同一台已绑定 Agent 的 VPS 时可展示；否则暂停展示。"}</p>
+        {form.quota?.mode === "machine" && <><p>当前额度：{!trafficMachine ? "节点暂不属于同一 VPS" : trafficAllowance.total ? `${bytes(trafficAllowance.total)} · ${trafficAllowance.source === "custom" ? "自定义" : "继承 VPS 流量计划"}` : "未设置；VPS 流量计划尚无额度"}</p><label className="check-line"><input type="checkbox" checked={Boolean(form.quota.customTotalEnabled)} onChange={(event) => setForm(current => ({ ...current, quota: { ...current.quota, customTotalEnabled: event.target.checked } }))} />自定义订阅展示额度</label>{form.quota.customTotalEnabled && <Field label="自定义额度 GiB"><input type="number" min="0.01" step="0.01" required value={form.quota.totalBytes ? Math.round(form.quota.totalBytes / 1024 ** 3 * 100) / 100 : ""} onChange={(event) => setForm(current => ({ ...current, quota: { ...current.quota, totalBytes: Math.round(Math.max(0, Number(event.target.value) || 0) * 1024 ** 3) } }))} placeholder="例如 500" /></Field>}</>}
+        <p>{trafficMachine ? "已用量为整台 VPS 的 Agent 累计，不是本订阅独占，也不会按月重置；VPS 额度按其流量计划读取，超额仅提示。" : "全部输出节点归属于同一台已绑定 Agent 的 VPS 时可展示；否则暂停展示。"}</p>
       </details>
       <div className="editor-tabs" role="tablist" aria-label="订阅编辑模式">
         <button

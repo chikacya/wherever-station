@@ -8,6 +8,16 @@ function subscriptionMachine(subscription, nodes, machines) {
   return output.every(node => node.machineId === id) ? machines.find(machine => machine.id === id && machine.monitorClientId) || null : null;
 }
 
+function subscriptionAllowance(subscription, machine) {
+  const quota = subscription?.quota || {};
+  const custom = Number(quota.totalBytes) || 0;
+  const customEnabled = quota.customTotalEnabled === true || (quota.customTotalEnabled !== false && custom > 0);
+  if (customEnabled && custom > 0) return { total: custom, source: 'custom' };
+  const plan = machine?.trafficPlan || {};
+  if (plan.enabled === true && Number(plan.limitBytes) > 0) return { total: Number(plan.limitBytes), source: 'server' };
+  return { total: 0, source: 'none' };
+}
+
 function cycleStart(resetDay, now = Date.now()) {
   const d = new Date(now), day = Math.min(31, Math.max(1, Number(resetDay) || 1));
   const boundary = month => Date.UTC(d.getUTCFullYear(), month, Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), month + 1, 0)).getUTCDate()));
@@ -45,4 +55,4 @@ function serverTraffic(machine, latest, records = [], now = Date.now()) {
   return { ...result, rawUpload: upload, rawDownload: download, upload: plan.accounting === 'sum' || !plan.accounting ? upload : 0, download: plan.accounting === 'sum' || !plan.accounting ? download : used, total: Number(plan.limitBytes), basis: 'cycle-estimate', cycleStart: start, accounting: plan.accounting || 'sum' };
 }
 
-module.exports = { subscriptionMachine, cycleStart, serverTraffic };
+module.exports = { subscriptionMachine, subscriptionAllowance, cycleStart, serverTraffic };

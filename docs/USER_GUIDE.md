@@ -23,7 +23,7 @@ Server traffic plans are optional. Configure a quota, accounting mode (`upload +
 Server plans describe whole-VPS allowances; subscriptions may set a separate display-only allowance.
 
 - A server plan describes the VPS network allowance.
-- Same-VPS subscriptions can display cumulative Agent usage against that allowance without gating availability.
+- Same-VPS subscriptions can display cumulative Agent usage against the VPS traffic-monitoring allowance; an explicitly enabled custom subscription allowance takes precedence without gating availability.
 
 Use **Discover nodes** to inspect existing sing-box or Nowhere services. Discovery never changes their configuration. A candidate with incomplete public address, credentials, TLS, or Reality data remains a repair draft. A complete Nowhere result can first create a stopped adoption copy, followed by an explicit switch from the deployment page; staging the copy does not stop the original service.
 

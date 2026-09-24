@@ -23,21 +23,28 @@ test('public downloads survive missing telemetry; fresh traffic is cached', asyn
     assert.equal(Object.keys(methods.get('proxyConsole:getSubscriptionTraffic')()).length, 0);
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.match(methods.get('proxyConsole:getSubscriptionTraffic')().s['machineName'], /A/);
-    async function download() {
+    async function download(format = 'raw') {
       const res = { headers: {}, statusCode: 200, setHeader(k, v) { this.headers[k] = v; }, end(body) { this.body = body; } };
-      await sandbox.publicSubscription({ url: '/proxy/sub/' + 'a'.repeat(48), query: { format: 'raw' }, headers: {} }, res);
-      assert.equal(res.statusCode, 200); assert.match(res.body, /ss:\/\//); return res;
+      await sandbox.publicSubscription({ url: '/proxy/sub/' + 'a'.repeat(48), query: { format }, headers: {} }, res);
+      assert.equal(res.statusCode, 200); assert.equal(typeof res.body, 'string'); return res;
     }
     const userinfo = (await download()).headers['Subscription-Userinfo'];
     assert.equal(userinfo, 'upload=200; download=300');
     const withPlan = sandbox.readState(); withPlan.machines[0].trafficPlan = { enabled: true, limitBytes: 2000 }; sandbox.saveState(withPlan);
     assert.equal((await download()).headers['Subscription-Userinfo'], 'upload=200; download=300; total=2000');
+    assert.equal((await download('anywhere')).headers['Subscription-Userinfo'], (await download('base64')).headers['Subscription-Userinfo']);
     assert.equal(methods.get('proxyConsole:getSubscriptionTraffic')().s.quotaSource, 'server');
+    for (const [accounting, expected] of [['up', 'upload=200; download=0; total=2000'], ['down', 'upload=0; download=300; total=2000'], ['max', 'upload=0; download=300; total=2000']]) {
+      const changed = sandbox.readState(); changed.machines[0].trafficPlan.accounting = accounting; sandbox.saveState(changed);
+      assert.equal((await download('anywhere')).headers['Subscription-Userinfo'], expected);
+      assert.equal((await download('raw')).headers['Subscription-Userinfo'], expected);
+      assert.equal(methods.get('proxyConsole:getSubscriptionTraffic')().s.accounting, accounting);
+    }
     const withAllowance = sandbox.readState(); withAllowance.subscriptions[0].quota.totalBytes = 1000; withAllowance.subscriptions[0].quota.customTotalEnabled = true; sandbox.saveState(withAllowance);
     assert.equal((await download()).headers['Subscription-Userinfo'], 'upload=200; download=300; total=1000');
     const backToPlan = sandbox.readState(); backToPlan.subscriptions[0].quota.customTotalEnabled = false; sandbox.saveState(backToPlan);
-    assert.equal((await download()).headers['Subscription-Userinfo'], 'upload=200; download=300; total=2000');
-    await download(); assert.equal(calls, 3);
+    assert.equal((await download()).headers['Subscription-Userinfo'], 'upload=0; download=300; total=2000');
+    await download(); assert.equal(calls, 6);
     vm.runInContext('SUBSCRIPTION_TRAFFIC_CACHE.clear()', sandbox); fail = true;
     assert.equal((await download()).headers['Subscription-Userinfo'], undefined);
   } finally { fs.rmSync(storage, { recursive: true, force: true }); }

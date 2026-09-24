@@ -26,7 +26,8 @@ const { parseRuleSetText } = require(path.join(__dirname, "tools/rule-set"));
 const STATUS_CACHE = require(path.join(__dirname, "tools/instance-status-cache")).instanceStatusCache();
 const PROVIDER_OPERATIONS = new Map();
 const SOURCE_OPERATIONS = new Map();
-const { subscriptionMachine, subscriptionAllowance, cycleStart, serverTraffic } = require(path.join(__dirname, 'tools/subscription-traffic'));
+const TRAFFIC_PLAN_OPERATIONS = new Map();
+const { subscriptionMachine, subscriptionAllowance, subscriptionCounters, cycleStart, serverTraffic } = require(path.join(__dirname, 'tools/subscription-traffic'));
 const SUBSCRIPTION_TRAFFIC_CACHE = new Map();
 
 const STATE_FILE = path.join(__storageDir__, "state.json");
@@ -648,10 +649,41 @@ async function saveMachineTrafficPlan(params) {
       traffic_limit_type: plan.accounting,
     });
   }
-  machine.trafficPlan = plan;
-  state.revision += 1;
-  writeState(cleanState(state));
+  const latest = readState();
+  const current = latest.machines.find((item) => item.id === machineId && item.monitorClientId === machine.monitorClientId);
+  if (!current) throw new Error("服务器或 Agent 绑定已在同步期间变化，请刷新确认");
+  current.trafficPlan = plan;
+  latest.revision += 1;
+  writeState(cleanState(latest));
   return { state: readState(), sync: { komari: Boolean(machine.monitorClientId), clientId: machine.monitorClientId } };
+}
+function startMachineTrafficPlanOperation(params) {
+  const machineId = cleanText(params && params.machineId, 64);
+  const state = readState();
+  const plan = cleanTrafficPlan(params && params.plan);
+  if (params && params.plan && params.plan.enabled === true && !plan.enabled) throw new Error("启用流量计划前请填写大于 0 的额度");
+  const input = { machineId, revision: Number(params && params.revision), plan };
+  const signature = crypto.createHash("sha256").update(JSON.stringify(input)).digest("hex").slice(0, 24);
+  const operationId = requestOperationId(params);
+  const existing = TRAFFIC_PLAN_OPERATIONS.get(operationId);
+  if (existing) { if (existing.signature !== signature) throw new Error("requestId 已用于其他流量计划"); return { operationId, phase: existing.phase }; }
+  if (!state.machines.some((item) => item.id === machineId)) throw new Error("服务器已经不存在");
+  if (input.revision !== state.revision) throw new Error("数据已在其他页面更新，请刷新后重试");
+  if ([...TRAFFIC_PLAN_OPERATIONS.values()].some((item) => item.phase === "running" && item.machineId === machineId)) throw new Error("此服务器的流量计划正在保存，请稍候");
+  TRAFFIC_PLAN_OPERATIONS.set(operationId, { phase: "running", machineId, signature, startedAt: new Date().toISOString() });
+  Promise.resolve().then(() => saveMachineTrafficPlan(input)).then((result) => {
+    TRAFFIC_PLAN_OPERATIONS.set(operationId, { phase: "completed", machineId, signature, completedAt: new Date().toISOString(), result });
+  }).catch((error) => {
+    TRAFFIC_PLAN_OPERATIONS.set(operationId, { phase: "failed", machineId, signature, completedAt: new Date().toISOString(), error: cleanText(error && error.message, 240) || "流量计划保存失败" });
+  });
+  const cleanupTimer = setTimeout(() => TRAFFIC_PLAN_OPERATIONS.delete(operationId), 5 * 60 * 1000);
+  if (cleanupTimer && typeof cleanupTimer.unref === "function") cleanupTimer.unref();
+  return { operationId, phase: "running" };
+}
+function getMachineTrafficPlanOperation(params) {
+  const operation = TRAFFIC_PLAN_OPERATIONS.get(cleanText(params && params.operationId, 64));
+  if (!operation) throw new Error("流量计划任务不存在或已过期");
+  return clone(operation);
 }
 
 function secureTokenMatch(left, right) { const a = Buffer.from(String(left)); const b = Buffer.from(String(right)); return a.length === b.length && crypto.timingSafeEqual(a, b); }
@@ -1005,7 +1037,7 @@ function subscriptionTrafficEntry(state, subscription) {
   const machine = subscriptionMachine(subscription, state.nodes, state.machines);
   if (!machine) return null;
   const allowance = subscriptionAllowance(subscription, machine);
-  const key = JSON.stringify([machine.id, machine.monitorClientId, allowance.total, allowance.source]);
+  const key = JSON.stringify([machine.id, machine.monitorClientId, allowance.total, allowance.source, allowance.source === "server" ? machine.trafficPlan.accounting : "sum"]);
   const cached = SUBSCRIPTION_TRAFFIC_CACHE.get(key);
   if (cached && Date.now() - cached.at < 60000) return cached;
   const entry = { at: Date.now(), result: null, promise: null };
@@ -1015,7 +1047,7 @@ function subscriptionTrafficEntry(state, subscription) {
       const request = async () => {
         const latest = (await server.call('common:getNodesLatestStatus', {}))?.[machine.monitorClientId];
         const traffic = serverTraffic({ ...machine, trafficPlan: { enabled: false } }, latest);
-        return traffic ? { ...traffic, total: cleanByteCount(allowance.total), quotaSource: allowance.source } : null;
+        return traffic ? { ...subscriptionCounters(traffic, allowance, machine), total: cleanByteCount(allowance.total), quotaSource: allowance.source } : null;
       };
       return await Promise.race([request(), new Promise(resolve => { timer = setTimeout(() => resolve(null), 2500); })]);
     } catch (_) { return null; } finally { clearTimeout(timer); }
@@ -1994,7 +2026,8 @@ function load() {
   MANAGED_TASKS.resume();
   server.registerRPC("proxyConsole:previewPolicy", previewPolicy);
   server.registerRPC("proxyConsole:saveProvider", saveProvider);
-  server.registerRPC("proxyConsole:saveMachineTrafficPlan", saveMachineTrafficPlan);
+  server.registerRPC("proxyConsole:startMachineTrafficPlanOperation", startMachineTrafficPlanOperation);
+  server.registerRPC("proxyConsole:getMachineTrafficPlanOperation", getMachineTrafficPlanOperation);
   server.registerRPC("proxyConsole:getSubscriptionTraffic", getSubscriptionTraffic);
   server.registerRPC("proxyConsole:prepareMachineIpProfile", prepareMachineIpProfile);
   server.registerRPC("proxyConsole:recordMachineIpProfile", recordMachineIpProfile);

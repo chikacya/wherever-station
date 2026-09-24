@@ -49,7 +49,7 @@ assert.match(source, /sing-box 预设/, "deployment presets must have a manageme
 assert.match(source, /面板连接/, "external panels must have a provider surface");
 assert.match(source, /接入新 VPS/, "machines must expose the Agent onboarding flow");
 assert.match(source, /--month-rotate/, "new Agent onboarding must align the traffic counter cycle");
-assert.match(source, /saveMachineTrafficPlan/, "server traffic plans must sync through one business RPC");
+assert.match(source, /startMachineTrafficPlanOperation/, "server traffic plans must use a synchronous operation RPC");
 assert.match(source, /prepareExistingServiceDiscovery/, "machines must expose read-only existing service discovery");
 assert.match(source, /\[tab, me\?\.two_factor_enabled, refreshServices\]/, "host service polling must follow the loaded machine set");
 assert.match(source, /Promise\.allSettled\(/, "host service polling must isolate failures per Agent");

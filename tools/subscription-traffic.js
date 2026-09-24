@@ -18,6 +18,15 @@ function subscriptionAllowance(subscription, machine) {
   return { total: 0, source: 'none' };
 }
 
+function subscriptionCounters(traffic, allowance, machine) {
+  const accounting = allowance.source === 'server' ? machine?.trafficPlan?.accounting || 'sum' : 'sum';
+  const upload = traffic.upload, download = traffic.download;
+  if (accounting === 'up') return { ...traffic, download: 0, accounting };
+  if (accounting === 'down') return { ...traffic, upload: 0, accounting };
+  if (accounting === 'max') return { ...traffic, upload: 0, download: Math.max(upload, download), accounting };
+  return { ...traffic, accounting: 'sum' };
+}
+
 function cycleStart(resetDay, now = Date.now()) {
   const d = new Date(now), day = Math.min(31, Math.max(1, Number(resetDay) || 1));
   const boundary = month => Date.UTC(d.getUTCFullYear(), month, Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), month + 1, 0)).getUTCDate()));
@@ -55,4 +64,4 @@ function serverTraffic(machine, latest, records = [], now = Date.now()) {
   return { ...result, rawUpload: upload, rawDownload: download, upload: plan.accounting === 'sum' || !plan.accounting ? upload : 0, download: plan.accounting === 'sum' || !plan.accounting ? download : used, total: Number(plan.limitBytes), basis: 'cycle-estimate', cycleStart: start, accounting: plan.accounting || 'sum' };
 }
 
-module.exports = { subscriptionMachine, subscriptionAllowance, cycleStart, serverTraffic };
+module.exports = { subscriptionMachine, subscriptionAllowance, subscriptionCounters, cycleStart, serverTraffic };

@@ -472,6 +472,7 @@ export function nowhereVersionCapabilities(value) {
     morphWireGeneration: atLeast(2, 1, 0) ? 2 : 1,
     morphTcpPrelude: atLeast(2, 1, 0),
     transportMemoryProfile: true,
+    eventLog: !atLeast(2, 1, 1),
   };
 }
 export function moveItem(items, from, to) {

@@ -88,6 +88,15 @@ try:
         environment_text = re.sub(r'^NOWHERE_VERSION_VALUE=.*$', replacement, environment_text, flags=re.MULTILINE)
     else:
         environment_text = environment_text.rstrip('\n') + '\n' + replacement + '\n'
+    target_parts = tuple(int(part) for part in P['targetVersion'].lstrip('v').split('.')[:3])
+    log_migrated = False
+    report_interval_removed = False
+    if target_parts >= (2, 1, 1):
+        environment_text, portal_changes = re.subn(r'([?&]log=)event(?=&|"|\s|$)', r'\1info', environment_text)
+        environment_text, metadata_changes = re.subn(r'^NOWHERE_LOG_VALUE="?event"?$', 'NOWHERE_LOG_VALUE="info"', environment_text, flags=re.MULTILINE)
+        log_migrated = bool(portal_changes or metadata_changes)
+        environment_text, report_interval_changes = re.subn(r'^NOW_REPORT_INTERVAL=.*\n?', '', environment_text, flags=re.MULTILINE)
+        report_interval_removed = bool(report_interval_changes)
     with open(environment_candidate, 'x', encoding='utf-8') as handle:
         os.fchmod(handle.fileno(), 0o600)
         handle.write(environment_text)
@@ -113,7 +122,8 @@ try:
     except OSError:
         pass
     emit({'ok': True, 'state': active(P['unitName']), 'version': P['targetVersion'],
-          'binaryVersion': version_text, 'rolledBack': False})
+          'binaryVersion': version_text, 'rolledBack': False,
+          'logMigrated': log_migrated, 'reportIntervalRemoved': report_interval_removed})
 except Exception as exc:
     restored = not replaced
     try:

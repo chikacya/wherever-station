@@ -46,6 +46,10 @@ assert.equal(buildNowhereEndpoint("2001:db8::1", { tcpPort: 52080, udpPort: 0, t
 const v21 = planManagedNowhere({ id: "v21-test-node", version: "v2.1.0", publicHost: "example.com", port: 52082, key: "secret", morph: 1 });
 assert.equal(v21.summary.morphWireGeneration, 2);
 assert(v21.environment.includes('NOWHERE_VERSION_VALUE="v2.1.0"'));
+assert.equal(planManagedNowhere({ id: "v211-test-node", version: "v2.1.1", publicHost: "example.com", port: 52083, key: "secret" }).summary.log, "info");
+assert.throws(() => planManagedNowhere({ id: "v211-test-node", version: "v2.1.1", publicHost: "example.com", port: 52083, key: "secret", log: "event" }), /log level/);
+assert.throws(() => planManagedNowhere({ id: "v211-test-node", version: "v2.1.1", publicHost: "example.com", port: 52083, key: "secret", extensionEnvironment: { NOW_REPORT_INTERVAL: "30s" } }), /NOW_REPORT_INTERVAL/);
+assert.equal(planManagedNowhere({ id: "v210-event-node", version: "v2.1.0", publicHost: "example.com", port: 52083, key: "secret", log: "event" }).summary.log, "event");
 
 assert.throws(() => planManagedNowhere({ id: "valid-id-0001", version: "v1.8.3", publicHost: "example.com", port: 52077, key: "secret" }), /2\.x/);
 assert.throws(() => planManagedNowhere({ id: "valid-id-0001", version: "v3.0.0", publicHost: "example.com", port: 52077, key: "secret" }), /adapter/);

@@ -147,7 +147,7 @@ function planManagedNowhere(input = {}) {
   const etar = integer(input.etar ?? 0, "download rate", 0, 1_000_000);
   const dial = text(input.dial || "auto", "dial address", 253);
   const socks = text(input.socks || "none", "SOCKS address", 512);
-  const log = oneOf(input.log, ["none", "debug", "info", "warn", "error", "event"], "info", "log level");
+  const log = oneOf(input.log, capabilities.eventLog ? ["none", "debug", "info", "warn", "error", "event"] : ["none", "debug", "info", "warn", "error"], "info", "log level");
   const telemetryInterval = text(input.telemetryInterval || "1s", "telemetry interval", 16);
   const telemetryMatch = telemetryInterval.match(/^(\d+)(ms|s)$/);
   const telemetryMs = telemetryMatch
@@ -206,6 +206,7 @@ function planManagedNowhere(input = {}) {
   if (extensions.length > 32) throw new Error("Too many Nowhere extension settings");
   for (const [keyName, value] of extensions) {
     if (!/^NOW(?:HERE)?_[A-Z0-9_]{1,80}$/.test(keyName) || Object.hasOwn(environmentValues, keyName)) continue;
+    if (!capabilities.eventLog && keyName === "NOW_REPORT_INTERVAL") throw new Error("NOW_REPORT_INTERVAL was removed in Nowhere 2.1.1");
     environmentValues[keyName] = text(value, `extension ${keyName}`, 4096, true);
   }
   const environment = Object.entries(environmentValues).map(([keyName, value]) => `${keyName}=${quoteEnvironment(value)}`).join("\n") + "\n";

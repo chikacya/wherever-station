@@ -1672,6 +1672,10 @@ function recordManagedNowhereResult(params) {
       }
       else if (pending.action === "upgrade") {
         instance.version = nowhereCapabilities(pending.targetVersion).version;
+        if (!nowhereCapabilities(instance.version).eventLog) {
+          if (result.logMigrated === true || instance.log === "event") instance.log = "info";
+          delete instance.extensionEnvironment.NOW_REPORT_INTERVAL;
+        }
         instance.status = result.state === "active" ? "running" : "stopped";
         const linkedNode = state.nodes.find((item) => item.id === instance.nodeId);
         if (linkedNode) linkedNode.uri = planManagedNowhere(managedNowherePlanInput(instance, linkedNode)).links.anywhere[0].uri;

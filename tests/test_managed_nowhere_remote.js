@@ -83,6 +83,32 @@ assert(upgradeScript.includes("release-not-found"));
 assert(upgradeScript.includes("os.replace(P['binaryPath'], previous)"));
 assert(upgradeScript.includes("NOWHERE_VERSION_VALUE"));
 assert(!upgradeScript.includes("systemctl', 'stop', 'nowhere.service"));
+const legacyUpgradePlan = planManagedNowhere({ ...input, version: "v2.1.0", log: "event" });
+const legacyUpgrade = decoded("upgrade", { ...legacyUpgradePlan, targetVersion: "v2.1.1" });
+const upgradeTemp = fs.mkdtempSync(path.join(os.tmpdir(), "nowhere-upgrade-test-"));
+try {
+  const binaryPath = path.join(upgradeTemp, "nowhere");
+  const environmentPath = path.join(upgradeTemp, "nowhere.env");
+  const unitPath = path.join(upgradeTemp, "managed.service");
+  fs.writeFileSync(binaryPath, "old binary");
+  fs.writeFileSync(unitPath, "fixture");
+  fs.writeFileSync(environmentPath, legacyUpgradePlan.environment + 'NOW_REPORT_INTERVAL="30s"\n');
+  const payload = { ...legacyUpgrade.payload, directory: upgradeTemp, binaryPath, environmentPath, unitPath };
+  const stub = `os.geteuid=lambda:0\nstates={P['unitName']:'active'}\ndef fake_run(args,**kwargs):\n if args[:2]==['systemctl','is-active']:\n  state=states.get(args[2],'inactive'); return subprocess.CompletedProcess(args,0 if state=='active' else 3,stdout=state+'\\n',stderr='')\n if args[:2]==['systemctl','stop']:\n  states[args[2]]='inactive'; return subprocess.CompletedProcess(args,0,stdout='',stderr='')\n if args[:2]==['systemctl','start']:\n  states[args[2]]='active'; return subprocess.CompletedProcess(args,0,stdout='',stderr='')\n if args[0].endswith('.next') and args[1]=='--version':\n  return subprocess.CompletedProcess(args,0,stdout='nowhere-v2.1.1',stderr='')\n raise AssertionError(args)\nsubprocess.run=fake_run\n`;
+  const script = legacyUpgrade.script
+    .replace("P=json.loads(base64.b64decode(sys.argv[1],validate=True).decode())", "P=json.loads(base64.b64decode(sys.argv[1],validate=True).decode())\nos.geteuid=lambda:0")
+    .replace("download_release(P['targetVersion'], candidate)", "with open(candidate, 'wb') as handle: handle.write(b'new binary')")
+    .replace("previous = P['binaryPath'] + '.rollback'", stub + "\nprevious = P['binaryPath'] + '.rollback'");
+  const result = spawnSync("python3", ["-c", script, Buffer.from(JSON.stringify(payload)).toString("base64")], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(parseManagedNowhereOutput(result.stdout).ok, true, result.stdout);
+  const migrated = fs.readFileSync(environmentPath, "utf8");
+  assert(migrated.includes('NOWHERE_VERSION_VALUE="v2.1.1"'));
+  assert(migrated.includes('NOWHERE_LOG_VALUE="info"'));
+  assert(migrated.includes('log=info'));
+  assert(!migrated.includes("log=event"));
+  assert(!migrated.includes("NOW_REPORT_INTERVAL"));
+} finally { fs.rmSync(upgradeTemp, { recursive: true, force: true }); }
 assert.throws(() => buildManagedNowhereCommand("upgrade", { ...input, targetVersion: "v1.8.3" }), /unverified|2\.x/);
 assert.throws(() => buildManagedNowhereCommand("migrate-v2", input), /action/);
 assert.throws(() => buildManagedNowhereCommand("rollback-v1", input), /action/);
@@ -123,4 +149,4 @@ try {
     assert.equal(parseManagedNowhereOutput(result.stdout).error, 'update-in-progress');
   }
 } finally { fs.rmSync(temp, { recursive: true, force: true }); }
-console.log("managed Nowhere remote command tests passed (commands inspected only; no host operations)");
+console.log("managed Nowhere remote command and simulated upgrade tests passed (no host operations)");

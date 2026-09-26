@@ -4894,7 +4894,7 @@ const NOWHERE_RESERVED_EXTENSION_KEYS = new Set([
   "NOWHERE_CERTIFICATE_HOST_VALUE", "NOWHERE_CERTIFICATE_DAYS_VALUE", "NOW_TELEMETRY_INTERVAL", "NOW_TRANSPORT_MEMORY_PROFILE",
 ]);
 
-function NowhereExtensionEditor({ value, onChange }) {
+function NowhereExtensionEditor({ value, onChange, capabilities }) {
   const [keyName, setKeyName] = useState("");
   const [settingValue, setSettingValue] = useState("");
   const [error, setError] = useState("");
@@ -4903,6 +4903,7 @@ function NowhereExtensionEditor({ value, onChange }) {
     const key = keyName.trim().toUpperCase();
     if (!/^NOW(?:HERE)?_[A-Z0-9_]{1,80}$/.test(key)) return setError("名称必须以 NOW_ 或 NOWHERE_ 开头，并只包含大写字母、数字和下划线");
     if (NOWHERE_RESERVED_EXTENSION_KEYS.has(key)) return setError("该名称已由标准配置项管理，请使用上方对应字段");
+    if (!capabilities.eventLog && key === "NOW_REPORT_INTERVAL") return setError("Nowhere 2.1.1 已移除此参数");
     if (Object.hasOwn(value || {}, key)) return setError("该扩展参数已经存在");
     onChange({ ...(value || {}), [key]: settingValue });
     setKeyName(""); setSettingValue(""); setError("");
@@ -4924,7 +4925,7 @@ function NowhereAdvancedFields({ values, onPatch, capabilities }) {
     <Field label="下载限速 Mbps"><input type="number" min="0" value={values.etar || 0} onChange={(event) => update("etar", Number(event.target.value))} /></Field>
     <Field label="拨号地址"><input value={values.dial || "auto"} onChange={(event) => update("dial", event.target.value)} /></Field>
     <Field label="SOCKS"><input value={values.socks || "none"} onChange={(event) => update("socks", event.target.value)} /></Field>
-    <Field label="日志级别"><select value={values.log || "info"} onChange={(event) => update("log", event.target.value)}>{["none", "debug", "info", "warn", "error", "event"].map((option) => <option key={option}>{option}</option>)}</select></Field>
+    <Field label="日志级别"><select value={values.log || "info"} onChange={(event) => update("log", event.target.value)}>{["none", "debug", "info", "warn", "error", ...(capabilities.eventLog ? ["event"] : [])].map((option) => <option key={option}>{option}</option>)}</select></Field>
     <Field label="遥测间隔" hint="允许 250ms–60s"><input value={values.telemetryInterval || "1s"} onChange={(event) => update("telemetryInterval", event.target.value)} placeholder="例如 1s" /></Field>
     <Field label="Vector SOCKS"><input value={values.vectorSocks || "127.0.0.1:1080"} onChange={(event) => update("vectorSocks", event.target.value)} /></Field>
     <Field label="Vector SNI"><input value={values.vectorSni || "none"} onChange={(event) => update("vectorSni", event.target.value)} /></Field>
@@ -4935,7 +4936,7 @@ function NowhereAdvancedFields({ values, onPatch, capabilities }) {
     <details className="nowhere-experimental">
       <summary>实验性环境变量{Object.keys(values.extensionEnvironment || {}).length ? ` · ${Object.keys(values.extensionEnvironment).length}` : ""}</summary>
       <p>仅在 Nowhere 官方文档明确要求时使用。这里会原样保留尚未进入标准表单的环境变量；普通部署无需填写。</p>
-      <NowhereExtensionEditor value={values.extensionEnvironment} onChange={(next) => update("extensionEnvironment", next)} />
+      <NowhereExtensionEditor value={values.extensionEnvironment} capabilities={capabilities} onChange={(next) => update("extensionEnvironment", next)} />
     </details>
   </>;
 }

@@ -11,11 +11,11 @@
         "zh-CN": "节点、订阅、宿主与代理服务工作台",
         "en": "Workspace for nodes, subscriptions, hosts, and proxy services"
       },
-      "version": "0.73.1",
+      "version": "0.74.0",
       "author": "chikacya",
       "url": "https://github.com/chikacya/wherever-station",
-      "download": "https://github.com/chikacya/wherever-station/releases/download/v0.73.1/wherever-station-0.73.1.zip",
-      "sha256": "8bd2edff3ba10e902c59e120d737675a56b9dee57d793eff707a48689a53fc1a",
+      "download": "https://github.com/chikacya/wherever-station/releases/download/v0.74.0/wherever-station-0.74.0.zip",
+      "sha256": "da8e473285fe3ded618fc2f3ee17f8996a71e9eb15d103076c7baacaadd96e23",
       "komari": ">=1.4.3"
     }
   ]

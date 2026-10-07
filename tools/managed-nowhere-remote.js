@@ -85,7 +85,7 @@ function buildManagedNowhereCommand(action, input, sourceMode = "download") {
     if (!/^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(targetVersion)) throw new Error("Invalid target Nowhere version");
     const current = nowhereCapabilities(plan.version);
     const target = nowhereCapabilities(targetVersion);
-    if (!current.verified || !target.verified || current.protocolGeneration !== target.protocolGeneration) throw new Error("Nowhere major-version migration required or version is unverified");
+    if ((!current.verified && current.version !== "v2.2.0") || !target.verified || current.protocolGeneration !== target.protocolGeneration) throw new Error("Nowhere major-version migration required or version is unverified");
     return encodedCommand(lockExistingInstance(scriptFile("nowhere-binary-upgrade.py")), { ...payload, targetVersion });
   }
   if (["start", "stop", "restart"].includes(action)) {

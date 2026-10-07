@@ -62,11 +62,11 @@ assert(certificateAsset); assert.equal(certificateAsset.publicKeySha256, publicK
 const pinnedPreview = methods.get("proxyConsole:previewManagedSingBox")({ input: { id: "sb-pinned-test01", name: "Pinned Hysteria", machineId, protocol: "hysteria2", publicHost: "managed.example.com", port: 52076, password: "pinned-password", certificateAssetId: certificateAsset.id } });
 assert.equal(new URL(pinnedPreview.clientUri).searchParams.get("pinSHA256"), certificatePin); assert(!new URL(pinnedPreview.clientUri).searchParams.has("insecure"));
 const certInspect = methods.get("proxyConsole:prepareCertificateAction")({ action: "inspect", certificateId: certificateAsset.id, requestId: "request-certificate-inspect-01" });
-state = methods.get("proxyConsole:recordCertificateResult")({ operationId: certInspect.operationId, result: { ok: true, status: "warning", fingerprintSha256: certificatePin, publicKeySha256: publicKeyPin, sans: ["managed.example.com"], expiresAt: "2026-10-01T00:00:00Z" } }).state;
+state = methods.get("proxyConsole:recordCertificateResult")({ operationId: certInspect.operationId, result: { ok: true, status: "warning", fingerprintSha256: certificatePin, publicKeySha256: publicKeyPin, sans: ["managed.example.com"], expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() } }).state;
 assert.equal(state.certificates.find((item) => item.id === certificateAsset.id).status, "warning");
 const managedDefaults = methods.get("proxyConsole:newManagedNowhereValues")();
-assert(/^nw-[a-f0-9]{24}$/.test(managedDefaults.id)); assert(managedDefaults.key.length >= 24);
-assert.equal(managedDefaults.version, "v2.1.0");
+assert(/^nw-[a-f0-9]{24}$/.test(managedDefaults.id)); assert(/^[a-f0-9]{32}$/.test(managedDefaults.key));
+assert.equal(managedDefaults.version, "v2.2.1");
 const managedInput = { ...managedDefaults, name: "托管 Nowhere", machineId, publicHost: "managed.example.com", listenHost: "127.0.0.1", port: 52077, client: "anywhere", network: "mix", tls: 1, morph: 1 };
 const nowhereCertificatePreview = methods.get("proxyConsole:previewManagedNowhere")({ input: { ...managedInput, certificateAssetId: certificateAsset.id } });
 assert.equal(nowhereCertificatePreview.certificate.mode, "existing");
@@ -107,6 +107,18 @@ assert.equal(state.managedInstances.find(item => item.id === managedDefaults.id)
 assert.equal(state.managedInstances.find(item => item.id === managedDefaults.id).name, 'Renamed Nowhere');
 assert.equal(state.nodes.find(item => item.id === state.managedInstances.find(item => item.id === managedDefaults.id).nodeId).name, 'Renamed Nowhere');
 assert(state.nodes.some(item => item.uri === editedPlan.links.anywhere[0].uri), 'successful edit publishes new link');
+// Native 2.2 connectivity requires the certificate read by the owning Agent.
+const withoutPinStatus = methods.get("proxyConsole:prepareManagedNowhereAction")({ instanceId: managedDefaults.id, action: "status" });
+methods.get("proxyConsole:recordManagedNowhereResult")({ operationId: withoutPinStatus.operationId, result: { ok: true, state: "active", installed: true } });
+assert.throws(() => methods.get("proxyConsole:prepareConnectivityCheck")({ instanceId: managedDefaults.id, sourceMachineId: machineId }), /刷新实例状态/);
+const pinnedStatus = methods.get("proxyConsole:prepareManagedNowhereAction")({ instanceId: managedDefaults.id, action: "status" });
+state = methods.get("proxyConsole:recordManagedNowhereResult")({ operationId: pinnedStatus.operationId, result: { ok: true, state: "active", installed: true, certificate: { mode: "ephemeral", valid: true, fingerprint: "d".repeat(64) } } }).state;
+assert.equal(state.managedInstances.find(item => item.id === managedDefaults.id).observedCertificatePin, "d".repeat(64));
+assert(methods.get("proxyConsole:prepareConnectivityCheck")({ instanceId: managedDefaults.id, sourceMachineId: machineId }).command);
+const pinRestart = methods.get("proxyConsole:prepareManagedNowhereAction")({ instanceId: managedDefaults.id, action: "restart" });
+state = methods.get("proxyConsole:recordManagedNowhereResult")({ operationId: pinRestart.operationId, result: { ok: true, state: "active" } }).state;
+assert.equal(state.managedInstances.find(item => item.id === managedDefaults.id).observedCertificatePin, "");
+assert.throws(() => methods.get("proxyConsole:prepareConnectivityCheck")({ instanceId: managedDefaults.id, sourceMachineId: machineId }), /刷新实例状态/);
 assert.throws(() => methods.get("proxyConsole:prepareManagedNowhereAction")({ instanceId: managedDefaults.id, action: "upgrade", targetVersion: "v2.0.1" }), /协同升级/);
 const upgrade = methods.get("proxyConsole:prepareManagedNowhereAction")({ instanceId: managedDefaults.id, action: "upgrade", targetVersion: "v2.0.1", confirmation: "morph-peers-coordinated" });
 state = methods.get("proxyConsole:recordManagedNowhereResult")({ operationId: upgrade.operationId, result: { ok: true, state: "inactive", version: "v2.0.1" } }).state;

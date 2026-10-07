@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const { nowhereCapabilities } = require("./nowhere-capabilities");
+const { skippedVersions = [] } = require("./nowhere-compatibility.json");
 
 function stableReleaseTags(input) {
   return [...new Set((Array.isArray(input) ? input : [])
@@ -17,9 +18,9 @@ function stableReleaseTags(input) {
 function compatibilityReport(releases) {
   const entries = stableReleaseTags(releases).map((tag) => {
     const capabilities = nowhereCapabilities(tag);
-    return { tag, adapter: capabilities.adapter, generation: capabilities.protocolGeneration, status: capabilities.verified ? "verified" : capabilities.supported ? "compatible-range" : "unknown-adapter" };
+    return { tag, adapter: capabilities.adapter, generation: capabilities.protocolGeneration, status: skippedVersions.includes(tag) ? "skipped" : capabilities.verified ? "verified" : capabilities.supported ? "compatible-range" : "unknown-adapter" };
   });
-  return { entries, pending: entries.filter((entry) => entry.status !== "verified") };
+  return { entries, pending: entries.filter((entry) => !["verified", "skipped"].includes(entry.status)) };
 }
 
 async function main() {

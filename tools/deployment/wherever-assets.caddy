@@ -1,0 +1,24 @@
+# Add inside the Komari site block. Authentication still runs in Komari.
+# Cache only successful, content-hashed Wherever Station JavaScript and CSS.
+@wherever_js {
+  method GET HEAD
+  path_regexp wherever_js ^/api/admin/plugin/proxy-console/pages/assets/[A-Za-z0-9_-]+-[A-Za-z0-9_-]{8}\.js$
+}
+header @wherever_js {
+  Cache-Control "private, max-age=31536000, immutable"
+  match {
+    status 200
+    header Content-Type *javascript*
+  }
+}
+@wherever_css {
+  method GET HEAD
+  path_regexp wherever_css ^/api/admin/plugin/proxy-console/pages/assets/[A-Za-z0-9_-]+-[A-Za-z0-9_-]{8}\.css$
+}
+header @wherever_css {
+  Cache-Control "private, max-age=31536000, immutable"
+  match {
+    status 200
+    header Content-Type text/css*
+  }
+}

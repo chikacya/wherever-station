@@ -25,3 +25,7 @@ assert.deepEqual(report.entries.map((entry) => [entry.tag, entry.status]), [
 assert.deepEqual(report.pending.map((entry) => entry.tag), ["v3.0.0"]);
 
 console.log("Nowhere release monitor tests passed");
+
+const transitionalReport = compatibilityReport([{ tag_name: "v2.2.0" }, { tag_name: "v2.2.1" }]);
+assert.equal(transitionalReport.pending.length, 0);
+assert.equal(transitionalReport.entries.find(item => item.tag === "v2.2.0").status, "skipped");

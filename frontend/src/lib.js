@@ -147,6 +147,7 @@ export function normalizeNodeName(value) {
   }
 }
 export const NOWHERE_RELEASE_FALLBACK = Object.freeze([
+  "v2.2.1",
   "v2.1.0",
   "v2.0.2",
   "v2.0.1",
@@ -473,6 +474,8 @@ export function nowhereVersionCapabilities(value) {
     morphTcpPrelude: atLeast(2, 1, 0),
     transportMemoryProfile: true,
     eventLog: !atLeast(2, 1, 1),
+    dualStackDial: atLeast(2, 2, 0),
+    strictSharedKey: atLeast(2, 2, 0),
   };
 }
 export function moveItem(items, from, to) {
@@ -480,4 +483,10 @@ export function moveItem(items, from, to) {
   const [item] = next.splice(from, 1);
   next.splice(to, 0, item);
   return next;
+}
+
+export function nowhereKeyNeedsUpdate(uri, targetVersion) {
+  if (!nowhereVersionCapabilities(targetVersion).strictSharedKey) return false;
+  try { const version = String(targetVersion).replace(/^v/, "").split(".").map(Number); const relaxed = version[0] > 2 || version[1] > 2 || (version[1] === 2 && version[2] >= 1); return !(relaxed ? /^[0-9a-f]{32,64}$/ : /^[0-9a-f]{64}$/).test(decodeURIComponent(new URL(uri).username)); }
+  catch (_) { return true; }
 }

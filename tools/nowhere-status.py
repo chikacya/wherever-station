@@ -5,6 +5,8 @@ import shlex
 import shutil
 import socket
 import ssl
+import re
+from urllib.parse import urlencode, quote
 
 
 def environment_values(filename):
@@ -66,11 +68,26 @@ def certificate_details(values, state):
             result['note'] = 'fingerprint-unavailable-udp-only'
             return result
         host = values.get('NOWHERE_LISTEN_HOST_VALUE') or '127.0.0.1'
-        if host in ('0.0.0.0', '::', ''):
+        if host in ('0.0.0.0', ''):
             host = '127.0.0.1'
-        port = int(values.get('NOWHERE_PORT_VALUE') or 0)
+        elif host == '::':
+            host = '::1'
+        port = int(values.get('NOWHERE_TCP_PORT_VALUE') or values.get('NOWHERE_PORT_VALUE') or 0)
+        version = tuple(int(part) for part in re.findall(r'\d+', values.get('NOWHERE_VERSION_VALUE', ''))[:3])
+        if version >= (2, 2, 0):
+            endpoint_host = '[' + host + ']' if ':' in host else host
+            uri = 'nowhere://' + quote(values.get('NOWHERE_KEY_VALUE', ''), safe='') + '@' + endpoint_host + '/tcp:' + str(port)
+            uri += '?' + urlencode({'morph': values.get('NOWHERE_MORPH_VALUE', '0')})
+            inspected = run([P['binaryPath'], 'fingerprint', uri], 10)
+            pin = inspected.stdout.strip()
+            if inspected.returncode == 0 and re.fullmatch(r'[0-9a-f]{64}', pin):
+                result.update(fingerprint=pin, ephemeral=True)
+            else:
+                result['note'] = 'fingerprint-probe-failed'
+            return result
         try:
             context = ssl.create_default_context()
+            context.set_alpn_protocols(['nw2'])
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
             with socket.create_connection((host, port), timeout=5) as raw:

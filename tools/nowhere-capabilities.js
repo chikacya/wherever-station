@@ -82,6 +82,8 @@ function nowhereCapabilities(version) {
     morphTcpPrelude: atLeast(normalized, "v2.1.0"),
     transportMemoryProfile: true,
     eventLog: !atLeast(normalized, "v2.1.1"),
+    dualStackDial: atLeast(normalized, "v2.2.0"),
+    strictSharedKey: atLeast(normalized, "v2.2.0"),
   };
 }
 

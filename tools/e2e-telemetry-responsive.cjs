@@ -6,7 +6,7 @@ async function main() {
   const opt = name => args.includes(name) ? args[args.indexOf(name) + 1] : '';
   const base = opt('--url').replace(/\/$/, '');
   if (!base.startsWith('http://127.0.0.1:')) throw new Error('Supply --url http://127.0.0.1:PORT');
-  const browser = await chromium.launch({ channel: 'msedge', headless: true });
+  const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {}), headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     page.setDefaultTimeout(8000);

@@ -108,6 +108,34 @@ try {
   assert(migrated.includes('log=info'));
   assert(!migrated.includes("log=event"));
   assert(!migrated.includes("NOW_REPORT_INTERVAL"));
+  // A rejected 2.2 key must leave the running service, binary and config intact.
+  for (const [portal, expectedError] of [
+    ['portal://short@127.0.0.1:52077', 'shared-key-upgrade-required'],
+    ['portal://' + 'a'.repeat(64) + '@127.0.0.1:52077?next=short%40upstream.example', 'next-key-upgrade-required'],
+  ]) {
+    const before = 'NOWHERE_PORTAL=' + JSON.stringify(portal) + '\nNOWHERE_VERSION_VALUE="v2.1.1"\n';
+    fs.writeFileSync(environmentPath, before);
+    fs.writeFileSync(binaryPath, 'unchanged binary');
+    const blockedStub = stub.replace('nowhere-v2.1.1', 'nowhere-v2.2.1')
+      .replace("states[args[2]]='inactive'; return", "raise AssertionError('must not stop service'); return")
+      .replace("states[args[2]]='active'; return", "raise AssertionError('must not start service'); return");
+    const blockedScript = script.replace(stub, blockedStub);
+    const blocked = spawnSync('python3', ['-c', blockedScript, Buffer.from(JSON.stringify({ ...payload, targetVersion: 'v2.2.1' })).toString('base64')], { encoding: 'utf8' });
+    assert.equal(blocked.status, 0, blocked.stderr);
+    const blockedResult = parseManagedNowhereOutput(blocked.stdout);
+    assert.equal(blockedResult.error, expectedError, blocked.stdout);
+    assert.equal(blockedResult.state, 'active');
+    assert.equal(fs.readFileSync(environmentPath, 'utf8'), before);
+    assert.equal(fs.readFileSync(binaryPath, 'utf8'), 'unchanged binary');
+  }
+
+  const retainedKey = 'c'.repeat(32);
+  fs.writeFileSync(environmentPath, 'NOWHERE_PORTAL="portal://' + retainedKey + '@127.0.0.1:52077"\nNOWHERE_VERSION_VALUE="v2.1.1"\n');
+  const accepted = spawnSync('python3', ['-c', script.replace(stub, stub.replace('nowhere-v2.1.1', 'nowhere-v2.2.1')), Buffer.from(JSON.stringify({ ...payload, targetVersion: 'v2.2.1' })).toString('base64')], { encoding: 'utf8' });
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.equal(parseManagedNowhereOutput(accepted.stdout).ok, true, accepted.stdout);
+  assert(fs.readFileSync(environmentPath, 'utf8').includes(retainedKey));
+  assert(fs.readFileSync(environmentPath, 'utf8').includes('v2.2.1'));
 } finally { fs.rmSync(upgradeTemp, { recursive: true, force: true }); }
 assert.throws(() => buildManagedNowhereCommand("upgrade", { ...input, targetVersion: "v1.8.3" }), /unverified|2\.x/);
 assert.throws(() => buildManagedNowhereCommand("migrate-v2", input), /action/);
@@ -150,3 +178,7 @@ try {
   }
 } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 console.log("managed Nowhere remote command and simulated upgrade tests passed (no host operations)");
+
+assert.throws(() => buildManagedNowhereCommand("upgrade", { ...input, targetVersion: "v2.2.0" }), /unverified/);
+const transitional = planManagedNowhere({ ...input, version: "v2.2.0", key: "a".repeat(64) });
+assert(buildManagedNowhereCommand("upgrade", { ...transitional, targetVersion: "v2.2.1" }).includes("python3"));

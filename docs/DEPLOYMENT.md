@@ -150,3 +150,11 @@ If the plugin cannot start, reinstall the previous ZIP and restore plugin data f
 - The public subscription base URL resolves from the intended client network.
 - Subscription preflight reports the expected formats and skipped protocols.
 - Managed instances, if used, pass a real connectivity check after their ports are opened.
+
+## Static asset caching
+
+For Caddy deployments, add [`tools/deployment/wherever-assets.caddy`](../tools/deployment/wherever-assets.caddy) inside the Komari site block. Back up the configuration, run `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`, then reload gracefully.
+
+Only successful, content-hashed Wherever Station JavaScript and CSS responses receive private browser caching. HTML, RPC, unauthenticated responses and errors retain their original cache policy. Plugin upgrades generate new asset filenames, so reopening the page loads the new version. Other deployments and direct access to the Komari port need their own cache configuration.
+
+`tools/measure-live-performance.cjs` compares cold and warm visits and records ready time, FCP, LCP and long tasks. `tools/check-live-asset-cache.cjs` verifies cache scope and authentication. Both accept `--url`, `--credentials` and `--output`; reports contain no credentials or node data.

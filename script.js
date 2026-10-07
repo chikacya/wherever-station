@@ -342,7 +342,7 @@ function cleanState(input) {
     client: ["anywhere", "vector", "both"].includes(item && item.client) ? item.client : "anywhere",
     network: ["mix", "tcp", "udp"].includes(item && item.network) ? item.network : "mix", tls: Number(item && item.tls) === 2 ? 2 : 1,
     alpn: item && item.kind === "nowhere" ? "nw2" : cleanText(item && item.alpn, 64), rate: Math.min(1000000, Math.max(0, Number(item && item.rate) || 0)),
-    etar: Math.min(1000000, Math.max(0, Number(item && item.etar) || 0)), dial: cleanText(item && item.dial, 253) || "auto",
+    etar: Math.min(1000000, Math.max(0, Number(item && item.etar) || 0)), dial: cleanText(item && item.dial, 253) || "auto", dial4: cleanText(item && item.dial4, 253), dial6: cleanText(item && item.dial6, 253), observedCertificatePin: cleanText(item && item.observedCertificatePin, 64), pinCheckedAt: cleanIsoDate(item && item.pinCheckedAt),
     socks: cleanText(item && item.socks, 512) || "none", log: ["none", "debug", "info", "warn", "error", "event"].includes(item && item.log) ? item.log : "info",
     telemetryInterval: cleanText(item && item.telemetryInterval, 16) || "1s",
     vectorSocks: cleanText(item && item.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(item && item.vectorSni, 253) || "none",
@@ -1413,7 +1413,7 @@ function parseExistingServiceDiscovery(params) {
   return result;
 }
 function newManagedNowhereValues() {
-  return { id: `nw-${randomId()}`, key: crypto.randomBytes(24).toString("hex"), version: "v2.1.0", port: 2077, tcpPort: 2077, udpPort: 2077, tcpCarrier: "tcp", udpCarrier: "udp", morph: 0, transportMemoryProfile: "throughput" };
+  return { id: `nw-${randomId()}`, key: crypto.randomBytes(16).toString("hex"), version: "v2.2.1", port: 2077, tcpPort: 2077, udpPort: 2077, tcpCarrier: "tcp", udpCarrier: "udp", morph: 0, transportMemoryProfile: "throughput" };
 }
 function managedNowherePorts(value) {
   return [
@@ -1431,7 +1431,7 @@ function managedNowherePlanInput(instance, node) {
   try { parsed = new URL(node.uri); } catch (_) { throw new Error("托管实例关联的 Nowhere 节点链接无效"); }
   let key = parsed.username;
   try { key = decodeURIComponent(key); } catch (_) {}
-  return { ...instance, id: instance.id, key, name: instance.name };
+  return { ...instance, id: instance.id, key, name: instance.name, vectorPin: instance.observedCertificatePin || node.certificate?.fingerprintSha256 || instance.vectorPin };
 }
 function publicManagedNowherePlan(plan) {
   return {
@@ -1464,7 +1464,7 @@ function createManagedNowhereDraft(params) {
   const nodeId = randomId(); const now = new Date().toISOString();
   const certificate = input.certificateAssetId ? { assetId: cleanText(input.certificateAssetId, 64), selfSigned: input.certificateSelfSigned === true, fingerprintSha256: cleanText(input.certificateFingerprintSha256, 64), publicKeySha256: cleanText(input.certificatePublicKeySha256, 64), expiresAt: cleanIsoDate(input.certificateExpiresAt) } : null;
   state.nodes.push({ id: nodeId, name: plan.name, protocol: "nowhere", machineId, uri: plan.links.anywhere[0].uri, enabled: true, tags: ["托管", "Nowhere"], source: "manual", sourceId: "", certificate });
-  state.managedInstances.push({ id: plan.id, kind: "nowhere", name: plan.name, machineId, nodeId, status: "draft", version: plan.version, publicHost: plan.summary.publicHost, listenHost: input.listenHost === undefined ? "127.0.0.1" : cleanText(input.listenHost, 253), port: plan.summary.port, tcpPort: plan.summary.tcpPort, udpPort: plan.summary.udpPort, tcpCarrier: plan.summary.tcpCarrier, udpCarrier: plan.summary.udpCarrier, client: plan.summary.client, network: plan.summary.network, tls: plan.summary.tls, alpn: plan.summary.alpn, rate: plan.summary.rate, etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", socks: cleanText(input.socks, 512) || "none", log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s", vectorSocks: cleanText(input.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(input.vectorSni, 253) || "none", vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph, transportMemoryProfile: plan.summary.transportMemoryProfile, certificateId: certificate?.assetId || "", certificateMode: plan.certificateMode, certificatePath: plan.certificatePath, privateKeyPath: plan.privateKeyPath, certificateHost: plan.certificateHost, certificateDays: plan.certificateDays, extensionEnvironment: cleanNowhereExtensions(input.extensionEnvironment), binarySource: input.binarySource === "copy" ? "copy" : "download", createdAt: now, updatedAt: now, lastError: "", lastOperationId: "" });
+  state.managedInstances.push({ id: plan.id, kind: "nowhere", name: plan.name, machineId, nodeId, status: "draft", version: plan.version, publicHost: plan.summary.publicHost, listenHost: input.listenHost === undefined ? "127.0.0.1" : cleanText(input.listenHost, 253), port: plan.summary.port, tcpPort: plan.summary.tcpPort, udpPort: plan.summary.udpPort, tcpCarrier: plan.summary.tcpCarrier, udpCarrier: plan.summary.udpCarrier, client: plan.summary.client, network: plan.summary.network, tls: plan.summary.tls, alpn: plan.summary.alpn, rate: plan.summary.rate, etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", dial4: plan.summary.dial4, dial6: plan.summary.dial6, socks: cleanText(input.socks, 512) || "none", log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s", vectorSocks: cleanText(input.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(input.vectorSni, 253) || "none", vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph, transportMemoryProfile: plan.summary.transportMemoryProfile, certificateId: certificate?.assetId || "", certificateMode: plan.certificateMode, certificatePath: plan.certificatePath, privateKeyPath: plan.privateKeyPath, certificateHost: plan.certificateHost, certificateDays: plan.certificateDays, extensionEnvironment: cleanNowhereExtensions(input.extensionEnvironment), binarySource: input.binarySource === "copy" ? "copy" : "download", createdAt: now, updatedAt: now, lastError: "", lastOperationId: "" });
   state.revision += 1; writeState(cleanState(state));
   return { state: readState(), instanceId: plan.id, plan: publicManagedNowherePlan(plan) };
 }
@@ -1514,7 +1514,7 @@ function managedNowhereMetadata(input, plan) {
     port: plan.summary.port, tcpPort: plan.summary.tcpPort, udpPort: plan.summary.udpPort,
     tcpCarrier: plan.summary.tcpCarrier, udpCarrier: plan.summary.udpCarrier, client: plan.summary.client,
     network: plan.summary.network, tls: plan.summary.tls, alpn: plan.summary.alpn, rate: plan.summary.rate,
-    etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", socks: cleanText(input.socks, 512) || "none",
+    etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", dial4: plan.summary.dial4, dial6: plan.summary.dial6, socks: cleanText(input.socks, 512) || "none",
     log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s",
     vectorSocks: cleanText(input.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(input.vectorSni, 253) || "none",
     vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph,
@@ -1533,7 +1533,7 @@ function prepareManagedNowhereAction(params) {
   if (!instance || !machine || !node) throw new Error("托管实例、节点或宿主绑定已经不存在");
   const currentCapabilities = nowhereCapabilities(instance.version);
   if (!currentCapabilities.supported) throw new Error("该实例版本没有可用的适配器，只能保留记录，不能生成远程命令");
-  if (!currentCapabilities.verified && !["status", "logs", "read-config"].includes(action)) throw new Error("该实例版本尚未通过适配验证，目前仅允许读取状态与配置");
+  if (!currentCapabilities.verified && !(currentCapabilities.version === "v2.2.0" && action === "upgrade") && !["status", "logs", "read-config"].includes(action)) throw new Error("该实例版本尚未通过适配验证，目前仅允许读取状态与配置");
   if (action === "delete" && params.confirmation !== instance.id) throw new Error("删除托管实例需要确认实例编号");
   if (action === "delete" && instance.adoptionState === "adopted") throw new Error("请先恢复原服务，再删除接管实例");
   if (["start", "restart"].includes(action) && instance.adoptionState === "staged") throw new Error("待接管实例不能直接启动，请使用“切换接管”避免端口冲突");
@@ -1547,6 +1547,7 @@ function prepareManagedNowhereAction(params) {
     targetVersion = cleanText(params && params.targetVersion, 64);
     const capabilities = nowhereCapabilities(targetVersion);
     if (!capabilities.verified) throw new Error("请选择已通过适配验证的 Nowhere 版本");
+    planManagedNowhere({ ...managedNowherePlanInput(instance, node), version: targetVersion, log: capabilities.eventLog ? instance.log : instance.log === "event" ? "info" : instance.log, extensionEnvironment: Object.fromEntries(Object.entries(instance.extensionEnvironment).filter(([key]) => capabilities.eventLog || key !== "NOW_REPORT_INTERVAL")) });
     if (capabilities.version === nowhereCapabilities(instance.version).version) throw new Error("实例已经是所选版本");
     if (capabilities.protocolGeneration !== nowhereCapabilities(instance.version).protocolGeneration) throw new Error("不支持跨主版本直接替换二进制");
     const currentCapabilities = nowhereCapabilities(instance.version);
@@ -1588,6 +1589,10 @@ function prepareManagedNowhereUpdate(params) {
   return MANAGED_TASKS.prepare("nowhere", { schema: 1, operationId, instanceId: instance.id, clientId: machine.monitorClientId, action: "update", command: buildManagedNowhereCommand("update", { ...plan, expectedHash: read.completedResult.configurationHash }), plan: publicManagedNowherePlan(plan) });
 }
 function storeNowhereCertificate(state, instance, result, now) {
+  if (result.ok === true && /^[a-f0-9]{64}$/.test(result.certificate?.fingerprint || "")) {
+    instance.observedCertificatePin = result.certificate.fingerprint;
+    instance.pinCheckedAt = now;
+  }
   if (result.ok !== true || !result.certificate || result.certificate.mode === "ephemeral" || result.certificate.valid !== true) return;
   const certificate = normalizedCertificateResult({ ok: true, status: "valid", ...result.certificate, fingerprintSha256: result.certificate.fingerprintSha256 || result.certificate.fingerprint });
   certificate.status = certificateHealth(certificate);
@@ -1609,6 +1614,7 @@ function recordManagedNowhereResult(params) {
   if (index < 0 && pending.action === "delete" && result.ok === true && result.state === "deleted") return { state, result: { ok: true, state: "deleted" } };
   if (index < 0) throw new Error("托管实例已经不存在");
   const instance = state.managedInstances[index]; const now = new Date().toISOString();
+  if (result.ok === true && instance.certificateMode === "ephemeral" && ["start", "restart", "upgrade", "update", "stop", "adopt"].includes(pending.action)) { instance.observedCertificatePin = ""; instance.pinCheckedAt = ""; }
   if (result.ok !== true && result.error === "update-in-progress") {
     const normalized = { ok: false, error: "该实例正在更新，请稍后重试" };
     MANAGED_OPERATIONS.set(operationId, { ...pending, completedResult: normalized });
@@ -1951,7 +1957,11 @@ function prepareConnectivityCheck(params) {
   const localBinary = source.id === instance.machineId ? `/var/lib/proxy-console/instances/${instance.id}/bin/${instance.kind === "nowhere" ? "nowhere" : "sing-box"}` : "";
   let command;
   if (instance.kind === "nowhere") {
-    const plan = planManagedNowhere({ ...managedNowherePlanInput(instance, node), client: "vector" });
+    const pin = instance.certificateMode === "ephemeral"
+      ? instance.observedCertificatePin
+      : instance.observedCertificatePin || node.certificate?.fingerprintSha256 || instance.vectorPin;
+    if (nowhereCapabilities(instance.version).strictSharedKey && instance.certificateMode !== "existing" && !/^[a-f0-9]{64}$/.test(pin || "")) throw new Error("请先刷新实例状态，读取当前证书指纹后再检测连接");
+    const plan = planManagedNowhere({ ...managedNowherePlanInput(instance, node), client: "vector", vectorPin: pin || "none" });
     command = buildConnectivityCommand({ kind: "vector", uri: plan.links.vector[0].uri, expectedIp: isIP(instance.publicHost) ? instance.publicHost : "", preferredBinary: localBinary });
   } else {
     const outbound = singBoxOutbound(node);
@@ -1970,7 +1980,7 @@ function connectivityHistory(params) {
 function prepareNodeConnectivityCheck(params) {
   const state = readState(); const node = state.nodes.find((item) => item.id === cleanText(params && params.nodeId, 64)); const source = state.machines.find((item) => item.id === cleanText(params && params.sourceMachineId, 64) && item.monitorClientId); if (!node || !source) throw new Error("节点或检测来源不存在");
   let command; let expectedIp = ""; try { const host = new URL(node.uri).hostname.replace(/^\[|\]$/g, ""); expectedIp = isIP(host) ? host : ""; } catch (_) {}
-  if (node.protocol === "nowhere") { const url = new URL(node.uri); url.protocol = "vector:"; if (!url.searchParams.has("mux")) url.searchParams.set("mux", "0"); if (!url.searchParams.has("sni")) url.searchParams.set("sni", "none"); if (!url.searchParams.has("pin")) url.searchParams.set("pin", "none"); url.hash = ""; command = buildConnectivityCommand({ kind: "vector", uri: url.toString(), expectedIp }); }
+  if (node.protocol === "nowhere") { const url = new URL(node.uri); url.protocol = "vector:"; if (!url.searchParams.has("mux")) url.searchParams.set("mux", "0"); if (!url.searchParams.has("sni")) url.searchParams.set("sni", "none"); if (!url.searchParams.has("pin")) url.searchParams.set("pin", state.managedInstances.find(item => item.nodeId === node.id)?.observedCertificatePin || node.certificate?.fingerprintSha256 || "none"); url.hash = ""; command = buildConnectivityCommand({ kind: "vector", uri: url.toString(), expectedIp }); }
   else { const outbound = singBoxOutbound(node); if (!outbound) throw new Error("该协议暂不支持自动连接检查"); command = buildConnectivityCommand({ kind: "sing-box", outbound, expectedIp }); }
   return { operationId: requestOperationId(params), nodeId: node.id, sourceMachineId: source.id, clientId: source.monitorClientId, command };
 }

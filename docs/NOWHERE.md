@@ -35,3 +35,13 @@ Process state and traffic telemetry are collected independently of Komari host m
 Discovery is conservative. A complete, supported definition can be imported; incomplete findings become repair drafts so that credentials, public address, or certificate information are never guessed.
 
 A fully readable Nowhere service may be **adopted**. Adoption has two explicit steps: first copy the current binary and configuration into a separate, stopped managed instance while the original service keeps running; then switch only after the operator has reviewed that instance. A failed switch attempts to restore the original service, and a successful adoption can later be rolled back deliberately. Original service files are never overwritten or deleted. A service that has not completed adoption remains outside the Wherever Station lifecycle boundary.
+
+## Upgrading to Nowhere 2.2.1
+
+Portal and enabled native next-hop keys must contain 32–64 lowercase hexadecimal characters. New instances generate compliant keys. Edit old instances and synchronize every client and next hop before upgrading. The plugin blocks incompatible keys rather than rotating them automatically.
+
+Native Vector, probe and next routes verify the system CA and server name by default. `sni=none` and `pin=none` do not disable verification. Self-signed certificates require their actual leaf certificate SHA256 fingerprint. Managed connectivity checks first read the certificate through the owning Agent. On 2.2.1, the official `fingerprint` command also supports Morph. Refresh ephemeral fingerprints after restarting. UDP-only listeners need a stable certificate with a known fingerprint because fingerprint uses TCP. Anywhere shares support SNI but do not support pin.
+
+Dual-stack outbound sources use `dial4` and `dial6`, accepting local addresses of the matching family or `auto`. The plugin omits `dial` when these fields are used. Reset an existing single-family `dial` to `auto` first.
+
+Existing compliant 32–64 character keys can be retained. The transitional 2.2.0 release is not offered as an installation or upgrade target.

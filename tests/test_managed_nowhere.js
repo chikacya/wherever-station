@@ -57,3 +57,21 @@ assert.throws(() => planManagedNowhere({ id: "valid-id-0001", publicHost: "examp
 assert.throws(() => planManagedNowhere({ id: "valid-id-0001", publicHost: "example.com", port: 52077, key: "secret", telemetryInterval: "249ms" }), /telemetry/);
 
 console.log("managed Nowhere 2.x planning tests passed (pure data; no host operations)");
+
+const v220Input = { id: "v220-test-node", version: "v2.2.0", client: "both", publicHost: "example.com", port: 52084, key: "a".repeat(64) };
+assert.throws(() => planManagedNowhere({ ...v220Input, key: "old-short-key" }), /64/);
+assert.throws(() => planManagedNowhere({ ...v220Input, key: "A".repeat(64) }), /64/);
+const dual = planManagedNowhere({ ...v220Input, dial4: "127.0.0.1", dial6: "::1", vectorSni: "tls.example.com", certificateFingerprintSha256: "b".repeat(64) });
+assert(dual.environment.includes("dial4=127.0.0.1&dial6=%3A%3A1"));
+assert(!dual.environment.includes("&dial="));
+assert.equal(new URL(dual.links.vector[0].uri).searchParams.get("pin"), "b".repeat(64));
+assert.equal(new URL(dual.links.anywhere[0].uri).searchParams.get("sni"), "tls.example.com");
+assert(!new URL(dual.links.anywhere[0].uri).searchParams.has("pin"));
+assert.throws(() => planManagedNowhere({ ...v220Input, dial4: "::1" }), /family/);
+assert.throws(() => planManagedNowhere({ ...v220Input, dial6: "127.0.0.1" }), /family/);
+assert.throws(() => planManagedNowhere({ ...v220Input, dial4: "127.0.0.1", dial: "127.0.0.1" }), /不能/);
+assert.throws(() => planManagedNowhere({ ...v220Input, version: "v2.1.2", dial4: "auto" }), /2.2.0/);
+assert(planManagedNowhere({ ...v220Input, dial4: "auto" }).environment.includes("dial4=auto"));
+
+for (const n of [32,33,48,64]) assert.equal(planManagedNowhere({ ...v220Input, version: "v2.2.1", key: "a".repeat(n) }).version, "v2.2.1");
+for (const n of [31,65]) assert.throws(() => planManagedNowhere({ ...v220Input, version: "v2.2.1", key: "a".repeat(n) }), /32–64/);

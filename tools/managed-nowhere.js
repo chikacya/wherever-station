@@ -1,4 +1,5 @@
 const path = require("node:path");
+const { isIP } = require("node:net");
 const { URLSearchParams } = require("node:url");
 const { VERSION_PATTERN, nowhereCapabilities } = require("./nowhere-capabilities");
 
@@ -95,6 +96,7 @@ function buildAnywhereLink(input) {
   const query = new URLSearchParams({ up, down });
   query.set("morph", oneOf(String(input.morph ?? 0), ["0", "1"], "0", "morph"));
   query.set("mux", oneOf(String(input.vectorMux ?? 0), ["0", "1"], "0", "vector mux"));
+  if (input.vectorSni && input.vectorSni !== "none") query.set("sni", text(input.vectorSni, "server name", 253));
   return `nowhere://${key}@${host}?${query.toString()}#${name}`;
 }
 
@@ -125,6 +127,7 @@ function planManagedNowhere(input = {}) {
   const listenHost = input.listenHost === undefined ? "127.0.0.1" : text(input.listenHost, "listen host", 253, true);
   const port = integer(input.port, "port", 1024, 65535);
   const key = text(input.key, "shared key");
+  if (versionAtLeast(version, 2, 2, 0) && !(versionAtLeast(version, 2, 2, 1) ? /^[0-9a-f]{32,64}$/ : /^[0-9a-f]{64}$/).test(key)) throw new Error("共享密钥不符合目标 Nowhere 版本要求：2.2.1 接受 32–64 字符小写十六进制；请同步所有客户端与下一跳");
   const client = oneOf(input.client, ["anywhere", "vector", "both"], "anywhere", "client");
   let network = oneOf(input.network, ["mix", "tcp", "udp"], "mix", "network");
   const hasExplicitV2Ports = Object.hasOwn(input, "tcpPort") || Object.hasOwn(input, "udpPort");
@@ -146,6 +149,11 @@ function planManagedNowhere(input = {}) {
   const rate = integer(input.rate ?? 0, "upload rate", 0, 1_000_000);
   const etar = integer(input.etar ?? 0, "download rate", 0, 1_000_000);
   const dial = text(input.dial || "auto", "dial address", 253);
+  const dial4 = text(input.dial4 || "", "IPv4 source address", 253, true);
+  const dial6 = text(input.dial6 || "", "IPv6 source address", 253, true);
+  if ((dial4 || dial6) && !versionAtLeast(version, 2, 2, 0)) throw new Error("dial4/dial6 require Nowhere 2.2.0");
+  if ((dial4 && dial4 !== "auto" && isIP(dial4) !== 4) || (dial6 && dial6 !== "auto" && isIP(dial6) !== 6)) throw new Error("Invalid outbound source address family");
+  if ((dial4 || dial6) && dial !== "auto") throw new Error("dial 与 dial4/dial6 不能同时设置");
   const socks = text(input.socks || "none", "SOCKS address", 512);
   const log = oneOf(input.log, capabilities.eventLog ? ["none", "debug", "info", "warn", "error", "event"] : ["none", "debug", "info", "warn", "error"], "info", "log level");
   const telemetryInterval = text(input.telemetryInterval || "1s", "telemetry interval", 16);
@@ -156,7 +164,8 @@ function planManagedNowhere(input = {}) {
   if (telemetryMs < 250 || telemetryMs > 60_000) throw new Error("Invalid telemetry interval");
   const vectorSocks = text(input.vectorSocks || "127.0.0.1:1080", "vector SOCKS", 512);
   const vectorSni = text(input.vectorSni || "none", "vector SNI", 253);
-  const vectorPin = text(input.vectorPin || "none", "vector pin", 64);
+  const vectorPin = text(input.certificateFingerprintSha256 || input.vectorPin || "none", "vector pin", 64);
+  if (vectorSni !== "none" && (!/^[A-Za-z0-9.-]+$/.test(vectorSni) || isIP(vectorSni))) throw new Error("Vector SNI must be an ASCII DNS name");
   if (vectorPin !== "none" && !/^[0-9a-f]{64}$/.test(vectorPin)) throw new Error("Invalid vector pin");
   const vectorMux = integer(input.vectorMux ?? 0, "vector mux", 0, 1);
   const morph = integer(input.morph ?? 0, "morph", 0, 1);
@@ -176,7 +185,9 @@ function planManagedNowhere(input = {}) {
   const certificateDays = integer(input.certificateDays ?? 825, "certificate validity", 1, 3650);
   const query = new URLSearchParams({ tls: String(tls) });
   query.set("morph", String(morph));
-  if (dial !== "auto") query.set("dial", dial);
+  if (dial4) query.set("dial4", dial4);
+  if (dial6) query.set("dial6", dial6);
+  if (!dial4 && !dial6 && dial !== "auto") query.set("dial", dial);
   if (socks !== "none") query.set("socks", socks);
   if (rate) query.set("rate", String(rate));
   if (etar) query.set("etar", String(etar));
@@ -194,7 +205,7 @@ function planManagedNowhere(input = {}) {
     NOWHERE_TLS_KEY_VALUE: privateKeyPath, NOWHERE_RATE_VALUE: rate, NOWHERE_ETAR_VALUE: etar,
     NOWHERE_CERTIFICATE_MODE_VALUE: certificateMode, NOWHERE_CERTIFICATE_HOST_VALUE: certificateHost,
     NOWHERE_CERTIFICATE_DAYS_VALUE: certificateDays,
-    NOWHERE_DIAL_VALUE: dial, NOWHERE_SOCKS_VALUE: socks, NOWHERE_LOG_VALUE: log,
+    NOWHERE_DIAL_VALUE: dial, NOWHERE_DIAL4_VALUE: dial4, NOWHERE_DIAL6_VALUE: dial6, NOWHERE_SOCKS_VALUE: socks, NOWHERE_LOG_VALUE: log,
     NOWHERE_TELEMETRY_INTERVAL_VALUE: telemetryInterval, NOW_TELEMETRY_INTERVAL: telemetryInterval,
     NOWHERE_VECTOR_SOCKS_VALUE: vectorSocks, NOWHERE_VECTOR_SNI_VALUE: vectorSni,
     NOWHERE_VECTOR_PIN_VALUE: vectorPin, NOWHERE_VECTOR_MUX_VALUE: vectorMux,
@@ -222,7 +233,7 @@ function planManagedNowhere(input = {}) {
     unitName, unitPath, environment, unit, links, certificateMode, certificatePath,
     privateKeyPath, certificateHost, certificateDays,
     clientLink: links.anywhere[0]?.uri || links.vector[0]?.uri || "",
-    summary: { name, publicHost, listenHost: listenHost || "全部地址", port, tcpPort, udpPort, tcpCarrier, udpCarrier, client, network, tls, version, protocolGeneration: capabilities.protocolGeneration, wireProtocol: capabilities.wireProtocol, morphWireGeneration: capabilities.morphWireGeneration, alpn, morph, transportMemoryProfile, rate, etar, log, unitName, certificateMode, certificateHost, certificateDays },
+    summary: { name, publicHost, listenHost: listenHost || "全部地址", port, tcpPort, udpPort, tcpCarrier, udpCarrier, client, network, tls, version, protocolGeneration: capabilities.protocolGeneration, wireProtocol: capabilities.wireProtocol, morphWireGeneration: capabilities.morphWireGeneration, alpn, morph, transportMemoryProfile, rate, etar, dial4, dial6, log, unitName, certificateMode, certificateHost, certificateDays },
     safeguards: ["create-new-directory", "copy-or-download-private-binary", "managed-unit-prefix-only", "never-touch-existing-nowhere-service"],
   };
 }

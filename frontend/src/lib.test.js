@@ -11,6 +11,7 @@ import {
   normalizeNowhereReleases,
   normalizeSingBoxReleases,
   nowhereVersionCapabilities,
+  nowhereKeyNeedsUpdate,
   preferredPublicHost,
   protocolLabel,
   splitTags,
@@ -74,6 +75,7 @@ describe("ui helpers", () => {
   it("shows only Nowhere settings supported by the selected release", () => {
     expect(nowhereVersionCapabilities("v2.1.0").eventLog).toBe(true);
     expect(nowhereVersionCapabilities("v2.1.1")).toMatchObject({ verified: true, eventLog: false });
+    expect(nowhereVersionCapabilities("v2.2.1")).toMatchObject({ verified: true, strictSharedKey: true, dualStackDial: true, eventLog: false });
     expect(nowhereVersionCapabilities("v1.8.3")).toMatchObject({ supported: false, verified: false });
     expect(nowhereVersionCapabilities("v2.0.1")).toMatchObject({ supported: true, verified: true, localTelemetry: false });
     expect(nowhereVersionCapabilities("v2.0.2")).toMatchObject({ supported: true, verified: true, adapter: "nowhere-v2", isV2: true, protocolGeneration: 2, wireProtocol: "nw2", carrierEndpoints: true, morph: true, morphWireGeneration: 1, morphTcpPrelude: false, localTelemetry: true, transportMemoryProfile: true });
@@ -173,3 +175,16 @@ describe("ui helpers", () => {
     expect(new Date(march.end).toISOString()).toBe("2027-03-31T00:00:00.000Z");
   });
 });
+
+describe("Nowhere upgrade keys", () => {
+  it("requires rotation only when the target needs a strict key", () => {
+    expect(nowhereKeyNeedsUpdate("nowhere://old@host:2077", "v2.2.0")).toBe(true);
+    expect(nowhereKeyNeedsUpdate("nowhere://old@host:2077", "v2.1.2")).toBe(false);
+    expect(nowhereKeyNeedsUpdate(`nowhere://${"a".repeat(64)}@host:2077`, "v2.2.0")).toBe(false);
+    expect(nowhereKeyNeedsUpdate(`nowhere://${"A".repeat(64)}@host:2077`, "v2.2.0")).toBe(true);
+    expect(nowhereKeyNeedsUpdate(`nowhere://${"%61".repeat(64)}@host:2077`, "v2.2.0")).toBe(false);
+    expect(nowhereKeyNeedsUpdate("invalid", "v2.2.0")).toBe(true);
+  });
+});
+
+it("retains compliant 32–64 character keys on 2.2.1", () => { for (const n of [32,33,48,64]) expect(nowhereKeyNeedsUpdate(`nowhere://${"a".repeat(n)}@host:2077`, "v2.2.1")).toBe(false); for (const n of [31,65]) expect(nowhereKeyNeedsUpdate(`nowhere://${"a".repeat(n)}@host:2077`, "v2.2.1")).toBe(true); });

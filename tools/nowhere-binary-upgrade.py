@@ -4,6 +4,8 @@ import json
 import os
 import platform
 import re
+import shlex
+import urllib.parse
 import shutil
 import tarfile
 import time
@@ -83,6 +85,22 @@ try:
     with open(P['environmentPath'], 'rb') as handle:
         environment_previous = handle.read()
     environment_text = environment_previous.decode('utf-8')
+    target_parts = tuple(int(part) for part in P['targetVersion'].lstrip('v').split('.')[:3])
+    if target_parts >= (2, 2, 0):
+        values = {}
+        for line in environment_text.splitlines():
+            name, separator, raw = line.partition('=')
+            if separator:
+                parsed = shlex.split(raw, comments=False)
+                if len(parsed) == 1: values[name] = parsed[0]
+        portal = urllib.parse.urlsplit(values.get('NOWHERE_PORTAL', ''))
+        key_pattern = r'[0-9a-f]{32,64}' if target_parts >= (2, 2, 1) else r'[0-9a-f]{64}'
+        if not re.fullmatch(key_pattern, urllib.parse.unquote(portal.username or '')):
+            raise RuntimeError('shared-key-upgrade-required')
+        query = dict(urllib.parse.parse_qsl(portal.query))
+        next_hop = query.get('next', '')
+        if next_hop and next_hop != 'none' and not re.fullmatch(key_pattern, urllib.parse.unquote(next_hop.split('@', 1)[0])):
+            raise RuntimeError('next-key-upgrade-required')
     replacement = 'NOWHERE_VERSION_VALUE="' + P['targetVersion'] + '"'
     if re.search(r'^NOWHERE_VERSION_VALUE=.*$', environment_text, re.MULTILINE):
         environment_text = re.sub(r'^NOWHERE_VERSION_VALUE=.*$', replacement, environment_text, flags=re.MULTILINE)
@@ -156,7 +174,7 @@ except Exception as exc:
     known = {
         'unsupported-architecture', 'release-not-found', 'release-asset-not-found', 'release-checksum-missing',
         'release-checksum-mismatch', 'binary-not-found', 'binary-version-mismatch',
-        'stop-failed', 'start-failed',
+        'stop-failed', 'start-failed', 'shared-key-upgrade-required', 'next-key-upgrade-required',
     }
     error = str(exc) if str(exc) in known else 'upgrade-failed'
     stop(error, rolledBack=restored, state=active(P['unitName']))

@@ -150,3 +150,11 @@ Provider Token 和订阅源 URL 都属于凭据，应以同等级别保护备份
 - 公开订阅根地址能从目标客户端网络解析和访问。
 - 订阅预检显示了预期格式和被跳过协议。
 - 使用托管实例时，开放端口后通过真实连接检查。
+
+## 静态资源缓存
+
+Caddy 部署可将 [`tools/deployment/wherever-assets.caddy`](../tools/deployment/wherever-assets.caddy) 的内容加入 Komari 对应的站点块，先执行 `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`，再平滑 reload。变更前保留原配置备份。
+
+该策略仅缓存成功返回的、带内容哈希的 Wherever Station JS/CSS，使用浏览器私有缓存。HTML、RPC、未登录响应和错误响应保留原缓存策略。插件升级会生成新的哈希文件名，因此重新打开页面会获取新版资源。直接访问 Komari 端口或未配置该规则的其他部署不会自动获得这一优化。
+
+使用 `tools/measure-live-performance.cjs` 可比较真实网络下的首次与重复访问，并记录首屏就绪时间、FCP、LCP 和长任务；使用 `tools/check-live-asset-cache.cjs` 可检查缓存范围和鉴权。两者通过 `--url`、`--credentials` 和 `--output` 指定目标、私有凭据文件与报告位置，报告不包含凭据或节点内容。

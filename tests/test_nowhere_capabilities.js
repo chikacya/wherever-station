@@ -9,13 +9,13 @@ assert.equal(nowhereCapabilities("v1.8.3").supported, false);
 assert.deepEqual(nowhereCapabilities("v2.0.2"), {
   version: "v2.0.2", known: true, supported: true, adapter: "nowhere-v2", verified: true, compatibility: "verified",
   vectorPin: true, vectorMux: true, localTelemetry: true, protocolGeneration: 2,
-  wireProtocol: "nw2", carrierEndpoints: true, morph: true, morphWireGeneration: 1, morphTcpPrelude: false, transportMemoryProfile: true, eventLog: true,
+  wireProtocol: "nw2", carrierEndpoints: true, morph: true, morphWireGeneration: 1, morphTcpPrelude: false, transportMemoryProfile: true, eventLog: true, dualStackDial: false, strictSharedKey: false,
 });
 assert.equal(nowhereCapabilities("v2.0.1").localTelemetry, false);
 assert.deepEqual(nowhereCapabilities("v2.1.0"), {
   version: "v2.1.0", known: true, supported: true, adapter: "nowhere-v2", verified: true, compatibility: "verified",
   vectorPin: true, vectorMux: true, localTelemetry: true, protocolGeneration: 2,
-  wireProtocol: "nw2", carrierEndpoints: true, morph: true, morphWireGeneration: 2, morphTcpPrelude: true, transportMemoryProfile: true, eventLog: true,
+  wireProtocol: "nw2", carrierEndpoints: true, morph: true, morphWireGeneration: 2, morphTcpPrelude: true, transportMemoryProfile: true, eventLog: true, dualStackDial: false, strictSharedKey: false,
 });
 assert.equal(nowhereCapabilities("v2.1.1").eventLog, false);
 assert.equal(nowhereCapabilities("unknown").known, false);
@@ -26,3 +26,10 @@ assert.deepEqual(nowhereCapabilities("v3.0.0"), {
 });
 
 console.log("Nowhere 2.x-only capability matrix tests passed");
+
+assert.equal(nowhereCapabilities("v2.1.2").verified, true);
+assert.equal(nowhereCapabilities("v2.2.0").strictSharedKey, true);
+assert.equal(nowhereCapabilities("v2.2.0").dualStackDial, true);
+
+assert.equal(nowhereCapabilities("v2.2.0").verified, false);
+assert.equal(nowhereCapabilities("v2.2.1").verified, true);

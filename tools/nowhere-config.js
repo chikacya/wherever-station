@@ -4,7 +4,7 @@ const fields = {
   port: 'PORT', key: 'KEY', network: 'NET', client: 'CLIENT', alpn: 'ALPN', tls: 'TLS',
   tcpPort: 'TCP_PORT', udpPort: 'UDP_PORT', tcpCarrier: 'TCP_CARRIER', udpCarrier: 'UDP_CARRIER',
   certificatePath: 'CRT', privateKeyPath: 'TLS_KEY', rate: 'RATE', etar: 'ETAR',
-  dial: 'DIAL', socks: 'SOCKS', log: 'LOG', telemetryInterval: 'TELEMETRY_INTERVAL',
+  dial4: 'DIAL4', dial6: 'DIAL6', dial: 'DIAL', socks: 'SOCKS', log: 'LOG', telemetryInterval: 'TELEMETRY_INTERVAL',
   vectorSocks: 'VECTOR_SOCKS', vectorSni: 'VECTOR_SNI', vectorPin: 'VECTOR_PIN',
   vectorMux: 'VECTOR_MUX',
   morph: 'MORPH', transportMemoryProfile: 'TRANSPORT_MEMORY_PROFILE',
@@ -14,7 +14,7 @@ const fields = {
 function decodeNowhereConfig(values) {
   if (!values || typeof values !== 'object') throw new Error('缺少当前托管配置');
   const input = {};
-  const optional = new Set(['certificateMode', 'certificateHost', 'certificateDays', 'tcpPort', 'udpPort', 'tcpCarrier', 'udpCarrier', 'morph', 'transportMemoryProfile']);
+  const optional = new Set(['dial4', 'dial6', 'certificateMode', 'certificateHost', 'certificateDays', 'tcpPort', 'udpPort', 'tcpCarrier', 'udpCarrier', 'morph', 'transportMemoryProfile']);
   for (const [field, suffix] of Object.entries(fields)) {
     const value = values['NOWHERE_' + suffix + '_VALUE'];
     if (typeof value !== 'string') {
@@ -31,6 +31,8 @@ function decodeNowhereConfig(values) {
   input.udpPort ??= input.network === 'tcp' ? '0' : input.port;
   input.tcpCarrier ||= 'tcp';
   input.udpCarrier ||= 'udp';
+  input.dial4 ||= '';
+  input.dial6 ||= '';
   input.morph ||= '0';
   input.transportMemoryProfile ||= 'throughput';
   for (const field of ['port', 'tcpPort', 'udpPort', 'tls', 'rate', 'etar', 'vectorMux', 'morph', 'certificateDays']) input[field] = Number(input[field]);

@@ -2,7 +2,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const source = fs.readFileSync(path.join(__dirname, "..", "frontend", "src", "App.jsx"), "utf8");
+const uiRoot = path.join(__dirname, "..", "frontend", "src");
+const source = fs.readdirSync(uiRoot).filter(name => name.endsWith(".jsx")).map(name => fs.readFileSync(path.join(uiRoot, name), "utf8")).join("\n");
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "komari-plugin.json"), "utf8"));
 const icon = fs.readFileSync(path.join(__dirname, "..", "icon.svg"), "utf8");
 
@@ -51,7 +52,7 @@ assert.match(source, /接入新 VPS/, "machines must expose the Agent onboarding
 assert.match(source, /--month-rotate/, "new Agent onboarding must align the traffic counter cycle");
 assert.match(source, /startMachineTrafficPlanOperation/, "server traffic plans must use a synchronous operation RPC");
 assert.match(source, /prepareExistingServiceDiscovery/, "machines must expose read-only existing service discovery");
-assert.match(source, /\[tab, me\?\.two_factor_enabled, refreshServices\]/, "host service polling must follow the loaded machine set");
+assert.match(source, /\[tab, loading, me\?\.two_factor_enabled, refreshServices\]/, "host service polling must follow the loaded machine set");
 assert.match(source, /Promise\.allSettled\(/, "host service polling must isolate failures per Agent");
 assert.match(source, /state: "unavailable", pending: false/, "host service failures must settle instead of remaining busy");
 assert.match(source, /statusesRef\.current\[machine\.monitorClientId\]\?\.online === false/, "offline Agents must not receive remote status tasks");

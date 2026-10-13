@@ -55,6 +55,8 @@ def certificate_time(value):
 
 
 def certificate_details(values, state):
+    if values.get('NOWHERE_ROLE_VALUE') == 'egress':
+        return {'mode': 'remote', 'note': 'egress-client-certificate-trust'}
     mode = values.get('NOWHERE_CERTIFICATE_MODE_VALUE', 'ephemeral')
     certificate = values.get('NOWHERE_CRT_VALUE', '')
     key = values.get('NOWHERE_TLS_KEY_VALUE', '')
@@ -76,7 +78,7 @@ def certificate_details(values, state):
         version = tuple(int(part) for part in re.findall(r'\d+', values.get('NOWHERE_VERSION_VALUE', ''))[:3])
         if version >= (2, 2, 0):
             endpoint_host = '[' + host + ']' if ':' in host else host
-            uri = 'nowhere://' + quote(values.get('NOWHERE_KEY_VALUE', ''), safe='') + '@' + endpoint_host + '/tcp:' + str(port)
+            uri = 'nowhere://' + quote(values.get('NOWHERE_KEY_VALUE', ''), safe='') + '@' + endpoint_host + (':' if version >= (3, 0, 0) else '/tcp:') + str(port)
             uri += '?' + urlencode({'morph': values.get('NOWHERE_MORPH_VALUE', '0')})
             inspected = run([P['binaryPath'], 'fingerprint', uri], 10)
             pin = inspected.stdout.strip()

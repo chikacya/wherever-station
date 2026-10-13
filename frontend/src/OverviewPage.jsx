@@ -414,19 +414,21 @@ function HostServiceControls({ machine, managedInstances = [], me, serviceStates
       tone: state === "active" ? "ok" : state === "unavailable" ? "bad" : "warning",
     };
   };
-  const singBox = serviceStatus("sing-box");
+  const core = rows.xray?.loaded ? "xray" : "sing-box";
+  const coreLabel = core === "xray" ? "Xray" : "sing-box";
+  const singBox = serviceStatus(core);
   return <>
     <section className="service-observatory-grid" aria-label={`${machine.name} 宿主服务与遥测`}>
       <article className="service-observatory singbox-observatory">
-        <header><span>PROCESS TELEMETRY / SING-BOX</span><Status tone={singBox.tone} title={singBox.row?.error || undefined}>{singBox.label}</Status></header>
-        <div className="service-observatory-title"><Activity size={21} /><div><strong>sing-box</strong><span>{machine.name}</span></div></div>
+        <header><span>PROCESS TELEMETRY / {coreLabel.toUpperCase()}</span><Status tone={singBox.tone} title={singBox.row?.error || undefined}>{singBox.label}</Status></header>
+        <div className="service-observatory-title"><Activity size={21} /><div><strong>{coreLabel}</strong><span>{machine.name}</span></div></div>
         <div className="service-process-metrics">
           <div><span>CPU</span><strong>{Number.isFinite(singBox.row?.telemetry?.cpuPercent) ? `${singBox.row.telemetry.cpuPercent.toFixed(1)}%` : "—"}</strong></div>
           <div><span>RSS</span><strong>{Number.isFinite(singBox.row?.telemetry?.rssBytes) ? bytes(singBox.row.telemetry.rssBytes) : "—"}</strong></div>
           <div><span>PID</span><strong>{singBox.row?.pid || "—"}</strong></div>
         </div>
         <div className="service-resource-line" aria-hidden="true"><i style={{ width: `${Math.min(100, Math.max(0, singBox.row?.telemetry?.cpuPercent || 0))}%` }} /></div>
-        <footer><div><Button icon={Play} onClick={() => action("sing-box", "start")} disabled={serviceBusy || singBox.state === "active"}>启动</Button><Button icon={Square} onClick={() => action("sing-box", "stop")} disabled={serviceBusy || singBox.state !== "active"}>停止</Button><Button icon={RotateCw} onClick={() => action("sing-box", "restart")} disabled={serviceBusy || singBox.state !== "active"}>重启</Button></div><span>宿主服务</span></footer>
+        <footer><div><Button icon={Play} onClick={() => action(core, "start")} disabled={serviceBusy || singBox.state === "active"}>启动</Button><Button icon={Square} onClick={() => action(core, "stop")} disabled={serviceBusy || singBox.state !== "active"}>停止</Button><Button icon={RotateCw} onClick={() => action(core, "restart")} disabled={serviceBusy || singBox.state !== "active"}>重启</Button></div><span>宿主服务</span></footer>
       </article>
       <article className="service-observatory nowhere-observatory">
         <header><span>PROTOCOL TELEMETRY / NOWHERE</span><Status tone={serviceStatus(nowhereSource).tone} title={serviceStatus(nowhereSource).row?.error || undefined}>{serviceStatus(nowhereSource).label}</Status></header>
@@ -441,7 +443,7 @@ function HostServiceControls({ machine, managedInstances = [], me, serviceStates
     </section>
     <Modal open={telemetryOpen} title={`${selectedSource.label} · Nowhere 实时遥测`} eyebrow={selectedSource.instance ? "托管实例" : "宿主原有服务"} onClose={() => setTelemetryOpen(false)} size="large">
       <div className="telemetry-toolbar"><p>详情打开时按所选间隔更新。</p><TelemetryRefreshControl value={sampleMs} onChange={setSampleMs} /></div>
-      {telemetry ? <><div className="telemetry-status"><div><span className={`telemetry-dot ${telemetry.lifecycle === "READY" ? "ready" : ""}`} /><strong>{NOWHERE_LIFECYCLE[telemetry.lifecycle] || (nowhere?.state === "active" ? "进程运行中" : "未运行")}</strong></div><p>{telemetry.source === "local" ? `Nowhere 本地遥测${telemetry.version ? ` · ${telemetry.version}` : ""}` : "当前内核未提供可读遥测"}</p></div><div className="telemetry-grid"><div><span>当前上传</span><strong>↑ {bytes(telemetry.upBytesPerSecond, true)}</strong></div><div><span>当前下载</span><strong>↓ {bytes(telemetry.downBytesPerSecond, true)}</strong></div><div><span>累计上传</span><strong>{bytes(telemetryTotal(telemetry, "Up"))}</strong></div><div><span>累计下载</span><strong>{bytes(telemetryTotal(telemetry, "Down"))}</strong></div><div><span>Nowhere CPU</span><strong>{Number.isFinite(telemetry.cpuPercent) ? `${telemetry.cpuPercent.toFixed(1)}%` : "—"}</strong></div><div><span>Nowhere RSS</span><strong>{Number.isFinite(telemetry.rssBytes) ? bytes(telemetry.rssBytes) : "—"}</strong></div><div><span>运行时间</span><strong>{Number.isFinite(telemetry.uptimeMs) ? duration(telemetry.uptimeMs) : "—"}</strong></div><div><span>进程 PID</span><strong>{nowhere?.pid || "—"}</strong></div></div><TelemetryTrend points={history} /></> : <div className="telemetry-empty">该状态源还没有可用的遥测样本。</div>}
+      {telemetry ? <><div className="telemetry-status"><div><span className={`telemetry-dot ${telemetry.lifecycle === "READY" ? "ready" : ""}`} /><strong>{NOWHERE_LIFECYCLE[telemetry.lifecycle] || (nowhere?.state === "active" ? "进程运行中" : "未运行")}</strong></div><p>{telemetry.source === "local" ? `Nowhere 本地遥测${telemetry.version ? ` · ${telemetry.version}` : ""}` : "当前内核未提供可读遥测"}</p></div><div className="telemetry-grid"><div><span>当前上传</span><strong>↑ {bytes(telemetry.upBytesPerSecond, true)}</strong></div><div><span>当前下载</span><strong>↓ {bytes(telemetry.downBytesPerSecond, true)}</strong></div><div><span>累计上传</span><strong>{bytes(telemetryTotal(telemetry, "Up"))}</strong></div><div><span>累计下载</span><strong>{bytes(telemetryTotal(telemetry, "Down"))}</strong></div><div><span>{telemetry.wireProtocol === "nw3" ? "TCP 活跃 Flow" : "Nowhere CPU"}</span><strong>{telemetry.wireProtocol === "nw3" ? telemetry.tcpActive ?? "—" : Number.isFinite(telemetry.cpuPercent) ? `${telemetry.cpuPercent.toFixed(1)}%` : "—"}</strong></div><div><span>{telemetry.wireProtocol === "nw3" ? "UDP 活跃 Flow" : "Nowhere RSS"}</span><strong>{telemetry.wireProtocol === "nw3" ? telemetry.udpActive ?? "—" : Number.isFinite(telemetry.rssBytes) ? bytes(telemetry.rssBytes) : "—"}</strong></div><div><span>运行时间</span><strong>{Number.isFinite(telemetry.uptimeMs) ? duration(telemetry.uptimeMs) : "—"}</strong></div><div><span>进程 PID</span><strong>{nowhere?.pid || "—"}</strong></div></div><TelemetryTrend points={history} /></> : <div className="telemetry-empty">该状态源还没有可用的遥测样本。</div>}
       <div className="dialog-actions"><Button onClick={() => setTelemetryOpen(false)}>关闭</Button></div>
     </Modal>
   </>;

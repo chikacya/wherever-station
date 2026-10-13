@@ -24,21 +24,23 @@ function instanceStatusCache(now = Date.now) {
     }
     if (['STARTING', 'READY', 'DRAINING', 'STOPPED'].includes(value.lifecycle)) clean.lifecycle = value.lifecycle;
     if (/^[A-Z0-9_-]{1,64}$/.test(value.lifecycleReason || '')) clean.lifecycleReason = value.lifecycleReason;
-    if (['portal', 'vector'].includes(value.role)) clean.role = value.role;
-    if (/^v?2\.\d+\.\d+(?:[.-][A-Za-z0-9._-]+)?$/.test(value.version || '')) clean.version = value.version;
+    if (['portal', 'vector', 'egress'].includes(value.role)) clean.role = value.role;
+    if (/^v?[23]\.\d+\.\d+(?:[.-][A-Za-z0-9._-]+)?$/.test(value.version || '')) clean.version = value.version;
     if (typeof value.serviceEndpoint === 'string' && value.serviceEndpoint.length <= 512 && !/[\x00-\x1f\x7f]/.test(value.serviceEndpoint)) clean.serviceEndpoint = value.serviceEndpoint;
     if (typeof value.configSummary === 'string' && value.configSummary.length <= 4096 && !/[\x00-\x1f\x7f]/.test(value.configSummary)) clean.configSummary = value.configSummary;
+    if (/^[0-9a-f]{32}$/.test(value.instanceId || '')) clean.instanceId = value.instanceId;
+    if (['nw2', 'nw3'].includes(value.wireProtocol)) clean.wireProtocol = value.wireProtocol;
     const previous = prior?.telemetry;
     const wallElapsed = (Date.parse(observedAt) - Date.parse(prior?.observedAt || '')) / 1000;
     const uptimeElapsed = Number.isFinite(clean.uptimeMs) && Number.isFinite(previous?.uptimeMs)
       ? (clean.uptimeMs - previous.uptimeMs) / 1000 : 0;
-    const elapsed = clean.source === 'local' ? uptimeElapsed : wallElapsed;
+    const elapsed = clean.source === 'local' && clean.wireProtocol !== 'nw3' ? uptimeElapsed : wallElapsed;
     const up = total(clean, 'Up'); const down = total(clean, 'Down');
     const oldUp = total(previous, 'Up'); const oldDown = total(previous, 'Down');
     if (clean.source === 'systemd' && pid > 0 && pid === prior?.pid && wallElapsed > 0 && wallElapsed <= 30 && previous && clean.cpuUsageNs >= previous.cpuUsageNs) {
       clean.cpuPercent = (clean.cpuUsageNs - previous.cpuUsageNs) / (wallElapsed * 1e7);
     }
-    if (pid > 0 && pid === prior?.pid && elapsed > 0 && elapsed <= 30 && previous && up >= oldUp && down >= oldDown) {
+    if ((!clean.instanceId || clean.instanceId === previous?.instanceId) && clean.source === previous?.source && pid > 0 && pid === prior?.pid && elapsed > 0 && elapsed <= 30 && previous && up >= oldUp && down >= oldDown) {
       clean.upBytesPerSecond = Math.round(Number(up - oldUp) / elapsed);
       clean.downBytesPerSecond = Math.round(Number(down - oldDown) / elapsed);
     }

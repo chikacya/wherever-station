@@ -2093,3 +2093,15 @@ body, button, input, select, textarea { font-family: var(--sans); }
     transition: none;
   }
 }
+
+.nowhere-batch-progress { display: grid; gap: 12px; margin: 18px 0; }
+.nowhere-batch-progress progress { width: 100%; height: 12px; accent-color: var(--primary); }
+.nowhere-batch-progress > span { color: var(--muted); font-size: 13px; }
+.nowhere-batch-list { max-height: 45vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
+.nowhere-batch-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 1fr); gap: 16px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.nowhere-batch-row:last-child { border-bottom: 0; }
+.nowhere-batch-row > div { min-width: 0; display: grid; gap: 5px; }
+.nowhere-batch-row small { color: var(--muted); overflow-wrap: anywhere; }
+.nowhere-batch-row.success b { color: var(--primary); }
+.nowhere-batch-row.failed b, .nowhere-batch-row.needs-review b { color: #b45309; }
+@media (max-width: 520px) { .nowhere-batch-row { grid-template-columns: 1fr; gap: 8px; } }

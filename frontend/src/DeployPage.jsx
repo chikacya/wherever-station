@@ -3,7 +3,7 @@ import { createVisiblePoller } from "./polling.js";
 import { QRCodeSVG } from "qrcode.react";
 import { Activity, Check, Clipboard, Copy, Database, Download, Edit3, Import, Link2, PackageOpen, Play, Plus, Power, QrCode, RefreshCw, RotateCw, Save, Search, Settings, ShieldCheck, KeyRound, CalendarClock, Square, Trash2, Undo2, Upload, X } from "lucide-react";
 import { bytes, flag, generateRealityKeypair, normalizeNowhereReleases, normalizeSingBoxReleases, nowhereKeyNeedsUpdate, nowhereVersionCapabilities, NOWHERE_RELEASE_FALLBACK, SING_BOX_RELEASE_FALLBACK, preferredPublicHost, randomId } from "./lib.js";
-import { IconButton, Button, Field, Modal, Empty, rpc, readSessionDraft, writeSessionDraft, clearSessionDraft, Status, DraftStatus, SecretInput, PageHead, MANAGED_ERROR, NOWHERE_LIFECYCLE, telemetryTotal, duration, TelemetryTrend, TelemetrySparkline, TelemetryRefreshControl, executeTrackedManagedTask, executeTask } from './ui-shared.jsx';
+import { IconButton, Button, Field, Modal, Empty, rpc, readSessionDraft, writeSessionDraft, clearSessionDraft, Status, DraftStatus, SecretInput, PageHead, MANAGED_ERROR, NOWHERE_LIFECYCLE, telemetryTotal, duration, TelemetryTrend, TelemetrySparkline, TelemetryRefreshControl, submitTrackedManagedTask, executeTrackedManagedTask, executeTask } from './ui-shared.jsx';
 
 const MANAGED_STATUS = {
   draft: ["待创建", "warning"],
@@ -74,15 +74,15 @@ function NowhereCarrierFields({ values, onPatch, error = "" }) {
     });
   };
   return <>
-    <Field label="TCP Carrier 端口" hint="填 0 关闭 TCP" error={error}><input type="number" min="0" max="65535" value={values.tcpPort ?? values.port ?? 2077} onChange={(event) => changePort("tcp", event.target.value)} /></Field>
+    <Field label="TCP Carrier 端口" hint="填 0 关闭 TCP" error={error}><input disabled={values.role === "egress"} type="number" min="0" max="65535" value={values.tcpPort ?? values.port ?? 2077} onChange={(event) => changePort("tcp", event.target.value)} /></Field>
     <Field label="UDP Carrier 端口" hint="填 0 关闭 UDP" error={error}><input type="number" min="0" max="65535" value={values.udpPort ?? values.port ?? 2077} onChange={(event) => changePort("udp", event.target.value)} /></Field>
-    <Field label="TCP Carrier"><select value={values.tcpCarrier || "tcp"} onChange={(event) => onPatch({ tcpCarrier: event.target.value })}><option value="tcp">TCP · 自动地址族</option><option value="tcp4">TCP · IPv4</option><option value="tcp6">TCP · IPv6</option></select></Field>
+    <Field label="TCP Carrier"><select disabled={values.role === "egress"} value={values.tcpCarrier || "tcp"} onChange={(event) => onPatch({ tcpCarrier: event.target.value })}><option value="tcp">TCP · 自动地址族</option><option value="tcp4">TCP · IPv4</option><option value="tcp6">TCP · IPv6</option></select></Field>
     <Field label="UDP Carrier"><select value={values.udpCarrier || "udp"} onChange={(event) => onPatch({ udpCarrier: event.target.value })}><option value="udp">UDP · 自动地址族</option><option value="udp4">UDP · IPv4</option><option value="udp6">UDP · IPv6</option></select></Field>
   </>;
 }
 
 const NOWHERE_RESERVED_EXTENSION_KEYS = new Set([
-  "NOWHERE_PORTAL", "NOWHERE_VERSION_VALUE", "NOWHERE_PUBLIC_HOST_VALUE", "NOWHERE_LISTEN_HOST_VALUE",
+  "NOWHERE_ROLE_VALUE", "NOWHERE_OUT_VALUE", "NOWHERE_PORTAL", "NOWHERE_VERSION_VALUE", "NOWHERE_PUBLIC_HOST_VALUE", "NOWHERE_LISTEN_HOST_VALUE",
   "NOWHERE_PORT_VALUE", "NOWHERE_KEY_VALUE", "NOWHERE_NET_VALUE", "NOWHERE_CLIENT_VALUE", "NOWHERE_ALPN_VALUE",
   "NOWHERE_TLS_VALUE", "NOWHERE_CRT_VALUE", "NOWHERE_TLS_KEY_VALUE", "NOWHERE_RATE_VALUE", "NOWHERE_ETAR_VALUE",
   "NOWHERE_DIAL_VALUE", "NOWHERE_DIAL4_VALUE", "NOWHERE_DIAL6_VALUE", "NOWHERE_SOCKS_VALUE", "NOWHERE_LOG_VALUE", "NOWHERE_TELEMETRY_INTERVAL_VALUE",
@@ -118,7 +118,7 @@ function NowhereExtensionEditor({ value, onChange, capabilities }) {
 function NowhereAdvancedFields({ values, onPatch, capabilities }) {
   const update = (key, value) => onPatch({ [key]: value });
   return <>
-    <Field label="Wire protocol"><input value="nw2（固定）" disabled /></Field>
+    <Field label="Wire protocol"><input value={`${capabilities.wireProtocol || "未知"}（固定）`} disabled /></Field>
     <Field label="上传限速 Mbps"><input type="number" min="0" value={values.rate || 0} onChange={(event) => update("rate", Number(event.target.value))} /></Field>
     <Field label="下载限速 Mbps"><input type="number" min="0" value={values.etar || 0} onChange={(event) => update("etar", Number(event.target.value))} /></Field>
     <Field label="拨号地址" hint={capabilities.dualStackDial ? "按地址族绑定时，此项保持 auto；生成配置会省略 dial" : "auto 或本机 IP"}><input value={values.dial || "auto"} onChange={(event) => update("dial", event.target.value)} /></Field>
@@ -126,14 +126,15 @@ function NowhereAdvancedFields({ values, onPatch, capabilities }) {
       <Field label="IPv4 出站源地址" hint="留空由系统选择"><input value={values.dial4 || ""} onChange={(event) => update("dial4", event.target.value)} /></Field>
       <Field label="IPv6 出站源地址" hint="留空由系统选择"><input value={values.dial6 || ""} onChange={(event) => update("dial6", event.target.value)} /></Field>
     </>}
-    <Field label="SOCKS"><input value={values.socks || "none"} onChange={(event) => update("socks", event.target.value)} /></Field>
-    <Field label="日志级别"><select value={values.log || "info"} onChange={(event) => update("log", event.target.value)}>{["none", "debug", "info", "warn", "error", ...(capabilities.eventLog ? ["event"] : [])].map((option) => <option key={option}>{option}</option>)}</select></Field>
-    <Field label="遥测间隔" hint="允许 250ms–60s"><input value={values.telemetryInterval || "1s"} onChange={(event) => update("telemetryInterval", event.target.value)} placeholder="例如 1s" /></Field>
-    <Field label="Vector SOCKS"><input value={values.vectorSocks || "127.0.0.1:1080"} onChange={(event) => update("vectorSocks", event.target.value)} /></Field>
-    <Field label="Vector SNI"><input value={values.vectorSni || "none"} onChange={(event) => update("vectorSni", event.target.value)} /></Field>
-    {capabilities.vectorPin && <Field label="Vector Pin" hint="原生客户端校验证书；自签证书须填写实际 SHA256。Anywhere 导入不支持此参数"><input value={values.vectorPin || "none"} onChange={(event) => update("vectorPin", event.target.value)} /></Field>}
+    {capabilities.protocolGeneration !== 3 && <Field label="SOCKS"><input value={values.socks || "none"} onChange={(event) => update("socks", event.target.value)} /></Field>}
+    {capabilities.protocolGeneration === 3 && values.role !== "egress" && <Field label="Portal 出口" hint="direct、egress 或 SOCKS5 地址"><input value={values.out || "direct"} onChange={event => update("out", event.target.value)} /></Field>}
+    {capabilities.protocolGeneration !== 3 && <Field label="日志级别"><select value={values.log || "info"} onChange={(event) => update("log", event.target.value)}>{["none", "debug", "info", "warn", "error", ...(capabilities.eventLog ? ["event"] : [])].map((option) => <option key={option}>{option}</option>)}</select></Field>}
+    {capabilities.protocolGeneration !== 3 && <Field label="遥测间隔" hint="允许 250ms–60s"><input value={values.telemetryInterval || "1s"} onChange={(event) => update("telemetryInterval", event.target.value)} placeholder="例如 1s" /></Field>}
+    {values.role !== "egress" && <Field label="Vector SOCKS"><input value={values.vectorSocks || "127.0.0.1:1080"} onChange={(event) => update("vectorSocks", event.target.value)} /></Field>}
+    <Field label={values.role === "egress" ? "远端 Portal SNI" : "Vector SNI"}><input value={values.vectorSni || "none"} onChange={(event) => update("vectorSni", event.target.value)} /></Field>
+    {capabilities.vectorPin && <Field label={values.role === "egress" ? "远端 Portal Pin" : "Vector Pin"} hint="原生客户端校验证书；自签证书须填写实际 SHA256。Anywhere 导入不支持此参数"><input value={values.vectorPin || "none"} onChange={(event) => update("vectorPin", event.target.value)} /></Field>}
     {capabilities.vectorMux && <Field label="Vector Mux"><select value={values.vectorMux || 0} onChange={(event) => update("vectorMux", Number(event.target.value))}><option value={0}>关闭</option><option value={1}>开启</option></select></Field>}
-    {capabilities.morph && <Field label="Morph" hint={values.morph === 1 && capabilities.morphTcpPrelude ? "2.1 传输格式；所有同路径客户端与下一跳必须使用兼容版本" : "两端必须一致；跨 Morph 传输格式升级需要协同进行"}><select value={values.morph || 0} onChange={(event) => update("morph", Number(event.target.value))}><option value={0}>关闭</option><option value={1}>开启（两端必须一致）</option></select></Field>}
+    {capabilities.morph && <Field label="Morph" hint={values.morph === 1 && capabilities.morphTcpPrelude ? "同一路径必须使用相同协议代际与 Morph 设置" : "两端必须一致；跨 Morph 传输格式升级需要协同进行"}><select value={values.morph || 0} onChange={(event) => update("morph", Number(event.target.value))}><option value={0}>关闭</option><option value={1}>开启（两端必须一致）</option></select></Field>}
     {capabilities.transportMemoryProfile && <Field label="Transport 内存策略"><select value={values.transportMemoryProfile || "throughput"} onChange={(event) => update("transportMemoryProfile", event.target.value)}><option value="memory">节省内存</option><option value="balanced">平衡</option><option value="throughput">吞吐优先</option></select></Field>}
     <details className="nowhere-experimental">
       <summary>实验性环境变量{Object.keys(values.extensionEnvironment || {}).length ? ` · ${Object.keys(values.extensionEnvironment).length}` : ""}</summary>
@@ -204,13 +205,19 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
     });
   }, [liveStates]);
   const [tasks, setTasks] = useState([]);
+  const [batch, setBatch] = useState(null);
+  const [batchPreview, setBatchPreview] = useState(null);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
+  const batchSubmitLock = useRef(false);
   const completedTasks = useRef(new Set());
   useEffect(() => {
     let cancelled = false;
     const refresh = async () => {
       if (document.hidden) return;
       try {
-        const next = await rpc("proxyConsole:listManagedTasks");
+        const [next, latestBatch] = await Promise.all([rpc("proxyConsole:listManagedTasks"), rpc("proxyConsole:getNowhereBatch")]);
+        if (!cancelled) setBatch(Array.isArray(latestBatch?.rows) ? latestBatch : null);
         if (cancelled) return;
         setTasks(next.filter(task => !["status", "logs", "read-config"].includes(task.action) && task.phase !== "prepared" && task.phase !== "completed"));
         const completed = next.filter(task => task.phase === "completed");
@@ -245,6 +252,8 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
   const [logs, setLogs] = useState(null);
   const [qr, setQr] = useState(null);
   const [nowhereManager, setNowhereManager] = useState(null);
+  const [migration, setMigration] = useState(null);
+  const [migrationBusy, setMigrationBusy] = useState(false);
   const [certificateCenter, setCertificateCenter] = useState(false);
   const [certificateEditor, setCertificateEditor] = useState(null);
   const [subscriptionEdit, setSubscriptionEdit] = useState(null);
@@ -421,6 +430,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       ...current,
       binarySource: selection === "copy" ? "copy" : "download",
       version: selection === "copy" ? current.version : selection === "custom" ? "" : selection,
+      role: "portal", out: "direct", vectorMux: 0, morph: selection.startsWith("v3.") ? 1 : 0,
     }));
     setPreview(null);
   };
@@ -441,11 +451,42 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
     if (!result.ok) throw new Error(MANAGED_ERROR[result.error] || result.error || "目标机操作失败");
     return { result, state: saved.state };
   };
+  const openBatch = async () => {
+    setBatchOpen(true); setBatchPreview(null);
+    try {
+      const [latest, preview] = await Promise.all([rpc("proxyConsole:getNowhereBatch"), rpc("proxyConsole:previewNowhereBatch")]);
+      setBatch(Array.isArray(latest?.rows) ? latest : null); setBatchPreview(preview);
+    } catch (error) { notify(error.message, true); }
+  };
+  const startBatch = async () => {
+    if (batchSubmitLock.current) return;
+    const otp = operationOtp(); if (otp === null) return;
+    batchSubmitLock.current = true; setBatchSubmitting(true);
+    try {
+      const prepared = await rpc("proxyConsole:startNowhereBatch", { requestId: crypto.randomUUID() });
+      setBatch(prepared.batch); setBatchPreview(null);
+      // Submit short authenticated jobs without waiting for their remote execution.
+      // Backend observation and the durable batch record survive route changes.
+      let next = 0;
+      await Promise.all(Array.from({ length: Math.min(3, prepared.specs.length) }, async () => {
+        while (next < prepared.specs.length) {
+          const spec = prepared.specs[next++];
+          try { await submitTrackedManagedTask(spec, otp); }
+          catch (_) {
+            try { await rpc("proxyConsole:recordNowhereBatchSubmission", { batchId: prepared.batch.id, operationId: spec.operationId }); }
+            catch (_) { /* Persisted tracker will recover ambiguous submissions. */ }
+          }
+        }
+      }));
+      setBatch(await rpc("proxyConsole:getNowhereBatch", { batchId: prepared.batch.id }));
+    } catch (error) { notify(error.message, true); }
+    finally { batchSubmitLock.current = false; setBatchSubmitting(false); }
+  };
   const openNowhere = async () => {
     try {
       const defaults = await rpc("proxyConsole:newManagedNowhereValues");
       const first = boundMachines[0];
-      const initial = { ...defaults, name: `${machineNamePrefix(first)} | Nowhere`.trim(), machineId: first?.id || "", publicHost: autoHost(first), listenHost: "0.0.0.0", client: "anywhere", network: "mix", tls: 1, certificateMode: "ephemeral", certificateHost: autoHost(first), certificateDays: 825, alpn: "nw2", rate: 0, etar: 0, dial: "auto", socks: "none", log: "info", telemetryInterval: "1s", vectorSocks: "127.0.0.1:1080", vectorSni: "none", vectorPin: "none", vectorMux: 0, morph: 0, transportMemoryProfile: "throughput", binarySource: "download" };
+      const initial = { ...defaults, name: `${machineNamePrefix(first)} | Nowhere`.trim(), machineId: first?.id || "", publicHost: autoHost(first), listenHost: "0.0.0.0", client: "anywhere", network: "mix", tls: 1, certificateMode: "ephemeral", certificateHost: autoHost(first), certificateDays: 825, alpn: defaults.version?.startsWith("v3.") ? "nw3" : "nw2", rate: 0, etar: 0, dial: "auto", socks: "none", log: "info", telemetryInterval: "1s", vectorSocks: "127.0.0.1:1080", vectorSni: "none", vectorPin: "none", vectorMux: 0, morph: defaults.morph ?? 1, transportMemoryProfile: "throughput", binarySource: "download" };
       const draft = readSessionDraft("deploy:nowhere")?.value;
       setForm(draft ? { ...initial, ...draft } : initial);
       setPreview(null); setEditor(true);
@@ -568,7 +609,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
         executeManaged("nowhere", instance.id, "status", otp),
         loadNowhereReleases(),
       ]);
-      const currentGeneration = nowhereVersionCapabilities(instance.version).protocolGeneration;
+      const currentGeneration = nowhereVersionCapabilities(instance.version).protocolGeneration || (/^v?2\./.test(instance.version) ? 2 : 0);
       const targetVersion = releases.find((release) => { const capabilities = nowhereVersionCapabilities(release.tag); return capabilities.verified && capabilities.protocolGeneration === currentGeneration; })?.tag || instance.version;
       setNowhereManager({ instance: done.state.managedInstances.find((item) => item.id === instance.id) || instance, loading: false, result: done.result, targetVersion });
     } catch (error) {
@@ -578,8 +619,9 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
   const upgradeNowhere = async () => {
     if (!nowhereManager?.instance || nowhereManager.loading) return;
     const { instance, targetVersion } = nowhereManager;
+    if (/^v?2\./.test(instance.version) && nowhereVersionCapabilities(targetVersion).protocolGeneration === 3) return openMigration(instance, targetVersion);
     if (targetVersion === instance.version) return notify("实例已经是所选版本");
-    if (nowhereKeyNeedsUpdate(state.nodes.find(node => node.id === instance.nodeId)?.uri, targetVersion)) {
+    if (nowhereKeyNeedsUpdate(instance.role === "egress" ? `nowhere://${instance.sharedKey}@${instance.publicHost}:${instance.udpPort}` : state.nodes.find(node => node.id === instance.nodeId)?.uri, targetVersion)) {
       return notify("请先更新共享密钥，再同步客户端订阅后升级", true);
     }
     const action = "upgrade";
@@ -600,6 +642,38 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       setNowhereManager((current) => current ? { ...current, loading: false } : current);
       notify(error.message, true);
     } finally { endBusy(busyKey); }
+  };
+  const openMigration = async (instance, targetVersion) => {
+    const otp = operationOtp(); if (otp === null) return;
+    setMigrationBusy(true);
+    try {
+      const spec = await rpc("proxyConsole:prepareManagedNowhereAction", { instanceId: instance.id, action: "read-config", requestId: crypto.randomUUID() });
+      const saved = await executeTrackedManagedTask(spec, otp);
+      if (!saved.result.ok) throw new Error(saved.result.error || "读取配置失败");
+      setMigration({ instance, targetVersion, readOperationId: spec.operationId, key: saved.result.configuration.key || "", preview: null, confirmed: false, error: "" });
+      setNowhereManager(null);
+    } catch (error) { notify(error.message, true); }
+    finally { setMigrationBusy(false); }
+  };
+  const previewMigration = async () => {
+    if (!migration) return; setMigrationBusy(true);
+    try {
+      const preview = await rpc("proxyConsole:previewNowhereMigration", { instanceId: migration.instance.id, readOperationId: migration.readOperationId, targetVersion: migration.targetVersion, key: migration.key });
+      setMigration(current => ({ ...current, preview, error: "" }));
+    } catch (error) { setMigration(current => ({ ...current, preview: null, error: error.message })); }
+    finally { setMigrationBusy(false); }
+  };
+  const applyMigration = async () => {
+    if (!migration?.preview || !migration.confirmed || migrationBusy) return;
+    const otp = operationOtp(); if (otp === null) return;
+    setMigrationBusy(true);
+    try {
+      const spec = await rpc("proxyConsole:prepareNowhereMigration", { instanceId: migration.instance.id, readOperationId: migration.readOperationId, targetVersion: migration.targetVersion, key: migration.key, confirmation: "nw3-clients-coordinated", requestId: crypto.randomUUID() });
+      // Migration can download slowly; submit once and follow durable task progress.
+      await submitTrackedManagedTask(spec, otp);
+      setMigration(null); notify("NW3 迁移已提交，可在后台任务中查看结果");
+    } catch (error) { setMigration(current => current ? { ...current, error: error.message } : current); }
+    finally { setMigrationBusy(false); }
   };
   const editNowhere = async (instance, upgradeTarget = "") => {
     const busyKey = `read:${instance.id}`;
@@ -723,8 +797,8 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
   const configCapabilities = nowhereVersionCapabilities(configEdit?.values?.version || "");
   const managerCurrentCapabilities = nowhereVersionCapabilities(nowhereManager?.instance?.version);
   const managerTargetCapabilities = nowhereVersionCapabilities(nowhereManager?.targetVersion);
-  const managerKeyNeedsUpdate = nowhereKeyNeedsUpdate(state.nodes.find(node => node.id === nowhereManager?.instance?.nodeId)?.uri, nowhereManager?.targetVersion);
-  const nowhereV2Releases = nowhereReleases.releases.filter((release) => nowhereVersionCapabilities(release.tag).verified);
+  const managerKeyNeedsUpdate = nowhereKeyNeedsUpdate(nowhereManager?.instance?.role === "egress" ? `nowhere://${nowhereManager.instance.sharedKey}@${nowhereManager.instance.publicHost}:${nowhereManager.instance.udpPort}` : state.nodes.find(node => node.id === nowhereManager?.instance?.nodeId)?.uri, nowhereManager?.targetVersion);
+  const nowhereVerifiedReleases = nowhereReleases.releases.filter((release) => nowhereVersionCapabilities(release.tag).verified);
   const nowhereUnverifiedReleases = nowhereReleases.releases.filter((release) => release.tag !== "v2.2.0" && !nowhereVersionCapabilities(release.tag).verified);
   const managedCard = (instance, kind) => {
     const observed = liveStates.find(item => item.instanceId === instance.id);
@@ -738,24 +812,24 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
     const adoptionStaged = kind === "nowhere" && instance.adoptionState === "staged";
     const adopted = kind === "nowhere" && instance.adoptionState === "adopted";
     const canStart = (instance.status === "stopped" || instance.status === "failed") && !adoptionStaged;
-    const instanceBusy = [...busy].some(key => key.split(":").includes(instance.id));
+    const instanceBusy = [...busy].some(key => key.split(":").includes(instance.id)) || Boolean(batch?.rows.some(row => row.instanceId === instance.id && ["prepared", "running"].includes(row.phase)));
     const connectionLabel = connection?.status === "passed" ? "最近连接测试通过" : connection?.status === "failed" ? "最近连接测试失败" : "尚未测试连接";
     const connectionTitle = connection ? `${connectionLabel} · ${new Date(connection.observedAt).toLocaleString()}${connection.sourceKind === "target" ? " · 目标机自测，不代表公网可达" : " · 由另一台 Agent 发起"}` : connectionLabel;
     return <article className={`managed-card ${recentInstanceId === instance.id ? "recent" : ""}`} data-instance-id={instance.id} key={instance.id}>
       <header><div className="managed-title"><span>{flag(machine?.countryCode) || (kind === "nowhere" ? "N" : "S")}</span><div><h3>{instance.name}</h3><p>{machine?.name || "宿主已删除"} · <span className="sensitive-value">{instance.publicHost}:{instance.port}</span></p></div></div><div className="managed-header-status"><span className={`connection-indicator ${connection?.status || "untested"}`} role="img" aria-label={connectionLabel} title={connectionTitle}>{connection?.status === "passed" ? <Check size={15} /> : connection?.status === "failed" ? <X size={15} /> : <Activity size={15} />}</span>{adoptionStaged && <Status tone="warning">待接管</Status>}{adopted && <Status tone="ok">已接管</Status>}<Status tone={status[1]}>{status[0]}</Status></div></header>
-      <dl><div><dt>内核 / 协议</dt><dd>{kind === "nowhere" ? `Nowhere ${instance.version || ""} · NW2` : instance.protocol || "sing-box"}</dd></div><div><dt>监听</dt><dd>{listenSummary}</dd></div><div><dt>{kind === "nowhere" ? "传输" : "版本"}</dt><dd>{kind === "nowhere" ? (instance.network === "mix" ? "TCP + UDP" : String(instance.network || "mix").toUpperCase()) : instance.version || "跟随宿主"}</dd></div><div><dt>归属</dt><dd>Wherever Station</dd></div></dl>
+      <dl><div><dt>内核 / 协议</dt><dd>{kind === "nowhere" ? `Nowhere ${instance.version || ""} · ${instanceCapabilities?.wireProtocol.toUpperCase() || "旧 NW2"} · ${instance.role || "portal"}` : instance.protocol || "sing-box"}</dd></div><div><dt>{instance.role === "egress" ? "远端 Portal" : "监听"}</dt><dd>{listenSummary}</dd></div><div><dt>{kind === "nowhere" ? "传输" : "版本"}</dt><dd>{kind === "nowhere" ? (instance.network === "mix" ? "TCP + UDP" : String(instance.network || "mix").toUpperCase()) : instance.version || "跟随宿主"}</dd></div><div><dt>归属</dt><dd>Wherever Station</dd></div></dl>
       {instance.lastError && <p className="managed-error">{MANAGED_ERROR[instance.lastError] || instance.lastError}</p>}
       <p className="muted">进程采样：{observed?.observedAt ? `${observed.state} · ${new Date(observed.observedAt).toLocaleTimeString()}${Date.now() - Date.parse(observed.observedAt) > 15000 ? '（旧数据）' : ''}` : '尚未采样'}{me?.two_factor_enabled ? ' · 两步验证已开启，自动远程采样暂停' : ''}</p>
-      {kind === "nowhere" && <div className="telemetry-glance"><div><span>Nowhere</span><strong>{telemetry?.lifecycle ? NOWHERE_LIFECYCLE[telemetry.lifecycle] || telemetry.lifecycle : observed?.state === "active" ? "遥测不可用" : "未运行"}</strong></div><div><span>当前速率</span><strong>↑ {bytes(telemetry?.upBytesPerSecond, true)}　↓ {bytes(telemetry?.downBytesPerSecond, true)}</strong></div><TelemetrySparkline points={telemetryHistory[instance.id] || []} /><Button icon={Activity} onClick={() => setTelemetryDetail(instance.id)}>实时遥测</Button></div>}
+      {kind === "nowhere" && <div className="telemetry-glance"><div><span>Nowhere</span><strong>{telemetry?.lifecycle ? NOWHERE_LIFECYCLE[telemetry.lifecycle] || telemetry.lifecycle : observed?.state === "active" ? (telemetry?.source === "local" ? "进程运行中" : "遥测不可用") : "未运行"}</strong></div><div><span>当前速率</span><strong>↑ {bytes(telemetry?.upBytesPerSecond, true)}　↓ {bytes(telemetry?.downBytesPerSecond, true)}</strong></div><TelemetrySparkline points={telemetryHistory[instance.id] || []} /><Button icon={Activity} onClick={() => setTelemetryDetail(instance.id)}>实时遥测</Button></div>}
       {kind === "sing-box" && <div className="telemetry-glance singbox-process-glance"><div><span>sing-box 进程</span><strong>{observed?.state === "active" ? "运行中" : "未运行"}</strong></div><div><span>CPU / RSS</span><strong>{Number.isFinite(telemetry?.cpuPercent) ? `${telemetry.cpuPercent.toFixed(1)}%` : "等待采样"}　/　{Number.isFinite(telemetry?.rssBytes) ? bytes(telemetry.rssBytes) : "—"}</strong></div><div><span>PID</span><strong>{observed?.pid || "—"}</strong></div></div>}
-      {kind === "nowhere" && !["draft", "validated"].includes(instance.status) && <div className="managed-primary-actions"><Button icon={Edit3} onClick={() => editNowhere(instance)} disabled={instanceBusy}>{hasBusy(`read:${instance.id}`) ? "正在读取配置…" : "编辑运行配置"}</Button><Button icon={PackageOpen} onClick={() => openNowhereManager(instance)} disabled={instanceBusy}>版本与证书</Button></div>}
-      {kind === "sing-box" && <div className="managed-primary-actions"><Button icon={Edit3} onClick={() => editSingBox(instance)} disabled={instanceBusy}>{hasBusy(`read:${instance.id}`) ? "正在读取配置…" : "编辑运行配置"}</Button></div>}
+      {kind === "nowhere" && !["draft", "validated"].includes(instance.status) && <div className="managed-primary-actions"><Button icon={Edit3} onClick={() => editNowhere(instance)} disabled={instanceBusy || !instanceCapabilities?.verified}>{hasBusy(`read:${instance.id}`) ? "正在读取配置…" : "编辑运行配置"}</Button><Button icon={PackageOpen} onClick={() => openNowhereManager(instance)} disabled={instanceBusy}>版本与证书</Button></div>}
+      {kind === "sing-box" && <div className="managed-primary-actions"><Button icon={Edit3} onClick={() => editSingBox(instance)} disabled={instanceBusy || !instanceCapabilities?.verified}>{hasBusy(`read:${instance.id}`) ? "正在读取配置…" : "编辑运行配置"}</Button></div>}
       {kind === "nowhere" && ["draft", "validated", "failed"].includes(instance.status) && <div className="managed-primary-actions"><Button onClick={() => retryNowhere(instance)} disabled={instanceBusy}>检查并继续创建</Button><small>先核对远端结果；已创建的实例只恢复状态。</small></div>}
-      <footer><div className="managed-primary-actions">{adoptionStaged ? <Button icon={ShieldCheck} variant="primary" onClick={() => act(kind, instance, "adopt")} disabled={instanceBusy}>切换接管</Button> : canStart ? <Button icon={Play} variant="primary" onClick={() => act(kind, instance, "start")} disabled={instanceBusy}>启动</Button> : <Button icon={Square} onClick={() => act(kind, instance, "stop")} disabled={instanceBusy || instance.status !== "running"}>停止</Button>}<Button icon={RotateCw} onClick={() => act(kind, instance, "restart")} disabled={instanceBusy || instance.status !== "running" || adoptionStaged}>重启</Button><Button icon={Activity} onClick={() => checkConnection(instance)} disabled={instanceBusy || instance.status !== "running"}>{hasBusy(`probe:${instance.id}`) ? "正在检测…" : "测试连接"}</Button><Button icon={Link2} onClick={() => node && setSubscriptionEdit({ nodeId: node.id, nodeName: node.name, subscriptionId: state.subscriptions[0]?.id || "new", name: `${machine?.region || machine?.name || "我的"}节点` })} disabled={!node}>加入订阅</Button></div><div className="managed-secondary-actions"><IconButton disabled={instanceBusy} label="刷新状态" onClick={() => act(kind, instance, "status")}><RefreshCw size={16} /></IconButton><IconButton disabled={instanceBusy} label="查看日志" onClick={() => act(kind, instance, "logs")}><Clipboard size={16} /></IconButton><IconButton label="复制客户端链接" onClick={() => copyUri(instance)}><Copy size={16} /></IconButton><IconButton label="显示二维码" onClick={() => node?.uri && setQr({ name: instance.name, uri: node.uri })}><QrCode size={16} /></IconButton>{adopted && <IconButton disabled={instanceBusy} label="退出接管并恢复原服务" onClick={() => act(kind, instance, "rollback-adoption")}><Undo2 size={16} /></IconButton>}<IconButton disabled={instanceBusy || adopted} label={adopted ? "请先退出接管" : "删除托管实例"} onClick={() => act(kind, instance, "delete")}><Trash2 size={16} /></IconButton></div></footer>
+      <footer><div className="managed-primary-actions">{adoptionStaged ? <Button icon={ShieldCheck} variant="primary" onClick={() => act(kind, instance, "adopt")} disabled={instanceBusy}>切换接管</Button> : canStart ? <Button icon={Play} variant="primary" onClick={() => act(kind, instance, "start")} disabled={instanceBusy || (kind === "nowhere" && !instanceCapabilities?.verified && !/^v?2\./.test(instance.version || ""))}>启动</Button> : <Button icon={Square} onClick={() => act(kind, instance, "stop")} disabled={instanceBusy || instance.status !== "running"}>停止</Button>}<Button icon={RotateCw} onClick={() => act(kind, instance, "restart")} disabled={instanceBusy || instance.status !== "running" || adoptionStaged || (kind === "nowhere" && !instanceCapabilities?.verified && !/^v?2\./.test(instance.version || ""))}>重启</Button><Button icon={Activity} onClick={() => checkConnection(instance)} disabled={instance.role === "egress" || instanceBusy || instance.status !== "running"}>{hasBusy(`probe:${instance.id}`) ? "正在检测…" : "测试连接"}</Button><Button icon={Link2} onClick={() => node && setSubscriptionEdit({ nodeId: node.id, nodeName: node.name, subscriptionId: state.subscriptions[0]?.id || "new", name: `${machine?.region || machine?.name || "我的"}节点` })} disabled={!node}>加入订阅</Button></div><div className="managed-secondary-actions"><IconButton disabled={instanceBusy} label="刷新状态" onClick={() => act(kind, instance, "status")}><RefreshCw size={16} /></IconButton><IconButton disabled={instanceBusy} label="查看日志" onClick={() => act(kind, instance, "logs")}><Clipboard size={16} /></IconButton><IconButton disabled={!node} label="复制客户端链接" onClick={() => copyUri(instance)}><Copy size={16} /></IconButton><IconButton disabled={!node} label="显示二维码" onClick={() => node?.uri && setQr({ name: instance.name, uri: node.uri })}><QrCode size={16} /></IconButton>{adopted && <IconButton disabled={instanceBusy} label="退出接管并恢复原服务" onClick={() => act(kind, instance, "rollback-adoption")}><Undo2 size={16} /></IconButton>}<IconButton disabled={instanceBusy || adopted} label={adopted ? "请先退出接管" : "删除托管实例"} onClick={() => act(kind, instance, "delete")}><Trash2 size={16} /></IconButton></div></footer>
     </article>;
   };
   return <section className="workspace-page deploy-panel">
-    <PageHead title="部署节点" description="创建、接入并管理节点实例。"><Button icon={Settings} onClick={() => setPresetManager(true)}>管理预设</Button></PageHead>
+    <PageHead title="部署节点" description="创建、接入并管理节点实例。"><Button icon={Upload} onClick={openBatch}>批量更新 Nowhere</Button><Button icon={Settings} onClick={() => setPresetManager(true)}>管理预设</Button></PageHead>
     <div className="deploy-launch-grid">
       <button className="deploy-launch-card nowhere-launch" type="button" onClick={openNowhere} disabled={!boundMachines.length}>
         <header><span>NOWHERE CONTROL</span><PackageOpen size={23} /></header>
@@ -785,6 +859,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
         <header><span>EXTERNAL PANEL</span><Database size={19} /></header><strong>连接专业面板</strong><small>2S-UI · S-UI</small><b>管理连接</b>
       </button>
     </div>
+    {batch && !batch.done && <div className="managed-strip" role="status"><RefreshCw size={16} /><span>Nowhere 批量更新：已处理 {batch.counts.completed}/{batch.counts.total} 个实例</span><Button onClick={() => { setBatchPreview(null); setBatchOpen(true); }}>查看进度</Button></div>}
     {tasks.map(task => <div className="warning" key={task.operationId}><RefreshCw size={16} /><span>{task.kind} · {task.action}：{task.error || "后台处理中，可离开此页，结果会自动更新"}</span></div>)}
     <div className="managed-strip"><Check size={15} /><span>新建实例默认保持停止，可确认配置后再启动。</span></div>
     <div className="managed-list">{instances.map((item) => managedCard(item, "nowhere"))}{singInstances.map((item) => managedCard(item, "sing-box"))}{!instances.length && !singInstances.length && <Empty title="还没有节点实例">从上方选择部署方式，检查配置后即可创建。</Empty>}</div>
@@ -849,36 +924,57 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       </div>
       <div className="dialog-actions"><Button onClick={() => { setCertificateCenter(false); setCertificateEditor(null); }}>关闭</Button></div>
     </Modal>
+    <Modal open={batchOpen} title="批量更新 Nowhere" onClose={() => !batchSubmitting && setBatchOpen(false)} size="large">
+      <p>更新所有已部署的托管实例，NW2 目标为 2.2.1，NW3 目标为已验证的同代际版本。运行中的实例会短暂重启；已停止的实例保持停止。密钥不自动替换。</p>
+      {batchPreview && (!batch || batch.done) ? <>
+        <p>计划更新 {batchPreview.rows.filter(row => row.phase === "queued").length} 个，跳过 {batchPreview.rows.filter(row => row.phase === "skipped").length} 个。远端检查不通过时会单独跳过或报告失败。</p>
+        <div className="nowhere-batch-list">{batchPreview.rows.map(row => <div className="nowhere-batch-row" key={row.instanceId}><div><strong>{row.name}</strong><small>{row.machineName} · {row.currentVersion} → {row.targetVersion || "无目标"}</small></div><span>{row.reason || "待更新"}</span></div>)}</div>
+      </> : batch ? <>
+        <div className="nowhere-batch-progress" role="status"><strong>{batchSubmitting ? "正在提交任务，请保持此页打开…" : batch.done ? "批量处理完成" : "正在更新，提交完成后可离开页面"}</strong><progress aria-label="批量更新总进度" value={batch.counts.completed} max={Math.max(1, batch.counts.total)} /><span>已处理 {batch.counts.completed}/{batch.counts.total} · 成功 {batch.counts.success} · 失败 {batch.counts.failed} · 跳过 {batch.counts.skipped} · 待核对 {batch.counts["needs-review"]}</span></div>
+        <div className="nowhere-batch-list">{batch.rows.map(row => <div className={`nowhere-batch-row ${row.phase}`} key={row.instanceId}><div><strong>{row.name}</strong><small>{row.machineName} · {row.currentVersion} → {row.targetVersion || "无目标"}</small></div><div><b>{({prepared:"等待提交",running:"更新中",success:"成功",failed:"失败",skipped:"跳过","needs-review":"待核对"})[row.phase] || row.phase}</b><small>{MANAGED_ERROR[row.reason] || row.reason}{row.rolledBack ? " · 已回退" : ""}</small></div></div>)}</div>
+      </> : <p role="status">正在读取部署清单…</p>}
+      <div className="dialog-actions">{batch?.done && !batchPreview && <Button onClick={openBatch}>重新检查清单</Button>}<Button onClick={() => setBatchOpen(false)} disabled={batchSubmitting}>{batch && !batch.done ? "后台运行，关闭窗口" : "关闭"}</Button>{batchPreview && (!batch || batch.done) && <Button icon={Upload} variant="primary" onClick={startBatch} disabled={batchSubmitting || !batchPreview.rows.some(row => row.phase === "queued")}>{batchSubmitting ? "提交中…" : "更新全部可升级实例"}</Button>}</div>
+    </Modal>
     <Modal open={!!nowhereManager} title={`${nowhereManager?.instance?.name || "Nowhere"} · 版本与证书`} eyebrow="Nowhere 控制面" onClose={() => !nowhereManager?.loading && setNowhereManager(null)} size="large">
       {nowhereManager?.loading ? <div className="boot"><span className="spinner" />正在读取目标机状态</div> : nowhereManager && <>
         <div className="nowhere-control-summary">
-          <div><span>当前版本</span><strong>{nowhereManager.instance.version || "未知"} · NW2</strong><small>{nowhereManager.result?.binaryVersion || "尚未读取内核输出"}</small></div>
+          <div><span>当前版本</span><strong>{nowhereManager.instance.version || "未知"} · {managerCurrentCapabilities.wireProtocol.toUpperCase() || "旧 NW2"}</strong><small>{nowhereManager.result?.binaryVersion || "尚未读取内核输出"}</small></div>
           <div><span>证书模式</span><strong>{{ ephemeral: "临时自签", managed: "稳定自签", existing: "已有证书" }[nowhereManager.result?.certificate?.mode || nowhereManager.instance.certificateMode] || "未知"}</strong><small>{nowhereManager.result?.certificate?.fingerprint && nowhereManager.result.certificate.ephemeral ? "已读取当前指纹；重启后会变化" : nowhereManager.result?.certificate?.mode === "ephemeral" ? "实例启动后可读取当前指纹" : nowhereManager.result?.certificate?.valid ? "证书有效，且与私钥匹配" : nowhereManager.result?.certificate?.error ? MANAGED_ERROR[nowhereManager.result.certificate.error] || nowhereManager.result.certificate.error : "尚未检查"}</small></div>
           <div><span>运行状态</span><strong>{nowhereManager.result?.state === "active" ? "运行中" : nowhereManager.result?.state === "inactive" ? "已停止" : nowhereManager.result?.state || "未知"}</strong><small>仅管理此实例的私有内核</small></div>
         </div>
         {nowhereManager.result?.certificate?.fingerprint && <div className="certificate-fingerprint"><span>SHA256 指纹</span><code>{nowhereManager.result.certificate.fingerprint}</code>{nowhereManager.result.certificate.expiresAt && <small>到期：{nowhereManager.result.certificate.expiresAt}</small>}{!!nowhereManager.result.certificate.sans?.length && <small>SAN：{nowhereManager.result.certificate.sans.join("、")}</small>}<Button icon={Copy} onClick={() => navigator.clipboard.writeText(nowhereManager.result.certificate.fingerprint).then(() => notify("证书指纹已复制"))}>复制指纹</Button></div>}
-        {nowhereManager.instance.migration && <div className="managed-strip"><Check size={15} /><span>已保留迁移前的 {nowhereManager.instance.migration.fromVersion} 快照，可回退。</span></div>}
-        {managerKeyNeedsUpdate && <div className="managed-strip"><KeyRound size={16} /><div><strong>升级前需要更新共享密钥</strong><p>当前密钥不符合 2.2.1 的 32–64 字符小写十六进制要求。先生成并保存新密钥，再在所有客户端更新订阅，并同步下一跳。</p><Button icon={KeyRound} onClick={() => editNowhere(nowhereManager.instance, nowhereManager.targetVersion)}>更新密钥</Button></div></div>}
+        {nowhereManager.instance.migration && <div className="managed-strip"><Check size={15} /><span>已保留迁移前的 {nowhereManager.instance.migration.fromVersion} 快照，失败时使用原配置恢复。</span></div>}
+        {managerKeyNeedsUpdate && managerTargetCapabilities.protocolGeneration !== 3 && <div className="managed-strip"><KeyRound size={16} /><div><strong>升级前需要更新共享密钥</strong><p>当前密钥不符合 2.2.1 的 32–64 字符小写十六进制要求。先生成并保存新密钥，再在所有客户端更新订阅，并同步下一跳。</p><Button icon={KeyRound} onClick={() => editNowhere(nowhereManager.instance, nowhereManager.targetVersion)}>更新密钥</Button></div></div>}
         <div className="nowhere-upgrade-row">
           <span className="control-label">目标版本</span>
-          <select aria-label="目标版本" value={nowhereManager.targetVersion || nowhereManager.instance.version} onChange={(event) => setNowhereManager((current) => ({ ...current, targetVersion: event.target.value }))}>{!managerCurrentCapabilities.verified && <option value={nowhereManager.instance.version}>{nowhereManager.instance.version} · 当前未验证</option>}{!!nowhereV2Releases.length && <optgroup label="已验证">{nowhereV2Releases.map((release, index) => <option key={release.tag} value={release.tag}>{release.tag}{index === 0 ? " · 最新" : ""}</option>)}</optgroup>}{!!nowhereUnverifiedReleases.length && <optgroup label="发现但尚未适配">{nowhereUnverifiedReleases.map((release) => <option key={release.tag} value={release.tag} disabled>{release.tag} · 只读</option>)}</optgroup>}</select>
+          <select aria-label="目标版本" value={nowhereManager.targetVersion || nowhereManager.instance.version} onChange={(event) => setNowhereManager((current) => ({ ...current, targetVersion: event.target.value }))}>{!managerCurrentCapabilities.verified && <option value={nowhereManager.instance.version}>{nowhereManager.instance.version} · 当前未验证</option>}{!!nowhereVerifiedReleases.length && <optgroup label="已验证">{nowhereVerifiedReleases.filter(release => (nowhereVersionCapabilities(release.tag).protocolGeneration === (managerCurrentCapabilities.protocolGeneration || 2) || (/^v?2\./.test(nowhereManager.instance.version) && nowhereVersionCapabilities(release.tag).protocolGeneration === 3))).map((release, index) => <option key={release.tag} value={release.tag}>{release.tag}{index === 0 ? " · 最新" : ""}</option>)}</optgroup>}{!!nowhereUnverifiedReleases.length && <optgroup label="发现但尚未适配">{nowhereUnverifiedReleases.map((release) => <option key={release.tag} value={release.tag} disabled>{release.tag} · 只读</option>)}</optgroup>}</select>
           <Button icon={RefreshCw} onClick={() => loadNowhereReleases(true)} disabled={nowhereReleases.loading}>{nowhereReleases.loading ? "获取中" : "刷新列表"}</Button>
-          <Button icon={Upload} variant="primary" onClick={upgradeNowhere} disabled={managerKeyNeedsUpdate || (!managerCurrentCapabilities.verified && managerCurrentCapabilities.version !== "v2.2.0") || !managerTargetCapabilities.verified || !nowhereManager.targetVersion || nowhereManager.targetVersion === nowhereManager.instance.version}>切换此实例</Button>
-          <small>只允许切换到适配清单中已验证的 2.x 版本；新 Release 会先出现为只读待验证。</small>
+          <Button icon={Upload} variant="primary" onClick={upgradeNowhere} disabled={migrationBusy || (managerKeyNeedsUpdate && managerTargetCapabilities.protocolGeneration !== 3) || (!managerCurrentCapabilities.verified && !/^v?2\./.test(managerCurrentCapabilities.version || "")) || !managerTargetCapabilities.verified || !nowhereManager.targetVersion || nowhereManager.targetVersion === nowhereManager.instance.version}>{managerTargetCapabilities.protocolGeneration === 3 && /^v?2\./.test(nowhereManager.instance.version) ? "迁移到 NW3…" : "切换此实例"}</Button>
+          <small>同代际更新直接替换内核；NW2 → NW3 先预览配置转换并确认客户端同步。</small>
         </div>
       </>}
       <div className="dialog-actions"><Button onClick={() => setNowhereManager(null)} disabled={nowhereManager?.loading}>关闭</Button></div>
+    </Modal>
+    <Modal open={!!migration} title="升级迁移到 NW3" onClose={() => !migrationBusy && setMigration(null)} size="large">
+      {migration && <>
+        <p>{migration.instance.name} · {migration.instance.version} → {migration.targetVersion}。NW3 与 NW2 不互通，迁移会同时替换内核和配置。保留监听端口、证书及 Morph 开关；失败恢复旧配置和内核。</p>
+        <Field label="NW3 共享密钥" hint="恰好 32 字符小写 hex。已有 32 字符密钥可保留；更换后必须同步全部客户端。"><SecretInput value={migration.key} onChange={event => setMigration(current => ({ ...current, key: event.target.value, preview: null, confirmed: false }))} /></Field>
+        <Button icon={KeyRound} disabled={migrationBusy} onClick={async () => { try { const value = await rpc("proxyConsole:newManagedNowhereValues"); setMigration(current => ({ ...current, key: value.key, preview: null, confirmed: false })); } catch (error) { notify(error.message, true); } }}>生成迁移密钥</Button>
+        {migration.preview && <><ul>{migration.preview.changes.map(change => <li key={change}>{change}</li>)}</ul><p>成功后节点订阅将发布 NW3 链接。原生 next 无法自动转换；使用该配置时需先调整链路。</p><label className="output-toggle"><input type="checkbox" checked={migration.confirmed} onChange={event => setMigration(current => ({ ...current, confirmed: event.target.checked }))} />我已确认客户端支持 NW3，并准备同步密钥、Morph 与整条链路</label></>}
+        {migration.error && <p role="alert" className="managed-error">{migration.error}</p>}
+      </>}
+      <div className="dialog-actions"><Button onClick={() => setMigration(null)} disabled={migrationBusy}>取消</Button><Button onClick={previewMigration} disabled={migrationBusy}>预览转换</Button><Button variant="primary" icon={Upload} onClick={applyMigration} disabled={migrationBusy || !migration?.preview || !migration?.confirmed}>{migrationBusy ? "处理中…" : "执行 NW3 升级迁移"}</Button></div>
     </Modal>
     <Modal open={!!configEdit} title={`编辑 Nowhere · ${configEdit?.name || ""}`} onClose={() => !nowhereSaving && setConfigEdit(null)} size="large">
       <p>修改仅应用到此托管实例。运行中的实例会重启；停止的实例保持停止。保存失败会尝试恢复旧配置，成功后同步订阅链接。</p>
       {configEdit && <div className="form-grid">
         <Field label="节点名称" wide><input autoFocus value={configEdit.values.name || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, name: event.target.value } }))} /></Field>
         {[["publicHost", "公网域名或 IP"], ["listenHost", "监听地址"]].map(([key, label]) => <Field key={key} label={label}><input value={configEdit.values[key] ?? ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, [key]: event.target.value } }))} /></Field>)}
-        <Field label="客户端输出"><select value={configEdit.values.client || "anywhere"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, client: event.target.value } }))}><option value="anywhere">Anywhere</option><option value="both">Anywhere + Vector</option></select></Field>
-        <Field label="共享密钥" hint="2.2.1 接受 32–64 字符小写 hex，已有合规密钥无需更换；更换后同步所有客户端与下一跳"><SecretInput value={configEdit.values.key || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, key: event.target.value } }))} /></Field>
+        {configEdit.values.role !== "egress" && <Field label="客户端输出"><select value={configEdit.values.client || "anywhere"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, client: event.target.value } }))}><option value="anywhere">Anywhere</option><option value="both">Anywhere + Vector</option></select></Field>}
+        <Field label="共享密钥" hint={configCapabilities.protocolGeneration === 3 ? "NW3 要求恰好 32 字符小写 hex" : "NW2 接受 32–64 字符小写 hex"}><SecretInput value={configEdit.values.key || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, key: event.target.value } }))} /></Field>
         <div><Button icon={KeyRound} onClick={generateNowhereKey} disabled={nowhereSaving}>生成 32 位密钥</Button><p>生成仅修改当前表单；保存后才会应用到实例。</p></div>
         <NowhereCarrierFields values={configEdit.values} onPatch={(patch) => setConfigEdit(old => ({ ...old, values: { ...old.values, ...patch } }))} />
-        <Field label="TLS 与证书"><select value={certificateSelection(configEdit.values, "ephemeral")} onChange={event => selectCertificate((updater) => setConfigEdit((old) => ({ ...old, values: updater(old.values) })), event.target.value, "nowhere")}><option value="ephemeral">临时自签</option><option value="managed">为此实例生成稳定自签</option><option value="existing">手动填写已有 PEM</option>{!!usableCertificates(configEdit.values.machineId).length && <optgroup label="证书工作台">{certificateAssetOptions(configEdit.values.machineId)}</optgroup>}</select></Field>
+        {configEdit.values.role !== "egress" && <Field label="TLS 与证书"><select value={certificateSelection(configEdit.values, "ephemeral")} onChange={event => selectCertificate((updater) => setConfigEdit((old) => ({ ...old, values: updater(old.values) })), event.target.value, "nowhere")}><option value="ephemeral">临时自签</option><option value="managed">为此实例生成稳定自签</option><option value="existing">手动填写已有 PEM</option>{!!usableCertificates(configEdit.values.machineId).length && <optgroup label="证书工作台">{certificateAssetOptions(configEdit.values.machineId)}</optgroup>}</select></Field>}
         {!configEdit.values.certificateAssetId && configEdit.values.certificateMode === "managed" && <><Field label="证书名称"><input value={configEdit.values.certificateHost || configEdit.values.publicHost || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, certificateHost: event.target.value } }))} /></Field><Field label="有效天数"><input type="number" min="1" max="3650" value={configEdit.values.certificateDays || 825} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, certificateDays: Number(event.target.value) } }))} /></Field></>}
         {!configEdit.values.certificateAssetId && configEdit.values.certificateMode === "existing" && <><Field label="证书链路径"><input value={configEdit.values.certificatePath || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, certificatePath: event.target.value } }))} /></Field><Field label="私钥路径"><input value={configEdit.values.privateKeyPath || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, privateKeyPath: event.target.value } }))} /></Field></>}
       </div>}
@@ -907,28 +1003,29 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       {subscriptionEdit && <div className="form-grid"><Field label="目标订阅" wide><select value={subscriptionEdit.subscriptionId} onChange={event => setSubscriptionEdit(old => ({ ...old, subscriptionId: event.target.value }))}>{state.subscriptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}<option value="new">新建订阅</option></select></Field>{subscriptionEdit.subscriptionId === "new" && <Field label="新订阅名称" wide><input autoFocus value={subscriptionEdit.name} onChange={event => setSubscriptionEdit(old => ({ ...old, name: event.target.value }))} /></Field>}</div>}
       <div className="dialog-actions"><Button onClick={() => setSubscriptionEdit(null)}>取消</Button><Button variant="primary" icon={Save} onClick={saveSubscription} disabled={!subscriptionEdit || (subscriptionEdit.subscriptionId === "new" && !subscriptionEdit.name.trim())}>确认加入</Button></div>
     </Modal>
-    <Modal open={editor} title="新建 Nowhere 节点" eyebrow="快捷部署" onClose={() => !nowhereCreating && setEditor(false)} size="large">
+    <Modal open={editor} title="新建 Nowhere 实例" eyebrow="快捷部署" onClose={() => !nowhereCreating && setEditor(false)} size="large">
       <div className="deploy-intro"><strong>配置 Nowhere 节点</strong><p>选择宿主、连接方式和内核版本，确认后创建。</p></div>
       <div className="form-grid deploy-form">
         <Field label="节点名称" wide><input value={form.name || ""} onChange={(event) => update("name", event.target.value)} /></Field>
-        <Field label="协议"><input value="NW2" disabled /></Field>
+        <Field label="协议"><input value={formCapabilities.wireProtocol.toUpperCase() || "未知"} disabled /></Field>
+        {formCapabilities.protocolGeneration === 3 && <Field label="角色"><select value={form.role || "portal"} onChange={event => { const role = event.target.value; setForm(old => ({ ...old, role, publicHost: role === "egress" ? "" : old.publicHost, tcpPort: role === "egress" ? 0 : old.port, udpPort: old.udpPort || old.port, certificateMode: "ephemeral", certificateAssetId: "", vectorMux: 0 })); setPreview(null); }}><option value="portal">Portal 中继</option><option value="egress">Egress 远程出口（主动 QUIC）</option></select></Field>}
         <Field label="服务器"><select value={form.machineId || ""} onChange={(event) => { selectMachine(setForm, event.target.value, "Nowhere"); setPreview(null); }}><option value="">请选择</option>{boundMachines.map((machine) => <option key={machine.id} value={machine.id}>{flag(machine.countryCode)} {machine.name}</option>)}</select></Field>
         <Field label="内核版本" wide hint={nowhereReleases.loading ? "正在获取 Nowhere 官方 Release…" : nowhereReleases.error ? "官方列表暂时不可用，可使用已验证缓存版本" : "默认下载并校验所选官方版本，也可以复用目标机已有内核。"}>
-          <div className="release-picker"><select aria-label="Nowhere 内核版本" value={form.binarySource === "copy" ? "copy" : nowhereReleases.releases.some((release) => release.tag === form.version) ? form.version : "custom"} onChange={(event) => selectNowhereRuntime(event.target.value)}>{!!nowhereV2Releases.length && <optgroup label="已验证版本">{nowhereV2Releases.map((release, index) => <option key={release.tag} value={release.tag}>{release.tag}{index === 0 ? " · 最新" : ""}{release.publishedAt ? ` · ${new Date(release.publishedAt).toLocaleDateString("zh-CN")}` : ""}</option>)}</optgroup>}{!!nowhereUnverifiedReleases.length && <optgroup label="发现但尚未适配">{nowhereUnverifiedReleases.map((release) => <option key={release.tag} value={release.tag} disabled>{release.tag} · 只读待验证</option>)}</optgroup>}<optgroup label="目标机"><option value="copy">复用目标机现有内核</option></optgroup><option value="custom">手动检查版本…</option></select><Button icon={RefreshCw} onClick={() => loadNowhereReleases(true)} disabled={nowhereReleases.loading}>{nowhereReleases.loading ? "获取中" : "刷新版本"}</Button></div>
-          {form.binarySource !== "copy" && !nowhereReleases.releases.some((release) => release.tag === form.version) && <input aria-label="手动指定 Nowhere 版本" value={form.version || ""} onChange={(event) => update("version", event.target.value)} placeholder="例如 v2.1.0" />}
+          <div className="release-picker"><select aria-label="Nowhere 内核版本" value={form.binarySource === "copy" ? "copy" : nowhereReleases.releases.some((release) => release.tag === form.version) ? form.version : "custom"} onChange={(event) => selectNowhereRuntime(event.target.value)}>{!!nowhereVerifiedReleases.length && <optgroup label="已验证版本">{nowhereVerifiedReleases.map((release, index) => <option key={release.tag} value={release.tag}>{release.tag}{index === 0 ? " · 最新" : ""}{release.publishedAt ? ` · ${new Date(release.publishedAt).toLocaleDateString("zh-CN")}` : ""}</option>)}</optgroup>}{!!nowhereUnverifiedReleases.length && <optgroup label="发现但尚未适配">{nowhereUnverifiedReleases.map((release) => <option key={release.tag} value={release.tag} disabled>{release.tag} · 只读待验证</option>)}</optgroup>}<optgroup label="目标机"><option value="copy">复用目标机现有内核</option></optgroup><option value="custom">手动检查版本…</option></select><Button icon={RefreshCw} onClick={() => loadNowhereReleases(true)} disabled={nowhereReleases.loading}>{nowhereReleases.loading ? "获取中" : "刷新版本"}</Button></div>
+          {form.binarySource !== "copy" && !nowhereReleases.releases.some((release) => release.tag === form.version) && <input aria-label="手动指定 Nowhere 版本" value={form.version || ""} onChange={(event) => update("version", event.target.value)} placeholder="例如 v3.0.0" />}
           {form.binarySource !== "copy" && !formCapabilities.verified && <small className="warning-text">此版本尚未进入已验证适配清单，只能识别，不能创建实例。</small>}
         </Field>
-        <Field label="公网域名或 IP" hint={form.publicHost ? "已从 Komari 自动带出，可手动覆盖" : "Komari 未提供公网地址，请手动填写"}><input value={form.publicHost || ""} onChange={(event) => update("publicHost", event.target.value)} placeholder="example.com 或公网 IP" /></Field>
+        <Field label={form.role === "egress" ? "远端 Portal 地址" : "公网域名或 IP"} hint={form.role === "egress" ? "填写远端 Portal 地址及 QUIC 端口；密钥和 Morph 必须与该 Portal 一致" : form.publicHost ? "已从 Komari 自动带出，可手动覆盖" : "Komari 未提供公网地址，请手动填写"}><input value={form.publicHost || ""} onChange={(event) => update("publicHost", event.target.value)} placeholder="example.com 或公网 IP" /></Field>
         <NowhereCarrierFields values={form} error={formErrors.port} onPatch={(patch) => { setForm((old) => ({ ...old, ...patch })); setFormErrors({}); setPreview(null); }} />
-        <Field label="监听地址"><input value={form.listenHost || "0.0.0.0"} onChange={(event) => update("listenHost", event.target.value)} /></Field>
-        <Field label="客户端输出"><select value={form.client || "anywhere"} onChange={(event) => update("client", event.target.value)}><option value="anywhere">Anywhere</option><option value="both">Anywhere + Vector</option></select></Field>
-        <Field label="TLS 与证书" hint={form.certificateAssetId ? "复用证书工作台资产，并输出固定 Pin" : form.certificateMode === "ephemeral" ? "每次启动由 Nowhere 生成临时证书" : form.certificateMode === "managed" ? "为此实例生成并长期保留" : "手动填写目标机 PEM 路径"}><select value={certificateSelection(form, "ephemeral")} onChange={(event) => { selectCertificate(setForm, event.target.value, "nowhere"); setPreview(null); }}><option value="ephemeral">临时自签</option><option value="managed">为此实例生成稳定自签</option><option value="existing">手动填写已有 PEM</option>{!!usableCertificates(form.machineId).length && <optgroup label="证书工作台">{certificateAssetOptions(form.machineId)}</optgroup>}</select></Field>
-        <Field label="共享密钥" hint="2.2.1 接受 32–64 字符小写十六进制；更换后须同步客户端" wide><SecretInput autoComplete="new-password" value={form.key || ""} onChange={(event) => update("key", event.target.value)} /></Field>
+        <Field label={form.role === "egress" ? "本地地址（Egress 不监听）" : "监听地址"}><input disabled={form.role === "egress"} value={form.listenHost || "0.0.0.0"} onChange={(event) => update("listenHost", event.target.value)} /></Field>
+        {form.role !== "egress" && <Field label="客户端输出"><select value={form.client || "anywhere"} onChange={(event) => update("client", event.target.value)}><option value="anywhere">Anywhere</option><option value="both">Anywhere + Vector</option></select></Field>}
+        {form.role !== "egress" && <Field label="TLS 与证书" hint={form.certificateAssetId ? "复用证书工作台资产，并输出固定 Pin" : form.certificateMode === "ephemeral" ? "每次启动由 Nowhere 生成临时证书" : form.certificateMode === "managed" ? "为此实例生成并长期保留" : "手动填写目标机 PEM 路径"}><select value={certificateSelection(form, "ephemeral")} onChange={(event) => { selectCertificate(setForm, event.target.value, "nowhere"); setPreview(null); }}><option value="ephemeral">临时自签</option><option value="managed">为此实例生成稳定自签</option><option value="existing">手动填写已有 PEM</option>{!!usableCertificates(form.machineId).length && <optgroup label="证书工作台">{certificateAssetOptions(form.machineId)}</optgroup>}</select></Field>}
+        <Field label="共享密钥" hint={formCapabilities.protocolGeneration === 3 ? "NW3 必须为 32 字符小写 hex；与 NW2 不互通" : "NW2 接受 32–64 字符小写 hex"} wide><SecretInput autoComplete="new-password" value={form.key || ""} onChange={(event) => update("key", event.target.value)} /></Field>
         {!form.certificateAssetId && form.certificateMode === "managed" && <><Field label="证书名称"><input value={form.certificateHost || form.publicHost || ""} onChange={(event) => update("certificateHost", event.target.value)} /></Field><Field label="有效天数"><input type="number" min="1" max="3650" value={form.certificateDays || 825} onChange={(event) => update("certificateDays", Number(event.target.value))} /></Field></>}
         {!form.certificateAssetId && form.certificateMode === "existing" && <><Field label="证书链路径"><input value={form.certificatePath || ""} onChange={(event) => update("certificatePath", event.target.value)} /></Field><Field label="私钥路径"><input value={form.privateKeyPath || ""} onChange={(event) => update("privateKeyPath", event.target.value)} /></Field></>}
       </div>
       <details className="deploy-advanced"><summary>高级运行参数</summary><div className="form-grid"><NowhereAdvancedFields values={form} capabilities={formCapabilities} onPatch={(patch) => { setForm((old) => ({ ...old, ...patch })); setPreview(null); }} /></div></details>
-      {preview && <div className="deploy-preview"><Check size={17} /><div><strong>参数可生成 · NW2</strong><p>{[preview.summary.tcpPort ? `TCP ${preview.summary.tcpPort}` : "", preview.summary.udpPort ? `UDP ${preview.summary.udpPort}` : ""].filter(Boolean).join(" · ")} · TLS {preview.summary.tls} · {preview.links.anywhere.length} 条 Anywhere 链接</p></div></div>}
+      {preview && <div className="deploy-preview"><Check size={17} /><div><strong>参数可生成 · {formCapabilities.wireProtocol.toUpperCase()}</strong><p>{preview.summary.role === "egress" ? "Egress QUIC 出口 · 不创建订阅节点" : <>{[preview.summary.tcpPort ? `TCP ${preview.summary.tcpPort}` : "", preview.summary.udpPort ? `UDP ${preview.summary.udpPort}` : ""].filter(Boolean).join(" · ")} · TLS {preview.summary.tls} · {preview.links.anywhere.length} 条 Anywhere 链接</>}</p></div></div>}
       <div className="dialog-actions"><DraftStatus onDiscard={() => { clearSessionDraft("deploy:nowhere"); setEditor(false); }} /><Button onClick={() => setEditor(false)} disabled={nowhereCreating}>取消</Button><Button icon={Search} onClick={previewForm} disabled={nowhereCreating || !formCapabilities.verified}>预览</Button><Button icon={Download} variant="primary" onClick={create} disabled={nowhereCreating || !formCapabilities.verified || !form.machineId || !form.publicHost || !form.name}>{nowhereCreating ? "检查并创建中…" : "检查并创建（不启动）"}</Button></div>
     </Modal>
     <Modal open={singEditor} title="新建 sing-box 节点" eyebrow="快捷部署" onClose={() => !singCreating && setSingEditor(false)} size="large">

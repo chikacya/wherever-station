@@ -153,7 +153,7 @@ try:
         raise RuntimeError('daemon-reload-failed')
     checked = run([P['binaryPath'], '--version'], 8)
     version = ((checked.stdout or '') + '\n' + (checked.stderr or '')).strip()[:240]
-    if checked.returncode != 0 or (P.get('sourceMode') == 'download' and P['version'].lstrip('v') not in version):
+    if checked.returncode != 0 or P['version'].lstrip('v') not in version:
         raise RuntimeError('binary-version-mismatch')
     emit({
         'ok': True,

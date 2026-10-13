@@ -35,3 +35,9 @@ sample = cache.get('host', ['one'])[0];
 assert.equal(sample.telemetry.cpuPercent, 5);
 assert.equal(sample.telemetry.rssBytes, 33000000);
 console.log('status cache stale / uptime-derived rates / lossless counters / reset passed');
+
+const idA='a'.repeat(32),idB='b'.repeat(32);
+const recordNW3=(id,bytes)=>cache.record('nw3',['three'],[{instanceId:'three',observedAt:new Date(now).toISOString(),state:'active',pid:50,telemetry:{source:'local',wireProtocol:'nw3',instanceId:id,version:'3.0.0',role:'egress',tcpLogicalUp:bytes,tcpLogicalDown:'0',udpLogicalUp:'0',udpLogicalDown:'0'}}]);
+recordNW3(idA,'9007199254740993');now+=1000;recordNW3(idA,'9007199254741093');
+let nw3=cache.get('nw3',['three'])[0].telemetry;assert.equal(nw3.upBytesPerSecond,100);assert.equal(nw3.role,'egress');assert.equal(nw3.tcpLogicalUp,'9007199254741093');
+now+=1000;recordNW3(idB,'9007199254741193');assert.equal(cache.get('nw3',['three'])[0].telemetry.upBytesPerSecond,undefined);

@@ -274,6 +274,7 @@ export default function App() {
             const managedRows = Object.fromEntries(state.managedInstances.filter((item) => item.machineId === machine.id && item.kind === "nowhere" && !["draft", "validated"].includes(item.status)).map((item) => [item.id, { ...(previous[item.id] || {}), pending: true, error: "" }]));
             next[machine.monitorClientId] = {
               "sing-box": { ...(previous["sing-box"] || {}), pending: true, error: "" },
+              xray: { ...(previous.xray || {}), pending: true, error: "" },
               nowhere: { ...(previous.nowhere || {}), pending: true, error: "" },
               ...managedRows,
             };
@@ -302,6 +303,7 @@ export default function App() {
               clientId: machine.monitorClientId,
               value: {
                 "sing-box": { ...(rows["service-sing-box"] || { state: "unknown" }), pending: false, error: "" },
+                xray: { ...(rows["service-xray"] || { state: "unknown" }), pending: false, error: "" },
                 nowhere: { ...(rows["service-nowhere"] || { state: "unknown" }), pending: false, error: "" },
                 ...Object.fromEntries(state.managedInstances.filter((item) => item.machineId === machine.id && item.kind === "nowhere" && !["draft", "validated"].includes(item.status)).map((item) => [item.id, { ...(rows[item.id] || { state: "unknown" }), pending: false, error: "" }])),
               },
@@ -322,6 +324,7 @@ export default function App() {
           const unavailable = { state: "unavailable", pending: false, error, observedAt: new Date().toISOString() };
           sampled[clientId] = {
             "sing-box": unavailable,
+            xray: unavailable,
             nowhere: unavailable,
             ...Object.fromEntries(state.managedInstances.filter((item) => item.machineId === machine.id && item.kind === "nowhere" && !["draft", "validated"].includes(item.status)).map((item) => [item.id, { ...unavailable }])),
           };

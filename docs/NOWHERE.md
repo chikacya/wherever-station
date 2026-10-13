@@ -2,7 +2,7 @@
 
 [简体中文](NOWHERE.zh-CN.md)
 
-Wherever Station manages Nowhere without requiring `nowhere-sh`. It owns installation, configuration, service lifecycle, telemetry, certificates, and share URI generation for instances created through the plugin. Nowhere 2.0.0 or newer is required.
+Wherever Station manages Nowhere without requiring `nowhere-sh`. It owns installation, configuration, service lifecycle, telemetry, certificates, and share URI generation for instances created through the plugin. NW2 uses 2.2.1 as its installed baseline. New instances default to NW3 3.0.0.
 
 ## Continuous compatibility
 
@@ -45,3 +45,27 @@ Native Vector, probe and next routes verify the system CA and server name by def
 Dual-stack outbound sources use `dial4` and `dial6`, accepting local addresses of the matching family or `auto`. The plugin omits `dial` when these fields are used. Reset an existing single-family `dial` to `auto` first.
 
 Existing compliant 32–64 character keys can be retained. The transitional 2.2.0 release is not offered as an installation or upgrade target.
+
+## NW3 3.0.0
+
+NW3 is incompatible with NW2 and provides no negotiation or fallback. Confirm client support, then select NW3 in version management to preview an explicit binary and configuration migration. Separate instances remain available for staged transitions. NW1 and historical NW2 configuration branches are no longer maintained; older NW2 instances retain read, start, stop, restart, delete and upgrade-to-2.2.1 operations.
+
+NW3 requires exactly 32 lowercase hexadecimal key characters and defaults Morph to enabled. Portal supports TLS and QUIC listeners; each Vector connection selects one carrier. Share links use compact endpoints and `net=tcp|udp`; native Vector uses a carrier path and `in=`. Split `up/down`, Mux and native `next` are removed.
+
+Portal output is `direct`, `egress` or a SOCKS5 address. Egress output requires a QUIC listener and forbids explicit source binding. The Egress role connects outbound to the remote Portal over QUIC, using matching credentials and Morph. Configure a trusted SHA256 pin for self-signed Portal certificates. Egress has no local relay listener or subscription node. Loss of Egress does not fall back to direct routing.
+
+NW3 telemetry passively reads Hello and Snapshot without subscription commands. Rates use receive times and lossless cumulative counters; a new instance ID resets the baseline. Only logical TCP/UDP bytes and active Flow counts belong to this IPC contract. Supervisor state remains separate.
+
+Third-party clients require explicit NW3 support; the URI scheme alone does not establish compatibility.
+
+## Batch updates
+
+The deployment page offers a Nowhere batch update preview for installed managed instances. NW2 targets 2.2.1; NW3 targets the latest verified release in its own generation. Drafts, current or newer versions, unbound hosts, staged adoption and existing tasks are skipped. Key/configuration checks never rotate credentials or migrate across generations automatically.
+
+Keep the page open during submission. Once submitted, Agent tasks continue independently of navigation and page reloads; the durable batch record shows processed counts and individual outcomes for 24 hours. One failure does not abort other submitted tasks. Stopped services remain stopped; upgrade failures use existing rollback behavior. Uncertain submission or execution results require review and are never automatically resubmitted. Unmanaged services are outside the batch scope.
+
+## Explicit NW2 to NW3 migration
+
+Select a verified NW3 target in version management. The migration reads current remote configuration, previews conversion and requires coordinated client confirmation. Keep compliant 32-character keys or explicitly choose a replacement; keys are never truncated. Mux, split routes and legacy telemetry settings are removed; SOCKS becomes `out=`. Ports, rates, certificates and Morph switches are preserved. Native `next` requires a redesigned exit and is blocked.
+
+The remote configuration hash is checked before stopping. Failures restore the prior binary, configuration and running/stopped state. Stopped instances briefly start to validate the new configuration, then stop. Only successful migration publishes NW3 subscription links; private `.nw2-backup` files retain the previous binary and environment. NW2 management remains available pending a later explicit decision to remove it.

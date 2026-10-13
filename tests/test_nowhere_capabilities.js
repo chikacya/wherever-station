@@ -1,35 +1,12 @@
 const assert = require("node:assert/strict");
-const { compareNowhereVersions, nowhereCapabilities, parseNowhereVersion } = require("../tools/nowhere-capabilities");
-
-assert.deepEqual(parseNowhereVersion("2.0.2"), { text: "v2.0.2", major: 2, minor: 0, patch: 2, suffix: "" });
-assert.equal(parseNowhereVersion("latest"), null);
-assert.equal(compareNowhereVersions("v2.0.2", "v2.0.1"), 1);
-assert.equal(compareNowhereVersions("v2.0.2-beta.1", "v2.0.2"), -1);
-assert.equal(nowhereCapabilities("v1.8.3").supported, false);
-assert.deepEqual(nowhereCapabilities("v2.0.2"), {
-  version: "v2.0.2", known: true, supported: true, adapter: "nowhere-v2", verified: true, compatibility: "verified",
-  vectorPin: true, vectorMux: true, localTelemetry: true, protocolGeneration: 2,
-  wireProtocol: "nw2", carrierEndpoints: true, morph: true, morphWireGeneration: 1, morphTcpPrelude: false, transportMemoryProfile: true, eventLog: true, dualStackDial: false, strictSharedKey: false,
-});
-assert.equal(nowhereCapabilities("v2.0.1").localTelemetry, false);
-assert.deepEqual(nowhereCapabilities("v2.1.0"), {
-  version: "v2.1.0", known: true, supported: true, adapter: "nowhere-v2", verified: true, compatibility: "verified",
-  vectorPin: true, vectorMux: true, localTelemetry: true, protocolGeneration: 2,
-  wireProtocol: "nw2", carrierEndpoints: true, morph: true, morphWireGeneration: 2, morphTcpPrelude: true, transportMemoryProfile: true, eventLog: true, dualStackDial: false, strictSharedKey: false,
-});
-assert.equal(nowhereCapabilities("v2.1.1").eventLog, false);
-assert.equal(nowhereCapabilities("unknown").known, false);
-assert.deepEqual(nowhereCapabilities("v3.0.0"), {
-  version: "v3.0.0", known: true, supported: false, adapter: "", verified: false, compatibility: "unverified",
-  vectorPin: false, vectorMux: false, localTelemetry: false,
-  protocolGeneration: 0, wireProtocol: "", carrierEndpoints: false, morph: false, morphWireGeneration: 0, morphTcpPrelude: false, transportMemoryProfile: false, eventLog: false,
-});
-
-console.log("Nowhere 2.x-only capability matrix tests passed");
-
-assert.equal(nowhereCapabilities("v2.1.2").verified, true);
-assert.equal(nowhereCapabilities("v2.2.0").strictSharedKey, true);
-assert.equal(nowhereCapabilities("v2.2.0").dualStackDial, true);
-
-assert.equal(nowhereCapabilities("v2.2.0").verified, false);
-assert.equal(nowhereCapabilities("v2.2.1").verified, true);
+const {nowhereCapabilities, parseNowhereVersion,compareNowhereVersions}=require('../tools/nowhere-capabilities');
+assert.equal(parseNowhereVersion('latest'),null);
+assert.equal(compareNowhereVersions('v2.2.1','v2.2.1-beta.1'),1);
+for(const v of ['v1.8.3','v2.0.2','v2.1.2','v2.2.0','v4.0.0']) assert.equal(nowhereCapabilities(v).supported,false,v);
+const nw2=nowhereCapabilities('v2.2.1');
+assert.equal(nw2.verified,true); assert.equal(nw2.wireProtocol,'nw2');assert.equal(nw2.vectorMux,true);assert.equal(nw2.eventLog,false);assert.equal(nw2.strictSharedKey,true);
+const nw3=nowhereCapabilities('v3.0.0');
+assert.equal(nw3.verified,true);assert.equal(nw3.wireProtocol,'nw3');assert.equal(nw3.vectorMux,false);assert.equal(nw3.morphWireGeneration,3);assert.equal(nw3.localTelemetry,true);
+assert.equal(nowhereCapabilities('v3.0.1').verified,false);
+assert.equal(nowhereCapabilities('v3.0.0-beta.1').verified,false);
+console.log('NW2 baseline and NW3 capability tests passed');

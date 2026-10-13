@@ -5,7 +5,7 @@ const crypto = require("crypto");
 const { URL } = require("node:url");
 const yaml = require("js-yaml");
 const { isIP } = require("net");
-const { cleanManagedState, planManagedNowhere } = require(path.join(__dirname, "tools/managed-nowhere"));
+const { cleanManagedState, planManagedNowhere, buildVectorLink } = require(path.join(__dirname, "tools/managed-nowhere"));
 const { compatibilityCatalog, nowhereCapabilities } = require(path.join(__dirname, "tools/nowhere-capabilities"));
 const { CLIENT_URI_PROTOCOLS, CONVERTED_PROTOCOLS, NAME_REWRITE_PROTOCOLS, SEMANTIC_PROTOCOLS, protocolCapability, protocolCatalog } = require(path.join(__dirname, "tools/protocol-capabilities"));
 const { assertConversion, assertClashFields } = require(path.join(__dirname, "tools/conversion-contract"));
@@ -36,7 +36,7 @@ const SUBSCRIPTION_HISTORY_FILE = path.join(__storageDir__, "subscription-histor
 const PROVIDER_SECRETS_FILE = path.join(__storageDir__, "provider-secrets.json");
 const RULE_SET_CACHE_FILE = path.join(__storageDir__, "rule-set-cache.json");
 const CONNECTIVITY_HISTORY_FILE = path.join(__storageDir__, "connectivity-history.json");
-const SERVICE_UNITS = Object.freeze({ "sing-box": "sing-box.service", nowhere: "nowhere.service" });
+const SERVICE_UNITS = Object.freeze({ "sing-box": "sing-box.service", xray: "xray.service", nowhere: "nowhere.service" });
 const SERVICE_ACTIONS = new Set(["start", "stop", "restart"]);
 const GROUP_TYPES = new Set(["select", "url-test", "fallback", "load-balance"]);
 const POLICY_MODES = new Set(["proxy-all", "private-direct", "cn-direct"]);
@@ -57,6 +57,9 @@ const DEFAULT_DEPLOYMENT_PRESETS = Object.freeze([
   { id: "builtin-trojan", name: "Trojan TLS", suffix: "Trojan", tier: "advanced", summary: "TLS over TCP · 需要可信证书或客户端明确接受私有自签证书", badges: [], origin: "builtin", hidden: false, values: { protocol: "trojan", certificateMode: "self-signed" } },
   { id: "builtin-vmess", name: "VMess WebSocket", suffix: "VMess WS", tier: "advanced", summary: "WebSocket 兼容模板 · 不自动配置反向代理或可信证书", badges: [], origin: "builtin", hidden: false, values: { protocol: "vmess", transport: "ws", wsPath: "/" } },
 ]);
+const { planNowhereMigration } = require(path.join(__dirname, "tools/nowhere-migration"));
+const { planNowhereBatch, summarizeNowhereBatch } = require(path.join(__dirname, "tools/nowhere-batch"));
+const NOWHERE_BATCHES = operationStore(path.join(__storageDir__, "nowhere-batches.json"));
 const MANAGED_OPERATIONS = operationStore(path.join(__storageDir__, "nowhere-operations.json"));
 const MANAGED_SINGBOX_OPERATIONS = operationStore(path.join(__storageDir__, "singbox-operations.json"));
 const CERTIFICATE_OPERATIONS = operationStore(path.join(__storageDir__, "certificate-operations.json"));
@@ -334,6 +337,7 @@ function cleanState(input) {
     id: cleanText(item && item.id, 64), kind: item && item.kind === "nowhere" ? "nowhere" : item && item.kind === "sing-box" ? "sing-box" : "",
     protocol: ["vless-reality", "vmess", "shadowsocks", "trojan", "hysteria2", "tuic", "anytls"].includes(item && item.protocol) ? item.protocol : "",
     name: cleanText(item && item.name, 160), machineId: cleanText(item && item.machineId, 64), nodeId: cleanText(item && item.nodeId, 64), certificateId: cleanText(item && item.certificateId, 64),
+    role: item?.role === "egress" ? "egress" : "portal", out: cleanText(item?.out, 512) || "direct", sharedKey: item?.role === "egress" ? cleanText(item?.sharedKey, 64) : "",
     status: cleanManagedState(item && item.status), version: cleanText(item && item.version, 160), publicHost: cleanText(item && item.publicHost, 253),
     listenHost: cleanText(item && item.listenHost, 253), port: Math.min(65535, Math.max(1024, Number(item && item.port) || 2077)),
     tcpPort: Math.min(65535, Math.max(0, Number(item && item.tcpPort) || 0)), udpPort: Math.min(65535, Math.max(0, Number(item && item.udpPort) || 0)),
@@ -341,7 +345,7 @@ function cleanState(input) {
     udpCarrier: ["udp", "udp4", "udp6"].includes(item && item.udpCarrier) ? item.udpCarrier : "udp",
     client: ["anywhere", "vector", "both"].includes(item && item.client) ? item.client : "anywhere",
     network: ["mix", "tcp", "udp"].includes(item && item.network) ? item.network : "mix", tls: Number(item && item.tls) === 2 ? 2 : 1,
-    alpn: item && item.kind === "nowhere" ? "nw2" : cleanText(item && item.alpn, 64), rate: Math.min(1000000, Math.max(0, Number(item && item.rate) || 0)),
+    alpn: item && item.kind === "nowhere" ? (nowhereCapabilities(item.version).wireProtocol || "nw2") : cleanText(item && item.alpn, 64), rate: Math.min(1000000, Math.max(0, Number(item && item.rate) || 0)),
     etar: Math.min(1000000, Math.max(0, Number(item && item.etar) || 0)), dial: cleanText(item && item.dial, 253) || "auto", dial4: cleanText(item && item.dial4, 253), dial6: cleanText(item && item.dial6, 253), observedCertificatePin: cleanText(item && item.observedCertificatePin, 64), pinCheckedAt: cleanIsoDate(item && item.pinCheckedAt),
     socks: cleanText(item && item.socks, 512) || "none", log: ["none", "debug", "info", "warn", "error", "event"].includes(item && item.log) ? item.log : "info",
     telemetryInterval: cleanText(item && item.telemetryInterval, 16) || "1s",
@@ -361,8 +365,9 @@ function cleanState(input) {
     createdAt: /^\d{4}-\d\d-\d\dT/.test(String(item && item.createdAt || "")) ? String(item.createdAt) : new Date().toISOString(),
     updatedAt: /^\d{4}-\d\d-\d\dT/.test(String(item && item.updatedAt || "")) ? String(item.updatedAt) : new Date().toISOString(),
     lastError: cleanText(item && item.lastError, 160), lastOperationId: cleanText(item && item.lastOperationId, 64),
+    migration: item?.migration?.fromVersion && /^v?2\./.test(item.migration.fromVersion) ? { fromVersion: cleanText(item.migration.fromVersion, 64), migratedAt: cleanIsoDate(item.migration.migratedAt) } : null,
     connectivity: cleanConnectivity(item && item.connectivity),
-  })).filter((item) => item.id && item.kind && item.name && machineIds.has(item.machineId) && nodeIds.has(item.nodeId));
+  })).filter((item) => item.id && item.kind && item.name && machineIds.has(item.machineId) && (nodeIds.has(item.nodeId) || (item.kind === "nowhere" && item.role === "egress")));
   if (Number(input.version || 0) < 13 && certificates.length === 0) {
     for (const instance of managedInstances) {
       let mode = instance.certificateMode; let certificatePath = instance.certificatePath; let privateKeyPath = instance.privateKeyPath;
@@ -581,7 +586,7 @@ function assertStateOwnershipPreserved(current, input) {
   for (const instance of current.managedInstances) {
     const incoming = instances.get(instance.id);
     if (!incoming) throw new Error(`托管实例“${instance.name}”只能在部署节点页面删除`);
-    if (cleanText(incoming.nodeId, 64) !== instance.nodeId || !nodeIds.has(instance.nodeId)) throw new Error(`托管节点“${instance.name}”不能从节点库删除`);
+    if (instance.role !== "egress" && (cleanText(incoming.nodeId, 64) !== instance.nodeId || !nodeIds.has(instance.nodeId))) throw new Error(`托管节点“${instance.name}”不能从节点库删除`);
   }
   for (const node of current.nodes) {
     if (nodeIds.has(node.id) || !node.sourceId) continue;
@@ -1413,9 +1418,10 @@ function parseExistingServiceDiscovery(params) {
   return result;
 }
 function newManagedNowhereValues() {
-  return { id: `nw-${randomId()}`, key: crypto.randomBytes(16).toString("hex"), version: "v2.2.1", port: 2077, tcpPort: 2077, udpPort: 2077, tcpCarrier: "tcp", udpCarrier: "udp", morph: 0, transportMemoryProfile: "throughput" };
+  return { id: `nw-${randomId()}`, key: crypto.randomBytes(16).toString("hex"), version: "v3.0.0", role: "portal", out: "direct", port: 2077, tcpPort: 2077, udpPort: 2077, tcpCarrier: "tcp", udpCarrier: "udp", morph: 1, transportMemoryProfile: "throughput" };
 }
 function managedNowherePorts(value) {
+  if (value?.role === "egress") return [];
   return [
     Number(value && value.tcpPort) ? `tcp:${Number(value.tcpPort)}` : "",
     Number(value && value.udpPort) ? `udp:${Number(value.udpPort)}` : "",
@@ -1427,6 +1433,7 @@ function hasManagedNowherePortConflict(instances, machineId, candidate, ignoredI
     && managedNowherePorts(item).some((entry) => wanted.has(entry)));
 }
 function managedNowherePlanInput(instance, node) {
+  if (instance.role === "egress") return { ...instance, key: instance.sharedKey };
   let parsed;
   try { parsed = new URL(node.uri); } catch (_) { throw new Error("托管实例关联的 Nowhere 节点链接无效"); }
   let key = parsed.username;
@@ -1461,10 +1468,10 @@ function createManagedNowhereDraft(params) {
   if (input.client === "vector") throw new Error("托管节点至少需要生成 Anywhere 链接；可选择 Anywhere 或两者");
   if (state.managedInstances.some((item) => item.id === plan.id)) throw new Error("托管实例编号已经存在");
   if (hasManagedNowherePortConflict(state.managedInstances, machineId, plan.summary)) throw new Error("该宿主已有托管实例使用相同的传输协议与端口");
-  const nodeId = randomId(); const now = new Date().toISOString();
+  const nodeId = plan.role === "egress" ? "" : randomId(); const now = new Date().toISOString();
   const certificate = input.certificateAssetId ? { assetId: cleanText(input.certificateAssetId, 64), selfSigned: input.certificateSelfSigned === true, fingerprintSha256: cleanText(input.certificateFingerprintSha256, 64), publicKeySha256: cleanText(input.certificatePublicKeySha256, 64), expiresAt: cleanIsoDate(input.certificateExpiresAt) } : null;
-  state.nodes.push({ id: nodeId, name: plan.name, protocol: "nowhere", machineId, uri: plan.links.anywhere[0].uri, enabled: true, tags: ["托管", "Nowhere"], source: "manual", sourceId: "", certificate });
-  state.managedInstances.push({ id: plan.id, kind: "nowhere", name: plan.name, machineId, nodeId, status: "draft", version: plan.version, publicHost: plan.summary.publicHost, listenHost: input.listenHost === undefined ? "127.0.0.1" : cleanText(input.listenHost, 253), port: plan.summary.port, tcpPort: plan.summary.tcpPort, udpPort: plan.summary.udpPort, tcpCarrier: plan.summary.tcpCarrier, udpCarrier: plan.summary.udpCarrier, client: plan.summary.client, network: plan.summary.network, tls: plan.summary.tls, alpn: plan.summary.alpn, rate: plan.summary.rate, etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", dial4: plan.summary.dial4, dial6: plan.summary.dial6, socks: cleanText(input.socks, 512) || "none", log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s", vectorSocks: cleanText(input.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(input.vectorSni, 253) || "none", vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph, transportMemoryProfile: plan.summary.transportMemoryProfile, certificateId: certificate?.assetId || "", certificateMode: plan.certificateMode, certificatePath: plan.certificatePath, privateKeyPath: plan.privateKeyPath, certificateHost: plan.certificateHost, certificateDays: plan.certificateDays, extensionEnvironment: cleanNowhereExtensions(input.extensionEnvironment), binarySource: input.binarySource === "copy" ? "copy" : "download", createdAt: now, updatedAt: now, lastError: "", lastOperationId: "" });
+  if (plan.role !== "egress") state.nodes.push({ id: nodeId, name: plan.name, protocol: "nowhere", machineId, uri: plan.links.anywhere[0].uri, enabled: true, tags: ["托管", "Nowhere"], source: "manual", sourceId: "", certificate });
+  state.managedInstances.push({ id: plan.id, kind: "nowhere", name: plan.name, machineId, nodeId, status: "draft", role: plan.role, out: plan.out, sharedKey: plan.role === "egress" ? input.key : "", version: plan.version, publicHost: plan.summary.publicHost, listenHost: input.listenHost === undefined ? "127.0.0.1" : cleanText(input.listenHost, 253), port: plan.summary.port, tcpPort: plan.summary.tcpPort, udpPort: plan.summary.udpPort, tcpCarrier: plan.summary.tcpCarrier, udpCarrier: plan.summary.udpCarrier, client: plan.summary.client, network: plan.summary.network, tls: plan.summary.tls, alpn: plan.summary.alpn, rate: plan.summary.rate, etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", dial4: plan.summary.dial4, dial6: plan.summary.dial6, socks: cleanText(input.socks, 512) || "none", log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s", vectorSocks: cleanText(input.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(input.vectorSni, 253) || "none", vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph, transportMemoryProfile: plan.summary.transportMemoryProfile, certificateId: certificate?.assetId || "", certificateMode: plan.certificateMode, certificatePath: plan.certificatePath, privateKeyPath: plan.privateKeyPath, certificateHost: plan.certificateHost, certificateDays: plan.certificateDays, extensionEnvironment: cleanNowhereExtensions(input.extensionEnvironment), binarySource: input.binarySource === "copy" ? "copy" : "download", createdAt: now, updatedAt: now, lastError: "", lastOperationId: "" });
   state.revision += 1; writeState(cleanState(state));
   return { state: readState(), instanceId: plan.id, plan: publicManagedNowherePlan(plan) };
 }
@@ -1510,7 +1517,7 @@ function createManagedNowhereAdoptionDraft(params) {
 }
 function managedNowhereMetadata(input, plan) {
   return {
-    version: plan.version, publicHost: plan.summary.publicHost, listenHost: cleanText(input.listenHost, 253),
+    role: plan.role, out: plan.out, version: plan.version, publicHost: plan.summary.publicHost, listenHost: cleanText(input.listenHost, 253),
     port: plan.summary.port, tcpPort: plan.summary.tcpPort, udpPort: plan.summary.udpPort,
     tcpCarrier: plan.summary.tcpCarrier, udpCarrier: plan.summary.udpCarrier, client: plan.summary.client,
     network: plan.summary.network, tls: plan.summary.tls, alpn: plan.summary.alpn, rate: plan.summary.rate,
@@ -1526,14 +1533,16 @@ function managedNowhereMetadata(input, plan) {
 function prepareManagedNowhereAction(params) {
   const instanceId = cleanText(params && params.instanceId, 64);
   const action = cleanText(params && params.action, 16);
+  if (!["status", "logs", "read-config"].includes(action)) assertNoNowhereBatchTask(instanceId, params.requestId);
   if (!["preflight", "create", "start", "stop", "restart", "status", "logs", "delete", "read-config", "upgrade", "adopt", "rollback-adoption"].includes(action)) throw new Error("不支持的托管实例操作");
   const state = readState(); const instance = state.managedInstances.find((item) => item.id === instanceId && item.kind === "nowhere");
   const machine = state.machines.find((item) => item.id === instance?.machineId && item.monitorClientId);
   const node = state.nodes.find((item) => item.id === instance?.nodeId && item.protocol === "nowhere");
-  if (!instance || !machine || !node) throw new Error("托管实例、节点或宿主绑定已经不存在");
+  if (!instance || !machine || (!node && instance.role !== "egress")) throw new Error("托管实例、节点或宿主绑定已经不存在");
   const currentCapabilities = nowhereCapabilities(instance.version);
-  if (!currentCapabilities.supported) throw new Error("该实例版本没有可用的适配器，只能保留记录，不能生成远程命令");
-  if (!currentCapabilities.verified && !(currentCapabilities.version === "v2.2.0" && action === "upgrade") && !["status", "logs", "read-config"].includes(action)) throw new Error("该实例版本尚未通过适配验证，目前仅允许读取状态与配置");
+  const legacyNW2 = /^v?2\./.test(instance.version) && !currentCapabilities.supported;
+  if (!currentCapabilities.supported && !legacyNW2) throw new Error("该实例版本没有可用的适配器，只能保留记录，不能生成远程命令");
+  if (!currentCapabilities.verified && !(legacyNW2 && ["upgrade", "start", "stop", "restart", "delete"].includes(action)) && !["status", "logs", "read-config"].includes(action)) throw new Error("该实例版本尚未通过适配验证，目前仅允许读取状态与配置");
   if (action === "delete" && params.confirmation !== instance.id) throw new Error("删除托管实例需要确认实例编号");
   if (action === "delete" && instance.adoptionState === "adopted") throw new Error("请先恢复原服务，再删除接管实例");
   if (["start", "restart"].includes(action) && instance.adoptionState === "staged") throw new Error("待接管实例不能直接启动，请使用“切换接管”避免端口冲突");
@@ -1541,7 +1550,12 @@ function prepareManagedNowhereAction(params) {
   if (action === "rollback-adoption" && instance.adoptionState !== "adopted") throw new Error("该实例尚未接管原服务");
   if (action === "create" && !["draft", "validated", "failed"].includes(instance.status)) throw new Error("该实例已经创建，不能重复下发");
   if (["start", "stop", "restart", "logs", "upgrade"].includes(action) && ["draft", "validated"].includes(instance.status)) throw new Error("请先创建托管实例");
-  const plan = planManagedNowhere(managedNowherePlanInput(instance, node));
+  const plan = legacyNW2 ? {
+    kind: "managed-nowhere", id: instance.id, version: instance.version, role: "portal", name: instance.name,
+    directory: `/var/lib/proxy-console/instances/${instance.id}`, binaryPath: `/var/lib/proxy-console/instances/${instance.id}/bin/nowhere`,
+    environmentPath: `/var/lib/proxy-console/instances/${instance.id}/nowhere.env`, unitName: `proxy-console-nowhere@${instance.id}.service`, unitPath: `/etc/systemd/system/proxy-console-nowhere@${instance.id}.service`,
+    summary: { ...instance }, links: { anywhere: [], vector: [] }, certificateMode: instance.certificateMode,
+  } : planManagedNowhere(managedNowherePlanInput(instance, node));
   let targetVersion = "";
   if (action === "upgrade") {
     targetVersion = cleanText(params && params.targetVersion, 64);
@@ -1549,9 +1563,9 @@ function prepareManagedNowhereAction(params) {
     if (!capabilities.verified) throw new Error("请选择已通过适配验证的 Nowhere 版本");
     planManagedNowhere({ ...managedNowherePlanInput(instance, node), version: targetVersion, log: capabilities.eventLog ? instance.log : instance.log === "event" ? "info" : instance.log, extensionEnvironment: Object.fromEntries(Object.entries(instance.extensionEnvironment).filter(([key]) => capabilities.eventLog || key !== "NOW_REPORT_INTERVAL")) });
     if (capabilities.version === nowhereCapabilities(instance.version).version) throw new Error("实例已经是所选版本");
-    if (capabilities.protocolGeneration !== nowhereCapabilities(instance.version).protocolGeneration) throw new Error("不支持跨主版本直接替换二进制");
+    if (capabilities.protocolGeneration !== (legacyNW2 ? 2 : nowhereCapabilities(instance.version).protocolGeneration)) throw new Error("不支持跨主版本直接替换二进制");
     const currentCapabilities = nowhereCapabilities(instance.version);
-    if (instance.morph === 1 && capabilities.morphWireGeneration !== currentCapabilities.morphWireGeneration && params.confirmation !== "morph-peers-coordinated") {
+    if (!legacyNW2 && instance.morph === 1 && capabilities.morphWireGeneration !== currentCapabilities.morphWireGeneration && params.confirmation !== "morph-peers-coordinated") {
       throw new Error("Morph 跨传输格式升级前，必须确认 Portal、客户端与原生下一跳已协同升级");
     }
   }
@@ -1561,12 +1575,73 @@ function prepareManagedNowhereAction(params) {
   const commandInput = { ...plan, ...(targetVersion ? { targetVersion } : {}), sourceBinaryPath: instance.adoptionSourceBinary, sourceUnit: instance.adoptionSourceUnit, sourceWasEnabled: instance.adoptionSourceWasEnabled };
   return MANAGED_TASKS.prepare("nowhere", { schema: 1, operationId, expiresAt: new Date(expiresAt).toISOString(), instanceId, machineId: machine.id, clientId: machine.monitorClientId, action, command: buildManagedNowhereCommand(action, commandInput, instance.binarySource), plan: publicManagedNowherePlan(plan) });
 }
+function assertNoNowhereBatchTask(instanceId, requestId) {
+  const batch = getNowhereBatch();
+  if (batch?.rows.some(row => row.instanceId === instanceId && row.operationId !== requestId && ["prepared", "running"].includes(row.phase))) throw new Error("此实例正在批量更新，请等待结果");
+}
+function getNowhereBatch(params = {}) {
+  const batch = params.batchId ? NOWHERE_BATCHES.get(cleanText(params.batchId, 64)) : [...NOWHERE_BATCHES].at(-1)?.[1];
+  return batch ? summarizeNowhereBatch(batch, id => MANAGED_TASKS.get(id)) : null;
+}
+function startNowhereBatch(params = {}) {
+  const latest = getNowhereBatch();
+  if (latest && !latest.done) throw new Error("已有批量更新正在进行，请查看进度");
+  const id = cleanText(params.requestId, 64);
+  if (!/^[a-f0-9-]{32,36}$/.test(id)) throw new Error("批量请求编号无效");
+  if (NOWHERE_BATCHES.get(id)) throw new Error("此批量请求已提交，请查看进度，勿重复执行");
+  const rows = planNowhereBatch(readState(), MANAGED_TASKS.list());
+  const batch = { id, createdAt: new Date().toISOString(), expiresAt: Date.now() + MANAGED_OPERATION_TTL_MS, rows };
+  NOWHERE_BATCHES.set(id, batch);
+  const specs = [];
+  for (const row of rows) {
+    if (row.phase !== "queued") continue;
+    try {
+      const spec = prepareManagedNowhereAction({ instanceId: row.instanceId, action: "upgrade", targetVersion: row.targetVersion, requestId: crypto.randomUUID() });
+      row.operationId = spec.operationId; row.phase = "prepared"; specs.push(spec);
+    } catch (error) { row.phase = "skipped"; row.reason = cleanText(error.message, 240); }
+    NOWHERE_BATCHES.set(id, batch);
+  }
+  return { batch: getNowhereBatch({ batchId: id }), specs };
+}
+function recordNowhereBatchSubmission(params = {}) {
+  const batch = NOWHERE_BATCHES.get(cleanText(params.batchId, 64));
+  const row = batch?.rows.find(item => item.operationId === params.operationId);
+  if (!row) throw new Error("批量任务不存在");
+  row.submissionError = "提交结果未确认，后台正在核对；请勿重复执行";
+  NOWHERE_BATCHES.set(batch.id, batch);
+  return getNowhereBatch({ batchId: batch.id });
+}
+function previewNowhereMigration(params = {}) {
+  const state = readState();
+  const instance = state.managedInstances.find(i => i.id === params.instanceId && i.kind === "nowhere");
+  const read = MANAGED_OPERATIONS.get(cleanText(params.readOperationId, 64));
+  if (!instance || !read || read.instanceId !== instance.id || read.action !== "read-config" || read.expiresAt < Date.now() || !read.completedResult?.ok) throw new Error("请先读取实例当前配置");
+  const migrated = planNowhereMigration(read.completedResult.configuration, { instanceId: instance.id, name: instance.name, targetVersion: cleanText(params.targetVersion, 64), key: String(params.key || "") });
+  return { ...publicManagedNowherePlan(migrated.plan), changes: migrated.changes };
+}
+function prepareNowhereMigration(params = {}) {
+  assertNoNowhereBatchTask(params.instanceId, params.requestId);
+  if (params.confirmation !== "nw3-clients-coordinated") throw new Error("请确认全部客户端及链路已准备迁移到 NW3");
+  previewNowhereMigration(params);
+  const state = readState(); const instance = state.managedInstances.find(i => i.id === params.instanceId);
+  if (!/^v?2\./.test(instance.version) || ["draft", "validated"].includes(instance.status) || instance.adoptionState === "staged") throw new Error("实例不处于可迁移状态");
+  if (MANAGED_TASKS.list().some(t => t.instanceId === instance.id && !["completed", "rejected"].includes(t.phase) && !MANAGED_OPERATIONS.get(t.operationId)?.completedResult)) throw new Error("此实例已有任务待完成或核对");
+  const machine = state.machines.find(m => m.id === instance.machineId && m.monitorClientId);
+  if (!machine) throw new Error("宿主未绑定 Agent");
+  const read = MANAGED_OPERATIONS.get(params.readOperationId);
+  const { input, plan } = planNowhereMigration(read.completedResult.configuration, { instanceId: instance.id, name: instance.name, targetVersion: params.targetVersion, key: String(params.key || "") });
+  if (hasManagedNowherePortConflict(state.managedInstances, machine.id, plan.summary, instance.id)) throw new Error("迁移端口与其他实例冲突");
+  const operationId = requestOperationId(params), expiresAt = Date.now() + MANAGED_OPERATION_TTL_MS;
+  retainOperation(MANAGED_OPERATIONS, operationId, { instanceId: instance.id, machineId: machine.id, action: "migrate", expiresAt, fromVersion: instance.version, targetVersion: plan.version, metadata: managedNowhereMetadata(input, plan), uri: plan.links.anywhere[0].uri });
+  return MANAGED_TASKS.prepare("nowhere", { operationId, instanceId: instance.id, clientId: machine.monitorClientId, action: "migrate", command: buildManagedNowhereCommand("migrate", { ...plan, fromVersion: instance.version, expectedHash: read.completedResult.configurationHash }), plan: publicManagedNowherePlan(plan) });
+}
 function prepareManagedNowhereUpdate(params) {
+  assertNoNowhereBatchTask(params.instanceId, params.requestId);
   const state = readState();
   const instance = state.managedInstances.find(item => item.id === params.instanceId && item.kind === "nowhere");
   const machine = state.machines.find(item => item.id === instance?.machineId && item.monitorClientId);
   const node = state.nodes.find(item => item.id === instance?.nodeId);
-  if (!instance || !machine || !node) throw new Error("托管实例或宿主不存在");
+  if (!instance || !machine || (!node && instance.role !== "egress")) throw new Error("托管实例或宿主不存在");
   if (!nowhereCapabilities(instance.version).verified) throw new Error("该实例版本尚未通过适配验证，目前不能修改配置");
   const read = MANAGED_OPERATIONS.get(cleanText(params.readOperationId, 64));
   if (!read || read.instanceId !== instance.id || read.action !== "read-config" || read.expiresAt < Date.now() || !read.completedResult?.ok) throw new Error("请先读取该实例当前配置");
@@ -1576,16 +1651,17 @@ function prepareManagedNowhereUpdate(params) {
   for (const key of ["certificateAssetId", "certificateMode", "certificatePath", "privateKeyPath", "certificateHost", "serverName"]) if (Object.hasOwn(changes, key)) input[key] = changes[key];
   if (!Object.hasOwn(changes, "certificateAssetId")) input.certificateAssetId = instance.certificateId || "";
   input.id = instance.id;
-  input.name = cleanText(changes.name, 160) || node.name;
+  input.name = cleanText(changes.name, 160) || instance.name;
+  if (input.role !== instance.role) throw new Error("请新建独立实例切换角色");
   input.machineId = instance.machineId;
   input = certificateDeploymentInput(state, input, machine.id, "nowhere");
   const plan = planManagedNowhere(input);
-  if (!plan.links.anywhere.length) throw new Error("托管节点需要保留 Anywhere 输出");
+  if (plan.role !== "egress" && !plan.links.anywhere.length) throw new Error("托管节点需要保留 Anywhere 输出");
   if (hasManagedNowherePortConflict(state.managedInstances, instance.machineId, plan.summary, instance.id)) throw new Error("该宿主已有托管实例使用相同的传输协议与端口");
   const operationId = requestOperationId(params); const expiresAt = Date.now() + MANAGED_OPERATION_TTL_MS;
-  const metadata = { ...input, certificateId: input.certificateAssetId || "" }; delete metadata.key;
+  const metadata = { ...input, certificateId: input.certificateAssetId || "", sharedKey: plan.role === "egress" ? input.key : "" }; delete metadata.key;
   const expectedHash = crypto.createHash("sha256").update(plan.environment).digest("hex");
-  retainOperation(MANAGED_OPERATIONS, operationId, { instanceId: instance.id, machineId: machine.id, action: "update", expiresAt, metadata, uri: plan.links.anywhere[0].uri, expectedHash });
+  retainOperation(MANAGED_OPERATIONS, operationId, { instanceId: instance.id, machineId: machine.id, action: "update", expiresAt, metadata, uri: plan.links.anywhere[0]?.uri || "", expectedHash });
   return MANAGED_TASKS.prepare("nowhere", { schema: 1, operationId, instanceId: instance.id, clientId: machine.monitorClientId, action: "update", command: buildManagedNowhereCommand("update", { ...plan, expectedHash: read.completedResult.configurationHash }), plan: publicManagedNowherePlan(plan) });
 }
 function storeNowhereCertificate(state, instance, result, now) {
@@ -1614,7 +1690,7 @@ function recordManagedNowhereResult(params) {
   if (index < 0 && pending.action === "delete" && result.ok === true && result.state === "deleted") return { state, result: { ok: true, state: "deleted" } };
   if (index < 0) throw new Error("托管实例已经不存在");
   const instance = state.managedInstances[index]; const now = new Date().toISOString();
-  if (result.ok === true && instance.certificateMode === "ephemeral" && ["start", "restart", "upgrade", "update", "stop", "adopt"].includes(pending.action)) { instance.observedCertificatePin = ""; instance.pinCheckedAt = ""; }
+  if (result.ok === true && instance.certificateMode === "ephemeral" && ["start", "restart", "upgrade", "migrate", "update", "stop", "adopt"].includes(pending.action)) { instance.observedCertificatePin = ""; instance.pinCheckedAt = ""; }
   if (result.ok !== true && result.error === "update-in-progress") {
     const normalized = { ok: false, error: "该实例正在更新，请稍后重试" };
     MANAGED_OPERATIONS.set(operationId, { ...pending, completedResult: normalized });
@@ -1625,10 +1701,12 @@ function recordManagedNowhereResult(params) {
     if (result.ok === true) {
       Object.assign(instance, pending.metadata);
       const node = state.nodes.find(item => item.id === instance.nodeId);
+      if (node) {
       node.name = pending.metadata.name || node.name;
       node.uri = pending.uri;
       if (pending.metadata.certificateAssetId) node.certificate = { assetId: pending.metadata.certificateAssetId, selfSigned: pending.metadata.certificateSelfSigned === true, fingerprintSha256: pending.metadata.certificateFingerprintSha256 || "", publicKeySha256: pending.metadata.certificatePublicKeySha256 || "", expiresAt: pending.metadata.certificateExpiresAt || "" };
       instance.name = node.name;
+      } else instance.name = pending.metadata.name || instance.name;
       instance.status = result.state === "active" ? "running" : "stopped";
       instance.lastError = "";
     } else {
@@ -1676,6 +1754,13 @@ function recordManagedNowhereResult(params) {
         instance.status = "stopped";
         instance.adoptionState = "staged";
       }
+      else if (pending.action === "migrate") {
+        Object.assign(instance, pending.metadata);
+        instance.migration = { fromVersion: pending.fromVersion, migratedAt: now };
+        instance.status = result.state === "active" ? "running" : "stopped";
+        const linkedNode = state.nodes.find(i => i.id === instance.nodeId);
+        if (linkedNode) linkedNode.uri = pending.uri;
+      }
       else if (pending.action === "upgrade") {
         instance.version = nowhereCapabilities(pending.targetVersion).version;
         if (!nowhereCapabilities(instance.version).eventLog) {
@@ -1689,7 +1774,7 @@ function recordManagedNowhereResult(params) {
       else if (pending.action === "status") instance.status = result.state === "active" ? "running" : result.installed === false ? "failed" : "stopped";
       instance.lastError = "";
     } else {
-      const recovered = pending.action === "upgrade" && result.rolledBack === true;
+      const recovered = ["upgrade", "migrate"].includes(pending.action) && result.rolledBack === true;
       const adoptionRecovered = pending.action === "adopt" && result.rolledBack === true;
       const rollbackRecovered = pending.action === "rollback-adoption" && result.rolledBack === true;
       if (adoptionRecovered) { instance.status = "stopped"; instance.adoptionState = "staged"; }
@@ -1774,7 +1859,8 @@ function prepareManagedSingBoxUpdate(params) {
   const changes = params.changes && typeof params.changes === "object" ? params.changes : {};
   const allowed = new Set(["name", "publicHost", "listenHost", "port", "log", "uuid", "flow", "serverName", "handshakeServer", "handshakePort", "realityPrivateKey", "realityPublicKey", "shortId", "transport", "wsPath", "method", "password", "certificateAssetId", "certificateMode", "certificatePath", "privateKeyPath"]);
   for (const key of allowed) if (Object.hasOwn(changes, key)) input[key] = changes[key];
-  input.id = instance.id; input.name = cleanText(changes.name, 160) || node.name; input.protocol = instance.protocol;
+  input.id = instance.id; input.name = cleanText(changes.name, 160) || instance.name;
+  input.protocol = instance.protocol;
   input.machineId = instance.machineId;
   if (!Object.hasOwn(changes, "certificateAssetId")) input.certificateAssetId = instance.certificateId || "";
   input = certificateDeploymentInput(state, input, machine.id, "sing-box");
@@ -1980,7 +2066,10 @@ function connectivityHistory(params) {
 function prepareNodeConnectivityCheck(params) {
   const state = readState(); const node = state.nodes.find((item) => item.id === cleanText(params && params.nodeId, 64)); const source = state.machines.find((item) => item.id === cleanText(params && params.sourceMachineId, 64) && item.monitorClientId); if (!node || !source) throw new Error("节点或检测来源不存在");
   let command; let expectedIp = ""; try { const host = new URL(node.uri).hostname.replace(/^\[|\]$/g, ""); expectedIp = isIP(host) ? host : ""; } catch (_) {}
-  if (node.protocol === "nowhere") { const url = new URL(node.uri); url.protocol = "vector:"; if (!url.searchParams.has("mux")) url.searchParams.set("mux", "0"); if (!url.searchParams.has("sni")) url.searchParams.set("sni", "none"); if (!url.searchParams.has("pin")) url.searchParams.set("pin", state.managedInstances.find(item => item.nodeId === node.id)?.observedCertificatePin || node.certificate?.fingerprintSha256 || "none"); url.hash = ""; command = buildConnectivityCommand({ kind: "vector", uri: url.toString(), expectedIp }); }
+  if (node.protocol === "nowhere") { const nwInstance = state.managedInstances.find(item => item.nodeId === node.id); const share = new URL(node.uri);
+    const nw3 = nwInstance ? nowhereCapabilities(nwInstance.version).protocolGeneration === 3 : share.searchParams.has("net") && !share.searchParams.has("up") && !share.searchParams.has("down");
+    const nw3Input = nwInstance ? { ...managedNowherePlanInput(nwInstance, node), up: nwInstance.tcpPort ? "tcp" : "udp" } : { version: "v3.0.0", publicHost: share.hostname.replace(/^\[|\]$/g, ""), key: decodeURIComponent(share.username), tcpPort: share.searchParams.get("net") === "udp" ? 0 : Number(share.port), udpPort: share.searchParams.get("net") === "udp" ? Number(share.port) : 0, morph: Number(share.searchParams.get("morph") ?? 1), vectorPin: share.searchParams.get("pin") || node.certificate?.fingerprintSha256 || "none", vectorSni: share.searchParams.get("sni") || "none" };
+    const url = new URL(nw3 ? buildVectorLink(nw3Input) : node.uri); url.protocol = "vector:"; if (!nw3) { if (!url.searchParams.has("mux")) url.searchParams.set("mux", "0"); } if (!url.searchParams.has("sni")) url.searchParams.set("sni", "none"); if (!url.searchParams.has("pin")) url.searchParams.set("pin", state.managedInstances.find(item => item.nodeId === node.id)?.observedCertificatePin || node.certificate?.fingerprintSha256 || "none"); url.hash = ""; command = buildConnectivityCommand({ kind: "vector", uri: url.toString(), expectedIp }); }
   else { const outbound = singBoxOutbound(node); if (!outbound) throw new Error("该协议暂不支持自动连接检查"); command = buildConnectivityCommand({ kind: "sing-box", outbound, expectedIp }); }
   return { operationId: requestOperationId(params), nodeId: node.id, sourceMachineId: source.id, clientId: source.monitorClientId, command };
 }
@@ -2035,6 +2124,12 @@ function load() {
   server.registerRPC("proxyConsole:createManagedNowhereAdoptionDraft", createManagedNowhereAdoptionDraft);
   server.registerRPC("proxyConsole:bindManagedTask", params => MANAGED_TASKS.bind(params));
   server.registerRPC("proxyConsole:getManagedTask", params => { const task = MANAGED_TASKS.get(params.operationId); return { task, ...(task.phase === "completed" ? { state: readState() } : {}) }; });
+  server.registerRPC("proxyConsole:previewNowhereMigration", previewNowhereMigration);
+  server.registerRPC("proxyConsole:prepareNowhereMigration", prepareNowhereMigration);
+  server.registerRPC("proxyConsole:previewNowhereBatch", () => ({ rows: planNowhereBatch(readState(), MANAGED_TASKS.list()) }));
+  server.registerRPC("proxyConsole:startNowhereBatch", startNowhereBatch);
+  server.registerRPC("proxyConsole:getNowhereBatch", getNowhereBatch);
+  server.registerRPC("proxyConsole:recordNowhereBatchSubmission", recordNowhereBatchSubmission);
   server.registerRPC("proxyConsole:listManagedTasks", () => MANAGED_TASKS.list());
   if (typeof server.cron === "function") server.cron("* * * * *", () => MANAGED_TASKS.resume());
   MANAGED_TASKS.resume();

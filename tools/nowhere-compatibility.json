@@ -5,20 +5,32 @@
       "id": "nowhere-v2",
       "generation": 2,
       "major": 2,
-      "minimumVersion": "v2.0.0",
+      "minimumVersion": "v2.2.1",
       "maximumVersion": "v2.999.999",
       "verifiedVersions": [
-        "v2.0.0",
-        "v2.0.1",
-        "v2.0.2",
-        "v2.1.0",
-        "v2.1.1",
-        "v2.1.2",
         "v2.2.1"
+      ],
+      "baselineVersion": "v2.2.1"
+    },
+    {
+      "id": "nowhere-v3",
+      "generation": 3,
+      "major": 3,
+      "minimumVersion": "v3.0.0",
+      "maximumVersion": "v3.999.999",
+      "baselineVersion": "v3.0.0",
+      "verifiedVersions": [
+        "v3.0.0"
       ]
     }
   ],
   "skippedVersions": [
+    "v2.0.0",
+    "v2.0.1",
+    "v2.0.2",
+    "v2.1.0",
+    "v2.1.1",
+    "v2.1.2",
     "v2.2.0"
   ]
 }

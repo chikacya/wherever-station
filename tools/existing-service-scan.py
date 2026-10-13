@@ -442,6 +442,10 @@ def discover_nowhere(unit, candidates, reviews):
     portal_text = next((value for value in arguments if str(value).startswith("portal://")), "")
     if not portal_text:
         portal_text = values.get("NOWHERE_PORTAL") or values.get("NOW_PORTAL") or ""
+    service_url = portal_text or next((str(value) for value in arguments if str(value).startswith(("egress://", "vector://"))), "")
+    if service_url.startswith(("egress://", "vector://")):
+        reviews.append({"id": stable_id(unit["unit"], path, "non-portal-role"), "kind": "nowhere", "protocol": "nowhere", "name": f"{MACHINE_NAME} Nowhere", "source": path or "运行进程", "reason": "此服务不是 Portal，不能作为中继节点导入；Egress 请使用独立出口角色配置", "evidence": [unit["unit"], "role="+service_url.split(":",1)[0]], "confidence": "draft", "repair": {"publicHost": "", "port": 0}})
+        return
     portal = None
     portal_query = {}
     if portal_text:
@@ -474,8 +478,8 @@ def discover_nowhere(unit, candidates, reviews):
         major_version = int(version.lstrip("v").split(".", 1)[0])
     except (TypeError, ValueError):
         major_version = 0
-    if major_version != 2:
-        reviews.append({"id": stable_id(unit["unit"], path, "unsupported-version"), "kind": "nowhere", "protocol": "nowhere", "name": f"{MACHINE_NAME} Nowhere", "source": path or "运行进程", "reason": "仅支持 Nowhere 2.x；请先在原部署方式中升级内核与配置", "evidence": [unit["unit"], f"version={version}", "adapter=unsupported"], "confidence": "draft", "repair": {"publicHost": host, "port": 0, "sni": "", "reality": False, "userNames": [], "certificate": None}})
+    if major_version not in (2, 3):
+        reviews.append({"id": stable_id(unit["unit"], path, "unsupported-version"), "kind": "nowhere", "protocol": "nowhere", "name": f"{MACHINE_NAME} Nowhere", "source": path or "运行进程", "reason": "仅支持 NW2 / NW3；请核对内核与配置", "evidence": [unit["unit"], f"version={version}", "adapter=unsupported"], "confidence": "draft", "repair": {"publicHost": host, "port": 0, "sni": "", "reality": False, "userNames": [], "certificate": None}})
         return
     tcp_port = values.get("NOWHERE_TCP_PORT_VALUE") or ""
     udp_port = values.get("NOWHERE_UDP_PORT_VALUE") or ""
@@ -514,6 +518,9 @@ def discover_nowhere(unit, candidates, reviews):
     params = {"up": up, "down": down, "morph": values.get("NOWHERE_MORPH_VALUE") or portal_query.get("morph") or "0", "mux": values.get("NOWHERE_VECTOR_MUX_VALUE") or "0"}
     name = f"{MACHINE_NAME} Nowhere"
     endpoint = f"{url_host(host)}:{tcp_port}" if tcp_port and udp_port and tcp_port == udp_port and tcp_carrier == "tcp" and udp_carrier == "udp" else f"{url_host(host)}/" + "/".join(value for value in (f"{tcp_carrier}:{tcp_port}" if tcp_port else "", f"{udp_carrier}:{udp_port}" if udp_port else "") if value)
+    if major_version == 3:
+        endpoint = f"{url_host(host)}:{tcp_port or udp_port}"
+        params = {"net": "tcp" if tcp_port else "udp", "morph": values.get("NOWHERE_MORPH_VALUE") or portal_query.get("morph") or "1"}
     uri = f"nowhere://{quote(key)}@{endpoint}?{query_string(params)}#{quote(name)}"
     tls_mode = values.get("NOWHERE_TLS_VALUE") or portal_query.get("tls") or "1"
     certificate = None
@@ -524,7 +531,7 @@ def discover_nowhere(unit, candidates, reviews):
         })
     source = path or "运行进程参数"
     managed_names = {
-        "NOWHERE_PORTAL", "NOWHERE_CLIENT_VALUE", "NOWHERE_VERSION_VALUE", "NOWHERE_PUBLIC_HOST_VALUE",
+        "NOWHERE_ROLE_VALUE", "NOWHERE_OUT_VALUE", "NOWHERE_PORTAL", "NOWHERE_CLIENT_VALUE", "NOWHERE_VERSION_VALUE", "NOWHERE_PUBLIC_HOST_VALUE",
         "NOWHERE_LISTEN_HOST_VALUE", "NOWHERE_PORT_VALUE", "NOWHERE_KEY_VALUE", "NOWHERE_NET_VALUE",
         "NOWHERE_TCP_PORT_VALUE", "NOWHERE_UDP_PORT_VALUE", "NOWHERE_TCP_CARRIER_VALUE", "NOWHERE_UDP_CARRIER_VALUE",
         "NOWHERE_ALPN_VALUE", "NOWHERE_TLS_VALUE", "NOWHERE_CRT_VALUE", "NOWHERE_TLS_KEY_VALUE",
@@ -537,6 +544,7 @@ def discover_nowhere(unit, candidates, reviews):
     }
     source_binary = os.path.realpath(args_binary) if args_binary and os.path.isfile(args_binary) else ""
     adoption_input = {
+        "role": "portal", "out": values.get("NOWHERE_OUT_VALUE") or portal_query.get("out") or "direct",
         "name": name, "version": version, "publicHost": host, "listenHost": bind_host or "0.0.0.0",
         "port": tcp_port or udp_port, "tcpPort": tcp_port, "udpPort": udp_port,
         "tcpCarrier": tcp_carrier, "udpCarrier": udp_carrier, "key": key, "client": "anywhere",
@@ -557,7 +565,7 @@ def discover_nowhere(unit, candidates, reviews):
         "vectorSni": values.get("NOWHERE_VECTOR_SNI_VALUE") or "none",
         "vectorPin": values.get("NOWHERE_VECTOR_PIN_VALUE") or "none",
         "vectorMux": integer(values.get("NOWHERE_VECTOR_MUX_VALUE")),
-        "morph": integer(values.get("NOWHERE_MORPH_VALUE") or portal_query.get("morph")),
+        "morph": integer(values.get("NOWHERE_MORPH_VALUE") or portal_query.get("morph") or ("1" if major_version == 3 else "0")),
         "transportMemoryProfile": values.get("NOWHERE_TRANSPORT_MEMORY_PROFILE_VALUE") or values.get("NOW_TRANSPORT_MEMORY_PROFILE") or "throughput",
         "extensionEnvironment": {key_name: value for key_name, value in values.items() if key_name.startswith(("NOWHERE_", "NOW_")) and key_name not in managed_names},
     }

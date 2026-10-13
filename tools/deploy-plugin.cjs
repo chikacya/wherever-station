@@ -50,6 +50,7 @@ async function main() {
       if (enabled?.requires_approval) await rpc('admin:setPluginEnabled', { short: pluginShort, enabled: true, approved: true });
       plugin = await findPlugin();
     }
+    if (plugin?.version !== expectedVersion) throw new Error(`Installed plugin version mismatch: expected ${expectedVersion}, received ${plugin?.version || 'missing'}`);
     if (!plugin?.running) throw new Error(`Plugin did not start after installation: ${JSON.stringify({ version: plugin?.version, enabled: plugin?.enabled, running: plugin?.running, error: plugin?.error || plugin?.last_error || '', upload: mergeResult.slice(0, 300) })}`);
     console.log(JSON.stringify({ ok: true, short: plugin.short, version: plugin.version, enabled: plugin.enabled, running: plugin.running, icon: plugin.icon || '' }));
   } finally {

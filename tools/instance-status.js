@@ -21,6 +21,7 @@ function buildServiceStatus(instances = []) {
   });
   return commandForTargets([
     { instanceId: 'service-sing-box', kind: 'sing-box', unit: 'sing-box.service' },
+    { instanceId: 'service-xray', kind: 'xray', unit: 'xray.service' },
     { instanceId: 'service-nowhere', kind: 'nowhere', unit: 'nowhere.service' },
     ...managed,
   ]);

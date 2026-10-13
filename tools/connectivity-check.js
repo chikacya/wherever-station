@@ -41,7 +41,7 @@ try:
  else:
   binary=executable("nowhere.service","nowhere",P.get("preferredBinary",""))
   if not binary: raise RuntimeError("client-binary-not-found")
-  uri=urllib.parse.urlsplit(P["uri"]); query=dict(urllib.parse.parse_qsl(uri.query,keep_blank_values=True)); query["socks"]="127.0.0.1:"+str(port)
+  uri=urllib.parse.urlsplit(P["uri"]); query=dict(urllib.parse.parse_qsl(uri.query,keep_blank_values=True)); query["in" if "in" in query else "socks"]="127.0.0.1:"+str(port)
   vector=urllib.parse.urlunsplit((uri.scheme,uri.netloc,uri.path,urllib.parse.urlencode(query),uri.fragment))
   process=subprocess.Popen([binary,vector],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
  ready=False

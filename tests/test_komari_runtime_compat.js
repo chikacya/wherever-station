@@ -17,7 +17,7 @@ const { planManagedSingBox } = require("../tools/managed-sing-box");
 
 const nowhere = planManagedNowhere({
   id: "nw-compat1", name: "compat", publicHost: "203.0.113.7", port: 32077,
-  key: "test-key", version: "v2.0.2",
+  key: "a".repeat(32), version: "v2.2.1",
 });
 const singBox = planManagedSingBox({
   id: "sb-compat1", name: "compat", protocol: "shadowsocks",

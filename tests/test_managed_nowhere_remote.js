@@ -6,7 +6,7 @@ const { spawnSync } = require("node:child_process");
 const { buildManagedNowhereCommand, parseManagedNowhereOutput } = require("../tools/managed-nowhere-remote");
 const { planManagedNowhere } = require("../tools/managed-nowhere");
 
-const input = { id: "test-node-0001", name: "Test", publicHost: "example.com", listenHost: "127.0.0.1", port: 52077, key: "secret", network: "mix" };
+const input = { id: "test-node-0001", name: "Test", publicHost: "example.com", listenHost: "127.0.0.1", port: 52077, key: "a".repeat(32), network: "mix" };
 function decoded(action, value = input, sourceMode) {
   const command = buildManagedNowhereCommand(action, value, sourceMode);
   const parts = [...command.matchAll(/'([^']+)'/g)].map((match) => match[1]);
@@ -75,7 +75,7 @@ for (const action of ["start", "stop", "restart", "status", "logs", "delete"]) {
   assert(!value.command.includes("nowhere.service"), `${action} command must not embed the legacy unit`);
 }
 assert(decoded("status").script.includes("context.wrap_socket"), "tls=1 fingerprint should be read without nowhere-sh");
-const upgrade = buildManagedNowhereCommand("upgrade", { ...input, targetVersion: "v2.0.1" });
+const upgrade = buildManagedNowhereCommand("upgrade", { ...input, targetVersion: "v2.2.1" });
 const upgradeParts = [...upgrade.matchAll(/'([^']+)'/g)].map((match) => match[1]);
 const upgradeScript = Buffer.from(upgradeParts[1], "base64").toString("utf8");
 assert(upgradeScript.includes("release-checksum-mismatch"));
@@ -83,8 +83,8 @@ assert(upgradeScript.includes("release-not-found"));
 assert(upgradeScript.includes("os.replace(P['binaryPath'], previous)"));
 assert(upgradeScript.includes("NOWHERE_VERSION_VALUE"));
 assert(!upgradeScript.includes("systemctl', 'stop', 'nowhere.service"));
-const legacyUpgradePlan = planManagedNowhere({ ...input, version: "v2.1.0", log: "event" });
-const legacyUpgrade = decoded("upgrade", { ...legacyUpgradePlan, targetVersion: "v2.1.1" });
+const legacyUpgradePlan = { ...planManagedNowhere(input), version: "v2.1.0", environment: planManagedNowhere(input).environment.replace(/v2.2.1/g, "v2.1.0").replace(/morph=0/g, "morph=0&log=event").replace(/NOWHERE_LOG_VALUE="info"/g, 'NOWHERE_LOG_VALUE="event"') };
+const legacyUpgrade = decoded("upgrade", { ...legacyUpgradePlan, targetVersion: "v2.2.1" });
 const upgradeTemp = fs.mkdtempSync(path.join(os.tmpdir(), "nowhere-upgrade-test-"));
 try {
   const binaryPath = path.join(upgradeTemp, "nowhere");
@@ -94,7 +94,7 @@ try {
   fs.writeFileSync(unitPath, "fixture");
   fs.writeFileSync(environmentPath, legacyUpgradePlan.environment + 'NOW_REPORT_INTERVAL="30s"\n');
   const payload = { ...legacyUpgrade.payload, directory: upgradeTemp, binaryPath, environmentPath, unitPath };
-  const stub = `os.geteuid=lambda:0\nstates={P['unitName']:'active'}\ndef fake_run(args,**kwargs):\n if args[:2]==['systemctl','is-active']:\n  state=states.get(args[2],'inactive'); return subprocess.CompletedProcess(args,0 if state=='active' else 3,stdout=state+'\\n',stderr='')\n if args[:2]==['systemctl','stop']:\n  states[args[2]]='inactive'; return subprocess.CompletedProcess(args,0,stdout='',stderr='')\n if args[:2]==['systemctl','start']:\n  states[args[2]]='active'; return subprocess.CompletedProcess(args,0,stdout='',stderr='')\n if args[0].endswith('.next') and args[1]=='--version':\n  return subprocess.CompletedProcess(args,0,stdout='nowhere-v2.1.1',stderr='')\n raise AssertionError(args)\nsubprocess.run=fake_run\n`;
+  const stub = `os.geteuid=lambda:0\nstates={P['unitName']:'active'}\ndef fake_run(args,**kwargs):\n if args[:2]==['systemctl','is-active']:\n  state=states.get(args[2],'inactive'); return subprocess.CompletedProcess(args,0 if state=='active' else 3,stdout=state+'\\n',stderr='')\n if args[:2]==['systemctl','stop']:\n  states[args[2]]='inactive'; return subprocess.CompletedProcess(args,0,stdout='',stderr='')\n if args[:2]==['systemctl','start']:\n  states[args[2]]='active'; return subprocess.CompletedProcess(args,0,stdout='',stderr='')\n if args[0].endswith('.next') and args[1]=='--version':\n  return subprocess.CompletedProcess(args,0,stdout='nowhere-v2.2.1',stderr='')\n raise AssertionError(args)\nsubprocess.run=fake_run\n`;
   const script = legacyUpgrade.script
     .replace("P=json.loads(base64.b64decode(sys.argv[1],validate=True).decode())", "P=json.loads(base64.b64decode(sys.argv[1],validate=True).decode())\nos.geteuid=lambda:0")
     .replace("download_release(P['targetVersion'], candidate)", "with open(candidate, 'wb') as handle: handle.write(b'new binary')")
@@ -103,7 +103,7 @@ try {
   assert.equal(result.status, 0, result.stderr);
   assert.equal(parseManagedNowhereOutput(result.stdout).ok, true, result.stdout);
   const migrated = fs.readFileSync(environmentPath, "utf8");
-  assert(migrated.includes('NOWHERE_VERSION_VALUE="v2.1.1"'));
+  assert(migrated.includes('NOWHERE_VERSION_VALUE="v2.2.1"'));
   assert(migrated.includes('NOWHERE_LOG_VALUE="info"'));
   assert(migrated.includes('log=info'));
   assert(!migrated.includes("log=event"));
@@ -113,10 +113,10 @@ try {
     ['portal://short@127.0.0.1:52077', 'shared-key-upgrade-required'],
     ['portal://' + 'a'.repeat(64) + '@127.0.0.1:52077?next=short%40upstream.example', 'next-key-upgrade-required'],
   ]) {
-    const before = 'NOWHERE_PORTAL=' + JSON.stringify(portal) + '\nNOWHERE_VERSION_VALUE="v2.1.1"\n';
+    const before = 'NOWHERE_PORTAL=' + JSON.stringify(portal) + '\nNOWHERE_VERSION_VALUE="v2.2.1"\n';
     fs.writeFileSync(environmentPath, before);
     fs.writeFileSync(binaryPath, 'unchanged binary');
-    const blockedStub = stub.replace('nowhere-v2.1.1', 'nowhere-v2.2.1')
+    const blockedStub = stub.replace('nowhere-v2.2.1', 'nowhere-v2.2.1')
       .replace("states[args[2]]='inactive'; return", "raise AssertionError('must not stop service'); return")
       .replace("states[args[2]]='active'; return", "raise AssertionError('must not start service'); return");
     const blockedScript = script.replace(stub, blockedStub);
@@ -130,8 +130,8 @@ try {
   }
 
   const retainedKey = 'c'.repeat(32);
-  fs.writeFileSync(environmentPath, 'NOWHERE_PORTAL="portal://' + retainedKey + '@127.0.0.1:52077"\nNOWHERE_VERSION_VALUE="v2.1.1"\n');
-  const accepted = spawnSync('python3', ['-c', script.replace(stub, stub.replace('nowhere-v2.1.1', 'nowhere-v2.2.1')), Buffer.from(JSON.stringify({ ...payload, targetVersion: 'v2.2.1' })).toString('base64')], { encoding: 'utf8' });
+  fs.writeFileSync(environmentPath, 'NOWHERE_PORTAL="portal://' + retainedKey + '@127.0.0.1:52077"\nNOWHERE_VERSION_VALUE="v2.2.1"\n');
+  const accepted = spawnSync('python3', ['-c', script.replace(stub, stub.replace('nowhere-v2.2.1', 'nowhere-v2.2.1')), Buffer.from(JSON.stringify({ ...payload, targetVersion: 'v2.2.1' })).toString('base64')], { encoding: 'utf8' });
   assert.equal(accepted.status, 0, accepted.stderr);
   assert.equal(parseManagedNowhereOutput(accepted.stdout).ok, true, accepted.stdout);
   assert(fs.readFileSync(environmentPath, 'utf8').includes(retainedKey));
@@ -180,5 +180,5 @@ try {
 console.log("managed Nowhere remote command and simulated upgrade tests passed (no host operations)");
 
 assert.throws(() => buildManagedNowhereCommand("upgrade", { ...input, targetVersion: "v2.2.0" }), /unverified/);
-const transitional = planManagedNowhere({ ...input, version: "v2.2.0", key: "a".repeat(64) });
+const transitional = { ...planManagedNowhere({ ...input, key: "a".repeat(64) }), version: "v2.2.0" };
 assert(buildManagedNowhereCommand("upgrade", { ...transitional, targetVersion: "v2.2.1" }).includes("python3"));

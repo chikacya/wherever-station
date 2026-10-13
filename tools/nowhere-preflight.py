@@ -12,7 +12,7 @@ try:
         stop('instance-exists')
     if os.path.lexists(P['unitPath']):
         stop('unit-exists')
-    ports = P.get('ports') or [{'transport': P.get('network', 'mix'), 'port': P['port']}]
+    ports = P.get('ports') if P.get('role') == 'egress' else P.get('ports') or [{'transport': P.get('network', 'mix'), 'port': P['port']}]
     normalized_ports = []
     for item in ports:
         transport = str(item.get('transport') or '').lower()

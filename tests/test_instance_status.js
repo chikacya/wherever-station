@@ -26,5 +26,5 @@ assert.throws(() => buildInstanceStatus([{ id: '../other', kind: 'nowhere' }]));
 const serviceCommand = buildServiceStatus([{ id: 'nw-adopted01', kind: 'nowhere' }]);
 const serviceParts = [...serviceCommand.matchAll(/'([^']+)'/g)].map(item => item[1]);
 const serviceTargets = JSON.parse(Buffer.from(serviceParts[2], 'base64'));
-assert.deepEqual(serviceTargets.map(item => item.unit), ['sing-box.service', 'nowhere.service', 'proxy-console-nowhere@nw-adopted01.service']);
+assert.deepEqual(serviceTargets.map(item => item.unit), ['sing-box.service', 'xray.service', 'nowhere.service', 'proxy-console-nowhere@nw-adopted01.service']);
 console.log('batched instance status: Nowhere 2.1.0 local telemetry subscriber passed');

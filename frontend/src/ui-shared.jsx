@@ -337,13 +337,18 @@ function TelemetryRefreshControl({ value, onChange }) {
   return <label className="telemetry-refresh-control"><span>前台采样</span><select value={value} onChange={(event) => onChange(Number(event.target.value))}><option value={3000}>3 秒</option><option value={5000}>5 秒</option><option value={10000}>10 秒</option><option value={0}>暂停</option></select></label>;
 }
 
-async function executeTrackedManagedTask(spec, otp = "") {
+async function submitTrackedManagedTask(spec, otp = "") {
   if (!spec.deduplicated) {
     const job = await rpc("admin:exec", { command: spec.command, clients: [spec.clientId], two_factor_code: otp });
     // Bind immediately after native authenticated submission. Backend observation
     // continues independently of this page; never retry the command on timeout.
     await rpc("proxyConsole:bindManagedTask", { operationId: spec.operationId, taskId: job.task_id });
   }
+  return spec.operationId;
+}
+
+async function executeTrackedManagedTask(spec, otp = "") {
+  await submitTrackedManagedTask(spec, otp);
   const deadline = Date.now() + 30000;
   let interval = 150;
   while (Date.now() < deadline) {
@@ -380,4 +385,4 @@ async function executeTask(clientId, command, otp = "", timeoutMs = 15000) {
   throw new Error(`任务已发送，结果尚未确认；请刷新状态，不要重复创建${lastError ? `（${lastError}）` : ""}`);
 }
 
-export { EMPTY_STATE, rpc, readSessionDraft, writeSessionDraft, clearSessionDraft, useAsyncButton, IconButton, Button, Status, DraftStatus, Field, SecretInput, Modal, Empty, ContextGuide, PageHead, TRAFFIC_ACCOUNTING, MANAGED_ERROR, NOWHERE_LIFECYCLE, telemetryCounterTotal, telemetryTotal, duration, TelemetryTrend, TelemetrySparkline, TelemetryRefreshControl, executeTrackedManagedTask, executeTask };
+export { EMPTY_STATE, rpc, readSessionDraft, writeSessionDraft, clearSessionDraft, useAsyncButton, IconButton, Button, Status, DraftStatus, Field, SecretInput, Modal, Empty, ContextGuide, PageHead, TRAFFIC_ACCOUNTING, MANAGED_ERROR, NOWHERE_LIFECYCLE, telemetryCounterTotal, telemetryTotal, duration, TelemetryTrend, TelemetrySparkline, TelemetryRefreshControl, submitTrackedManagedTask, executeTrackedManagedTask, executeTask };

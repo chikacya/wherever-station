@@ -128,7 +128,15 @@ export function buildRepairUri(input = {}) {
   if (["trojan", "hysteria2", "anytls", "nowhere"].includes(protocol)) {
     if (input.sni) query.set("sni", input.sni);
     if (input.insecure) query.set("insecure", "1");
-    if (protocol === "nowhere") { query.set("up", "udp"); query.set("down", "udp"); }
+    if (protocol === "nowhere") {
+      if (Number(input.nowhereGeneration ?? 3) === 2) {
+        if (!/^[0-9a-f]{32,64}$/.test(credential)) throw new Error("NW2 需要 32–64 字符小写 hex 密钥");
+        query.set("up", "udp"); query.set("down", "udp"); query.set("morph", "0");
+      } else {
+        if (!/^[0-9a-f]{32}$/.test(credential)) throw new Error("NW3 需要恰好 32 字符小写 hex 密钥");
+        query.delete("insecure"); query.set("net", "tcp"); query.set("morph", "1");
+      }
+    }
     return `${protocol}://${encodeURIComponent(credential)}@${host}:${port}${query.size ? `?${query}` : ""}#${name}`;
   }
   if (["ss", "shadowsocks"].includes(protocol)) {
@@ -146,13 +154,7 @@ export function normalizeNodeName(value) {
     return name;
   }
 }
-export const NOWHERE_RELEASE_FALLBACK = Object.freeze([
-  "v2.2.1",
-  "v2.1.0",
-  "v2.0.2",
-  "v2.0.1",
-  "v2.0.0",
-]);
+export const NOWHERE_RELEASE_FALLBACK = Object.freeze(["v3.0.0", "v2.2.1"]);
 export function normalizeNowhereReleases(input) {
   const seen = new Set();
   return (Array.isArray(input) ? input : [])
@@ -163,7 +165,7 @@ export function normalizeNowhereReleases(input) {
         return null;
       const parts = match.slice(1).map(Number);
       if (
-        parts[0] < 2 ||
+        parts[0] < 2 || (parts[0] === 2 && tag !== "v2.2.1") ||
         seen.has(tag)
       )
         return null;
@@ -438,7 +440,7 @@ export function nowhereVersionCapabilities(value) {
   const match = String(value || "").trim().match(/^v?(\d+)\.(\d+)\.(\d+)(?:[.-][A-Za-z0-9._-]+)?$/);
   if (!match) return { known: false, supported: false, adapter: "", verified: false, compatibility: "invalid", vectorPin: false, vectorMux: false, localTelemetry: false, isV2: false, protocolGeneration: 0, wireProtocol: "", carrierEndpoints: false, morph: false, morphWireGeneration: 0, morphTcpPrelude: false, transportMemoryProfile: false };
   const parts = match.slice(1).map(Number);
-  const version = `v${parts.join(".")}`;
+  const version = String(value).trim().replace(/^v?/, "v");
   const compare = (target) => {
     const targetParts = String(target).replace(/^v/, "").split(".").map(Number);
     for (let index = 0; index < 3; index += 1) {
@@ -463,19 +465,19 @@ export function nowhereVersionCapabilities(value) {
     verified: adapter.verifiedVersions.includes(version),
     compatibility: adapter.verifiedVersions.includes(version) ? "verified" : "compatible-range",
     vectorPin: true,
-    vectorMux: true,
-    localTelemetry: atLeast(2, 0, 2),
-    isV2: true,
+    vectorMux: adapter.generation === 2,
+    localTelemetry: true,
+    isV2: adapter.generation === 2,
     protocolGeneration: adapter.generation,
-    wireProtocol: "nw2",
+    wireProtocol: `nw${adapter.generation}`,
     carrierEndpoints: true,
     morph: true,
-    morphWireGeneration: atLeast(2, 1, 0) ? 2 : 1,
-    morphTcpPrelude: atLeast(2, 1, 0),
+    morphWireGeneration: adapter.generation,
+    morphTcpPrelude: true,
     transportMemoryProfile: true,
-    eventLog: !atLeast(2, 1, 1),
-    dualStackDial: atLeast(2, 2, 0),
-    strictSharedKey: atLeast(2, 2, 0),
+    eventLog: false,
+    dualStackDial: true,
+    strictSharedKey: true,
   };
 }
 export function moveItem(items, from, to) {
@@ -487,6 +489,6 @@ export function moveItem(items, from, to) {
 
 export function nowhereKeyNeedsUpdate(uri, targetVersion) {
   if (!nowhereVersionCapabilities(targetVersion).strictSharedKey) return false;
-  try { const version = String(targetVersion).replace(/^v/, "").split(".").map(Number); const relaxed = version[0] > 2 || version[1] > 2 || (version[1] === 2 && version[2] >= 1); return !(relaxed ? /^[0-9a-f]{32,64}$/ : /^[0-9a-f]{64}$/).test(decodeURIComponent(new URL(uri).username)); }
+  try { return !(nowhereVersionCapabilities(targetVersion).protocolGeneration === 3 ? /^[0-9a-f]{32}$/ : /^[0-9a-f]{32,64}$/).test(decodeURIComponent(new URL(uri).username)); }
   catch (_) { return true; }
 }

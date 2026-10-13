@@ -84,7 +84,9 @@ try:
         raise RuntimeError('binary-version-mismatch')
     with open(P['environmentPath'], 'rb') as handle:
         environment_previous = handle.read()
-    environment_text = environment_previous.decode('utf-8')
+    if P.get('migration') and hashlib.sha256(environment_previous).hexdigest() != P.get('expectedHash'):
+        raise RuntimeError('configuration-changed')
+    environment_text = P['targetEnvironment'] if P.get('migration') else environment_previous.decode('utf-8')
     target_parts = tuple(int(part) for part in P['targetVersion'].lstrip('v').split('.')[:3])
     if target_parts >= (2, 2, 0):
         values = {}
@@ -94,7 +96,7 @@ try:
                 parsed = shlex.split(raw, comments=False)
                 if len(parsed) == 1: values[name] = parsed[0]
         portal = urllib.parse.urlsplit(values.get('NOWHERE_PORTAL', ''))
-        key_pattern = r'[0-9a-f]{32,64}' if target_parts >= (2, 2, 1) else r'[0-9a-f]{64}'
+        key_pattern = r'[0-9a-f]{32}' if target_parts[0] == 3 else r'[0-9a-f]{32,64}' if target_parts >= (2, 2, 1) else r'[0-9a-f]{64}'
         if not re.fullmatch(key_pattern, urllib.parse.unquote(portal.username or '')):
             raise RuntimeError('shared-key-upgrade-required')
         query = dict(urllib.parse.parse_qsl(portal.query))
@@ -125,16 +127,25 @@ try:
         if stopped.returncode != 0 or active(P['unitName']) == 'active':
             raise RuntimeError('stop-failed')
     os.replace(P['binaryPath'], previous)
-    os.replace(candidate, P['binaryPath'])
     replaced = True
+    os.replace(candidate, P['binaryPath'])
     os.replace(environment_candidate, P['environmentPath'])
     environment_replaced = True
-    if was_running:
+    if was_running or P.get('migration'):
         started = run(['systemctl', 'start', P['unitName']], 25)
         time.sleep(1)
         if started.returncode != 0 or active(P['unitName']) != 'active':
             raise RuntimeError('start-failed')
-    os.unlink(previous)
+        if not was_running:
+            stopped = run(['systemctl', 'stop', P['unitName']], 25)
+            if stopped.returncode != 0 or active(P['unitName']) == 'active': raise RuntimeError('stop-failed')
+    if P.get('migration'):
+        backup = P['binaryPath'] + '.nw2-backup'
+        with open(P['environmentPath'] + '.nw2-backup', 'wb') as handle:
+            os.fchmod(handle.fileno(), 0o600); handle.write(environment_previous); handle.flush(); os.fsync(handle.fileno())
+        os.replace(previous, backup)
+    else:
+        os.unlink(previous)
     try:
         os.unlink(candidate + '.archive')
     except OSError:
@@ -153,6 +164,7 @@ except Exception as exc:
                 os.fsync(handle.fileno())
             os.replace(environment_candidate, P['environmentPath'])
         if replaced and os.path.isfile(previous):
+            run(['systemctl', 'stop', P['unitName']], 25)
             try:
                 os.unlink(P['binaryPath'])
             except OSError:
@@ -174,7 +186,7 @@ except Exception as exc:
     known = {
         'unsupported-architecture', 'release-not-found', 'release-asset-not-found', 'release-checksum-missing',
         'release-checksum-mismatch', 'binary-not-found', 'binary-version-mismatch',
-        'stop-failed', 'start-failed', 'shared-key-upgrade-required', 'next-key-upgrade-required',
+        'configuration-changed', 'stop-failed', 'start-failed', 'shared-key-upgrade-required', 'next-key-upgrade-required',
     }
     error = str(exc) if str(exc) in known else 'upgrade-failed'
     stop(error, rolledBack=restored, state=active(P['unitName']))

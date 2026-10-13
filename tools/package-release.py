@@ -14,7 +14,7 @@ runtime_tools = (
     'instance-status.py', 'managed-nowhere-remote.js', 'managed-nowhere.js',
     'managed-sing-box-config.js', 'managed-sing-box-remote.js', 'managed-sing-box.js',
     'managed-task-tracker.js', 'nowhere-action.py', 'nowhere-binary-upgrade.py',
-    'nowhere-capabilities.js', 'nowhere-compatibility.json', 'nowhere-config.js',
+    'nowhere-migration.js', 'nowhere-batch.js', 'nowhere-capabilities.js', 'nowhere-compatibility.json', 'nowhere-config.js',
     'nowhere-create.py', 'nowhere-delete.py',
     'nowhere-adopt.py',
     'nowhere-preflight.py', 'nowhere-read.py', 'nowhere-recover.py',

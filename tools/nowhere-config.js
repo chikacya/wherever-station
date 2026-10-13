@@ -1,6 +1,6 @@
 // Decode our managed EnvironmentFile metadata, not a client share URI.
 const fields = {
-  version: 'VERSION', publicHost: 'PUBLIC_HOST', listenHost: 'LISTEN_HOST',
+  role: 'ROLE', out: 'OUT', version: 'VERSION', publicHost: 'PUBLIC_HOST', listenHost: 'LISTEN_HOST',
   port: 'PORT', key: 'KEY', network: 'NET', client: 'CLIENT', alpn: 'ALPN', tls: 'TLS',
   tcpPort: 'TCP_PORT', udpPort: 'UDP_PORT', tcpCarrier: 'TCP_CARRIER', udpCarrier: 'UDP_CARRIER',
   certificatePath: 'CRT', privateKeyPath: 'TLS_KEY', rate: 'RATE', etar: 'ETAR',
@@ -14,7 +14,7 @@ const fields = {
 function decodeNowhereConfig(values) {
   if (!values || typeof values !== 'object') throw new Error('缺少当前托管配置');
   const input = {};
-  const optional = new Set(['dial4', 'dial6', 'certificateMode', 'certificateHost', 'certificateDays', 'tcpPort', 'udpPort', 'tcpCarrier', 'udpCarrier', 'morph', 'transportMemoryProfile']);
+  const optional = new Set(['role', 'out', 'dial4', 'dial6', 'certificateMode', 'certificateHost', 'certificateDays', 'tcpPort', 'udpPort', 'tcpCarrier', 'udpCarrier', 'morph', 'transportMemoryProfile']);
   for (const [field, suffix] of Object.entries(fields)) {
     const value = values['NOWHERE_' + suffix + '_VALUE'];
     if (typeof value !== 'string') {
@@ -26,7 +26,10 @@ function decodeNowhereConfig(values) {
   input.certificateMode ||= Number(input.tls) === 2 ? 'existing' : 'ephemeral';
   input.certificateHost ||= input.publicHost;
   input.certificateDays ||= '825';
-  if (!/^v?2\./.test(input.version)) throw new Error('Wherever Station 仅管理 Nowhere 2.x 实例');
+  try { input.nativeNext = new (require('node:url').URL)(values.NOWHERE_PORTAL).searchParams.get('next') || ''; } catch (_) { input.nativeNext = ''; }
+  input.role ||= 'portal';
+  input.out ||= 'direct';
+  if (!/^v?[23]\./.test(input.version)) throw new Error('Wherever Station 仅管理 NW2 / NW3 实例');
   input.tcpPort ??= input.network === 'udp' ? '0' : input.port;
   input.udpPort ??= input.network === 'tcp' ? '0' : input.port;
   input.tcpCarrier ||= 'tcp';

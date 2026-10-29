@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict');
+const {requiresPreludeConfirmation}=require('../tools/nowhere-upgrade-policy');
+const {planManagedNowhere}=require('../tools/managed-nowhere');
+const base={version:'v3.0.0',morph:1,tcpPort:2077,role:'portal'};
+assert.equal(requiresPreludeConfirmation(base,'v3.2.0'),true);
+for(const patch of [{role:'egress'},{morph:0},{tcpPort:0},{version:'v3.2.0'}])assert.equal(requiresPreludeConfirmation({...base,...patch},'v3.2.0'),false);
+assert.equal(requiresPreludeConfirmation(base,'v3.1.0'),false);
+const p={id:'nw-policy-test',version:'v3.2.0',key:'a'.repeat(32),publicHost:'example.com',port:2077,extensionEnvironment:{NOW_UDP_DATA_BUF_SIZE:'65536'}};
+const generated=planManagedNowhere(p);assert(!generated.environment.includes('NOW_UDP_DATA_BUF_SIZE'));assert(generated.environment.includes('NOW_MORPH_TCP_PRELUDE="fade"'));
+for(const mode of ['fade','full8','low7'])assert(planManagedNowhere({...p,morphPrelude:mode}).environment.includes('NOW_MORPH_TCP_PRELUDE="'+mode+'"'));
+assert.throws(()=>planManagedNowhere({...p,version:'v3.0.0',morphPrelude:'fade'}),/prelude/);
+const {buildConnectivityCommand}=require('../tools/connectivity-check');
+const command=buildConnectivityCommand({kind:'vector',uri:'vector://'+'a'.repeat(32)+'@host/tcp:2077?in=127.0.0.1:1080',minimumNowhereVersion:'v3.2.0'});
+const parts=[...command.matchAll(/'([^']+)'/g)].map(m=>m[1]);assert.equal(JSON.parse(Buffer.from(parts[2],'base64')).minimumNowhereVersion,'3.1.0');
+console.log('Prelude upgrade confirmation, removed environment and probe client guard passed');

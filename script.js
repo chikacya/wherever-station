@@ -57,9 +57,10 @@ const DEFAULT_DEPLOYMENT_PRESETS = Object.freeze([
   { id: "builtin-trojan", name: "Trojan TLS", suffix: "Trojan", tier: "advanced", summary: "TLS over TCP · 需要可信证书或客户端明确接受私有自签证书", badges: [], origin: "builtin", hidden: false, values: { protocol: "trojan", certificateMode: "self-signed" } },
   { id: "builtin-vmess", name: "VMess WebSocket", suffix: "VMess WS", tier: "advanced", summary: "WebSocket 兼容模板 · 不自动配置反向代理或可信证书", badges: [], origin: "builtin", hidden: false, values: { protocol: "vmess", transport: "ws", wsPath: "/" } },
 ]);
-const { planNowhereMigration } = require(path.join(__dirname, "tools/nowhere-migration"));
-const { planNowhereBatch, summarizeNowhereBatch } = require(path.join(__dirname, "tools/nowhere-batch"));
+const { planNowhereBatch, summarizeNowhereBatch, nowhereBatchVersions, resolveNowhereBatchVersion } = require(path.join(__dirname, "tools/nowhere-batch"));
 const NOWHERE_BATCHES = operationStore(path.join(__storageDir__, "nowhere-batches.json"));
+const { ajsonSupported, renderAjson, validateAjson, cleanAjsonSettings } = require(path.join(__dirname, "tools/anywhere-ajson"));
+const { requiresPreludeConfirmation } = require(path.join(__dirname, "tools/nowhere-upgrade-policy"));
 const MANAGED_OPERATIONS = operationStore(path.join(__storageDir__, "nowhere-operations.json"));
 const MANAGED_SINGBOX_OPERATIONS = operationStore(path.join(__storageDir__, "singbox-operations.json"));
 const CERTIFICATE_OPERATIONS = operationStore(path.join(__storageDir__, "certificate-operations.json"));
@@ -345,7 +346,7 @@ function cleanState(input) {
     udpCarrier: ["udp", "udp4", "udp6"].includes(item && item.udpCarrier) ? item.udpCarrier : "udp",
     client: ["anywhere", "vector", "both"].includes(item && item.client) ? item.client : "anywhere",
     network: ["mix", "tcp", "udp"].includes(item && item.network) ? item.network : "mix", tls: Number(item && item.tls) === 2 ? 2 : 1,
-    alpn: item && item.kind === "nowhere" ? (nowhereCapabilities(item.version).wireProtocol || "nw2") : cleanText(item && item.alpn, 64), rate: Math.min(1000000, Math.max(0, Number(item && item.rate) || 0)),
+    alpn: item && item.kind === "nowhere" ? (nowhereCapabilities(item.version).wireProtocol || "unsupported") : cleanText(item && item.alpn, 64), rate: Math.min(1000000, Math.max(0, Number(item && item.rate) || 0)),
     etar: Math.min(1000000, Math.max(0, Number(item && item.etar) || 0)), dial: cleanText(item && item.dial, 253) || "auto", dial4: cleanText(item && item.dial4, 253), dial6: cleanText(item && item.dial6, 253), observedCertificatePin: cleanText(item && item.observedCertificatePin, 64), pinCheckedAt: cleanIsoDate(item && item.pinCheckedAt),
     socks: cleanText(item && item.socks, 512) || "none", log: ["none", "debug", "info", "warn", "error", "event"].includes(item && item.log) ? item.log : "info",
     telemetryInterval: cleanText(item && item.telemetryInterval, 16) || "1s",
@@ -395,7 +396,7 @@ function cleanState(input) {
     const rawQuota = item.quota && typeof item.quota === "object" ? item.quota : {};
     const quotaTotal = cleanByteCount(rawQuota.totalBytes);
     const quota = { mode: rawQuota.mode === "machine" ? "machine" : "none", totalBytes: quotaTotal, customTotalEnabled: rawQuota.customTotalEnabled === true || (rawQuota.customTotalEnabled !== false && quotaTotal > 0) };
-    return { id: cleanText(item.id, 64), name: cleanText(item.name), token: cleanText(item.token, 128), nodeIds: Array.isArray(item.nodeIds) ? [...new Set(item.nodeIds.map((id) => cleanText(id, 64)).filter((id) => nodeIds.has(id)))] : [], groups, enabled: item.enabled !== false, expiresAt, quota, policyMode: POLICY_MODES.has(item.policyMode) ? item.policyMode : "proxy-all", customRules: cleanCustomRules(item.customRules), ruleSetIds: Array.isArray(item.ruleSetIds) ? [...new Set(item.ruleSetIds.map((id) => cleanText(id, 64)).filter((id) => ruleSetIds.has(id)))] : [], devices: cleanDeviceProfiles(item.devices) };
+    return { ajson: cleanAjsonSettings(item.ajson), id: cleanText(item.id, 64), name: cleanText(item.name), token: cleanText(item.token, 128), nodeIds: Array.isArray(item.nodeIds) ? [...new Set(item.nodeIds.map((id) => cleanText(id, 64)).filter((id) => nodeIds.has(id)))] : [], groups, enabled: item.enabled !== false, expiresAt, quota, policyMode: POLICY_MODES.has(item.policyMode) ? item.policyMode : "proxy-all", customRules: cleanCustomRules(item.customRules), ruleSetIds: Array.isArray(item.ruleSetIds) ? [...new Set(item.ruleSetIds.map((id) => cleanText(id, 64)).filter((id) => ruleSetIds.has(id)))] : [], devices: cleanDeviceProfiles(item.devices) };
   }).filter((item) => item.id && item.name && /^[A-Za-z0-9_-]{24,128}$/.test(item.token));
   const externalSources = (Array.isArray(input.externalSources) ? input.externalSources : []).map((item) => ({
     id: cleanText(item.id, 64), name: cleanText(item.name, 80), url: cleanHttpUrl(item.url, false), machineId: cleanText(item.machineId, 64), tags: cleanTags(item.tags), enabled: item.enabled !== false, refreshIntervalHours: Math.min(168, Math.max(1, Number(item.refreshIntervalHours) || 24)), lastSyncAt: cleanText(item.lastSyncAt, 64), lastError: cleanText(item.lastError, 240), traffic: cleanTrafficMetadata(item.traffic), nodeIds: Array.isArray(item.nodeIds) ? [...new Set(item.nodeIds.map((id) => cleanText(id, 64)).filter((id) => nodeIds.has(id)))] : [],
@@ -429,7 +430,7 @@ function writeState(state) {
   fs.chmodSync(STATE_FILE, 0o600);
 }
 function subscriptionSnapshot(subscription) {
-  return { name: subscription.name, nodeIds: clone(subscription.nodeIds || []), groups: clone(subscription.groups || []), enabled: subscription.enabled !== false, expiresAt: subscription.expiresAt || "", quota: clone(subscription.quota || { mode: "none" }), policyMode: subscription.policyMode || "proxy-all", customRules: clone(subscription.customRules || []), ruleSetIds: clone(subscription.ruleSetIds || []), devices: clone(subscription.devices || []) };
+  return { ajson: cleanAjsonSettings(subscription.ajson), name: subscription.name, nodeIds: clone(subscription.nodeIds || []), groups: clone(subscription.groups || []), enabled: subscription.enabled !== false, expiresAt: subscription.expiresAt || "", quota: clone(subscription.quota || { mode: "none" }), policyMode: subscription.policyMode || "proxy-all", customRules: clone(subscription.customRules || []), ruleSetIds: clone(subscription.ruleSetIds || []), devices: clone(subscription.devices || []) };
 }
 function readSubscriptionHistory() { try { const value = JSON.parse(fs.readFileSync(SUBSCRIPTION_HISTORY_FILE, "utf8")); return Array.isArray(value) ? value : []; } catch (_) { return []; } }
 function writeSubscriptionHistory(entries) { const temporary = SUBSCRIPTION_HISTORY_FILE + ".tmp"; fs.writeFileSync(temporary, JSON.stringify(entries.slice(-100), null, 2) + "\n", { mode: 0o600 }); fs.renameSync(temporary, SUBSCRIPTION_HISTORY_FILE); fs.chmodSync(SUBSCRIPTION_HISTORY_FILE, 0o600); }
@@ -441,7 +442,7 @@ function recordSubscriptionChanges(current, incoming) {
   } catch (error) { console.error("subscription history write failed", error); }
 }
 function subscriptionHistory(params) {
-  const subscriptionId = cleanText(params && params.subscriptionId, 64); return readSubscriptionHistory().filter((entry) => entry && entry.subscriptionId === subscriptionId && entry.snapshot && typeof entry.snapshot === "object").slice(-20).reverse().map((entry) => { const quota = entry.snapshot.quota && typeof entry.snapshot.quota === "object" ? entry.snapshot.quota : {}; const totalBytes = cleanByteCount(quota.totalBytes); return { id: cleanText(entry.id, 64), subscriptionId, savedAt: cleanText(entry.savedAt, 64), reason: entry.reason === "删除前" ? "删除前" : "更新前", snapshot: { name: cleanText(entry.snapshot.name), nodeIds: Array.isArray(entry.snapshot.nodeIds) ? entry.snapshot.nodeIds.map((id) => cleanText(id, 64)).filter(Boolean) : [], groups: Array.isArray(entry.snapshot.groups) ? clone(entry.snapshot.groups) : [], enabled: entry.snapshot.enabled !== false, expiresAt: cleanText(entry.snapshot.expiresAt, 64), quota: { mode: quota.mode === "machine" ? "machine" : "none", totalBytes, customTotalEnabled: quota.customTotalEnabled === true || (quota.customTotalEnabled !== false && totalBytes > 0) }, policyMode: POLICY_MODES.has(entry.snapshot.policyMode) ? entry.snapshot.policyMode : "proxy-all", customRules: cleanCustomRules(entry.snapshot.customRules), ruleSetIds: Array.isArray(entry.snapshot.ruleSetIds) ? entry.snapshot.ruleSetIds.map((id) => cleanText(id, 64)).filter(Boolean) : [], devices: cleanDeviceProfiles(entry.snapshot.devices) } }; });
+  const subscriptionId = cleanText(params && params.subscriptionId, 64); return readSubscriptionHistory().filter((entry) => entry && entry.subscriptionId === subscriptionId && entry.snapshot && typeof entry.snapshot === "object").slice(-20).reverse().map((entry) => { const quota = entry.snapshot.quota && typeof entry.snapshot.quota === "object" ? entry.snapshot.quota : {}; const totalBytes = cleanByteCount(quota.totalBytes); return { id: cleanText(entry.id, 64), subscriptionId, savedAt: cleanText(entry.savedAt, 64), reason: entry.reason === "删除前" ? "删除前" : "更新前", snapshot: { ajson: cleanAjsonSettings(entry.snapshot.ajson), name: cleanText(entry.snapshot.name), nodeIds: Array.isArray(entry.snapshot.nodeIds) ? entry.snapshot.nodeIds.map((id) => cleanText(id, 64)).filter(Boolean) : [], groups: Array.isArray(entry.snapshot.groups) ? clone(entry.snapshot.groups) : [], enabled: entry.snapshot.enabled !== false, expiresAt: cleanText(entry.snapshot.expiresAt, 64), quota: { mode: quota.mode === "machine" ? "machine" : "none", totalBytes, customTotalEnabled: quota.customTotalEnabled === true || (quota.customTotalEnabled !== false && totalBytes > 0) }, policyMode: POLICY_MODES.has(entry.snapshot.policyMode) ? entry.snapshot.policyMode : "proxy-all", customRules: cleanCustomRules(entry.snapshot.customRules), ruleSetIds: Array.isArray(entry.snapshot.ruleSetIds) ? entry.snapshot.ruleSetIds.map((id) => cleanText(id, 64)).filter(Boolean) : [], devices: cleanDeviceProfiles(entry.snapshot.devices) } }; });
 }
 function subscriptionChangePreview(params) {
   const state = readState(); const candidate = params && params.subscription;
@@ -459,6 +460,7 @@ function subscriptionChangePreview(params) {
   if (JSON.stringify(before.customRules) !== JSON.stringify(after.customRules)) fields.push(`手写规则：${before.customRules.length} → ${after.customRules.length}`);
   if (JSON.stringify(before.ruleSetIds) !== JSON.stringify(after.ruleSetIds)) fields.push(`规则集：${before.ruleSetIds.length} → ${after.ruleSetIds.length}`);
   if (JSON.stringify(before.devices) !== JSON.stringify(after.devices)) fields.push(`设备档案：${before.devices.length} → ${after.devices.length}`);
+  if (JSON.stringify(before.ajson) !== JSON.stringify(after.ajson)) fields.push("AJSON 图标、模板或原生高级参数已修改");
   if (before.enabled !== after.enabled) fields.push(`订阅链接：${after.enabled ? "启用" : "停用"}`);
   if (before.expiresAt !== after.expiresAt) fields.push(after.expiresAt ? `有效期：${after.expiresAt.slice(0, 10)}` : "有效期：长期");
   if (JSON.stringify(before.quota) !== JSON.stringify(after.quota)) {
@@ -600,6 +602,10 @@ function saveState(input) {
   assertStateOwnershipPreserved(current, input);
   const incoming = cleanState(input);
   if (incoming.revision !== current.revision) throw new Error("数据已在其他页面更新，请刷新后重试");
+  for (const sub of incoming.subscriptions) {
+    const selected = uniqueNodes(sub,incoming);
+    if(selected.some(node => sub.ajson.overrides[node.id])) renderAjson(selected,sub);
+  }
   // Node metadata is the single display-name source. Renaming never submits a
   // remote task; service parameters remain in the managed deployment flow.
   for (const instance of incoming.managedInstances) {
@@ -699,8 +705,8 @@ function accessStats() { const events = readAccessLog(); const result = Object.c
 function subscriptionPreflight(params) {
   const state = readState(); const storedSubscription = state.subscriptions.find((item) => item.id === cleanText(params && params.subscriptionId, 64)); if (!storedSubscription) throw new Error("订阅不存在"); const subscription = withCachedRuleSets(storedSubscription, state);
   const selectedRuleSets = (storedSubscription.ruleSetIds || []).map((id) => state.ruleSets.find((item) => item.id === id)).filter(Boolean); const cache = readRuleSetCache();
-  const nodes = uniqueNodes(subscription, state); const formats = ["anywhere", "mihomo", "sing-box", "surge", "loon"].map((format) => {
-    const supported = SUPPORT[format]; const included = supported ? nodes.filter((node) => canRenderNode(format, node)) : nodes; const skipped = supported ? nodes.filter((node) => !canRenderNode(format, node)) : [];
+  const nodes = uniqueNodes(subscription, state); const formats = ["ajson", "anywhere", "mihomo", "sing-box", "surge", "loon"].map((format) => {
+    const supported = SUPPORT[format]; const included = format === "ajson" ? nodes.filter(ajsonSupported) : supported ? nodes.filter((node) => canRenderNode(format, node)) : nodes; const skipped = nodes.filter(node => !included.includes(node));
     const isStructured = Boolean(supported); const warnings = []; if (!included.length) warnings.push("没有可输出的兼容节点"); if (isStructured && !(subscription.groups || []).length) warnings.push("未配置代理组，将生成默认 PROXY/AUTO"); if (!isStructured && ((subscription.groups || []).length || (subscription.ruleSetIds || []).length || (subscription.customRules || []).length)) warnings.push("URI 订阅只输出节点；代理组和规则由客户端或结构化格式处理"); if (subscription.policyMode === "cn-direct" && format === "sing-box") warnings.push("中国大陆直连未绑定规则集，sing-box 输出将拒绝此未绑定规则集的策略"); if (skipped.length) warnings.push(`跳过不兼容或无法无损转换的节点：${[...new Set(skipped.map((node) => node.protocol))].join("、")}`); if (isStructured) { const missing = selectedRuleSets.filter((source) => !cache[source.id]); if (missing.length) warnings.push(`规则集尚无可用缓存：${missing.map((source) => source.name).join("、")}`); const stale = selectedRuleSets.filter((source) => source.lastError && cache[source.id]); if (stale.length) warnings.push(`规则集最近刷新失败，正在沿用旧缓存：${stale.map((source) => source.name).join("、")}`); }
     const includedIds = new Set(included.map((node) => node.id));
     const nodeResults = nodes.map((node) => { const capability = protocolCapability(format, node.protocol); return { id: node.id, name: node.name, protocol: node.protocol, included: includedIds.has(node.id), delivery: includedIds.has(node.id) ? capability.mode : "unsupported", clientSupport: capability.clientSupport, reason: includedIds.has(node.id) ? (capability.mode === "passthrough" ? capability.clientSupport === "unknown" ? "原始 URI 已保留；目标客户端是否支持需由客户端确认" : "原始 URI 无损透传" : "由协议适配器转换") : !supported || !supported.has(node.protocol) ? "目标格式不支持此协议" : conversionFailure(format, node) }; });
@@ -710,6 +716,7 @@ function subscriptionPreflight(params) {
 }
 function validateGeneratedOutput(format, body) {
   let names = []; let references = []; let builtins = [];
+  if (format === "ajson") return validateAjson(body);
   if (format === "mihomo") {
     let config; try { config = yaml.load(body, { schema: yaml.JSON_SCHEMA }); } catch (error) { const location = error && error.mark ? `（第 ${error.mark.line + 1} 行，第 ${error.mark.column + 1} 列）` : ""; throw new Error(`Mihomo YAML 结构无效${location}，已隐藏含凭据的配置片段`); } const groups = config["proxy-groups"] || [];
     names = [...(config.proxies || []).map((node) => node.name), ...groups.map((group) => group.name)]; builtins = ["DIRECT", "REJECT"];
@@ -778,10 +785,11 @@ function parseNode(node) {
   }
   const url = new URL(node.uri); const query = (key, fallback = "") => url.searchParams.get(key) || fallback; const decodedUser = decodeURIComponent(url.username || "");
   if (node.protocol === "nowhere") {
-    const up = query("up", "udp").toLowerCase(); const down = query("down", "udp").toLowerCase();
-    if (!["udp", "tcp"].includes(up) || !["udp", "tcp"].includes(down)) throw new Error("Nowhere up/down 仅支持 udp 或 tcp");
-    if (!decodedUser || !url.hostname || !Number(url.port)) throw new Error("Nowhere 链接缺少密钥、地址或端口");
-    return { ...node, key: decodedUser, host: url.hostname.replace(/^\[|\]$/g, ""), port: Number(url.port), up, down, mux: ["1", "true"].includes(query("mux").toLowerCase()), sni: query("sni"), alpn: query("alpn") };
+    if (url.searchParams.has('up') || url.searchParams.has('down') || url.searchParams.has('mux')) throw new Error('NW2 已停止支持，请使用 NW3 链接');
+    if (!/^[0-9a-f]{32}$/.test(decodedUser)) throw new Error('NW3 共享密钥必须为 32 字符小写十六进制');
+    const net=query('net','tcp');if(!['tcp','udp'].includes(net))throw new Error('NW3 net 仅支持 tcp 或 udp');
+    if (!url.hostname || !Number(url.port)) throw new Error('Nowhere 链接缺少地址或端口');
+    return {...node,key:decodedUser,host:url.hostname.replace(/^\[|\]$/g,''),port:Number(url.port),net,sni:query('sni'),alpn:query('alpn')};
   }
   if (node.protocol === "ss") { let credentials = url.password ? `${decodedUser}:${decodeURIComponent(url.password)}` : decodedUser; if (!url.password) { try { let raw = credentials.replace(/-/g, "+").replace(/_/g, "/"); raw += "=".repeat((4 - raw.length % 4) % 4); const decoded = Buffer.from(raw, "base64").toString("utf8"); if (decoded.includes(":")) credentials = decoded; } catch (_) {} } const split = credentials.indexOf(":"); if (split < 1) throw new Error("Shadowsocks 链接缺少加密方式或密码"); return { ...node, host: url.hostname.replace(/^\[|\]$/g, ""), port: Number(url.port), cipher: credentials.slice(0, split), password: credentials.slice(split + 1) }; }
   if (node.protocol === "trojan") return { ...node, host: url.hostname.replace(/^\[|\]$/g, ""), port: Number(url.port), password: decodedUser, transport: query("type", "tcp"), sni: query("sni") || query("peer"), insecure: query("allowInsecure") === "1" || query("insecure") === "1" };
@@ -996,6 +1004,7 @@ function renderLoon(nodes, subscription) {
   return `[Proxy]\n${supportedNodes.map((node) => node.uri).join("\n")}\n\n[Proxy Group]\n${groupLines.join("\n")}\n\n[Rule]\n${rules.join("\n")}\n`;
 }
 function render(nodes, subscription, format) {
+  if (format === "ajson") return renderAjson(nodes, subscription, subscription.ajsonUsage);
   if (SUPPORT[format]) {
     const groups = subscription.groups || []; const byId = new Map(groups.map(group => [group.id, group]));
     const visiting = new Set(); const visited = new Set();
@@ -1021,8 +1030,10 @@ function render(nodes, subscription, format) {
 }
 function requestedFormat(req) {
   const explicit = String(req.query.format || "").toLowerCase();
-  if (["raw", "base64", "anywhere", "mihomo", "sing-box", "surge", "loon"].includes(explicit)) return explicit;
+  if (explicit === "anywhere" && String(req.headers["x-anywhere-format"] || "").trim().toLowerCase() === "ajson/1") return "ajson";
+  if (["raw", "base64", "anywhere", "ajson", "mihomo", "sing-box", "surge", "loon"].includes(explicit)) return explicit;
   const ua = String(req.headers["user-agent"] || "").toLowerCase();
+  if (String(req.headers["x-anywhere-format"] || "").trim().toLowerCase() === "ajson/1") return "ajson";
   if (ua.includes("anywhere")) return "anywhere"; if (ua.includes("clash") || ua.includes("mihomo")) return "mihomo"; if (ua.includes("surge")) return "surge"; if (ua.includes("loon")) return "loon"; if (ua.includes("sing-box") || ua.includes("karing")) return "sing-box"; return "base64";
 }
 function subscriptionTraffic(state, subscription) {
@@ -1090,17 +1101,20 @@ function publicSubscription(req, res) {
     const pathname = String(req.url || "").split("?", 1)[0]; const token = decodeURIComponent(pathname.slice(pathname.lastIndexOf("/") + 1)); const state = readState(); const subscription = state.subscriptions.find((item) => secureTokenMatch(item.token, token));
     const availability = subscriptionAvailability(state, subscription);
     if (!availability.available) { res.statusCode = 404; res.end("not found"); return; }
-    const nodes = uniqueNodes(subscription, state); const format = requestedFormat(req); const output = render(nodes, withCachedRuleSets(subscription, state), format); validateGeneratedOutput(format, output.body);
-    res.setHeader("Content-Type", output.type); res.setHeader("Cache-Control", "no-store"); res.setHeader("X-Content-Type-Options", "nosniff"); res.setHeader("Profile-Update-Interval", "24");
+    const nodes = uniqueNodes(subscription, state); const format = requestedFormat(req); let output = render(nodes, withCachedRuleSets(subscription, state), format); validateGeneratedOutput(format, output.body);
+    res.setHeader("Content-Type", format === "ajson" ? "application/json; charset=utf-8" : output.type);
+    res.setHeader("Vary", "User-Agent, X-Anywhere-Format");
+    if (format === "ajson" && String(req.query.download || "") === "1") res.setHeader("Content-Disposition", 'attachment; filename="wherever-subscription.ajson"'); res.setHeader("Cache-Control", "no-store"); res.setHeader("X-Content-Type-Options", "nosniff"); res.setHeader("Profile-Update-Interval", "24");
     res.setHeader("Profile-Title", "base64:" + Buffer.from(subscription.name, "utf8").toString("base64"));
     const finish = (sample) => {
       const traffic = sample ? { ...sample, expire: availability.traffic.expire } : availability.traffic;
+      if (format === "ajson") { output = renderAjson(nodes, subscription, traffic); validateAjson(output.body); res.setHeader("X-Proxy-Console-Skipped", String(nodes.filter(n => !ajsonSupported(n)).length)); }
       const userinfo = subscriptionUserinfo(traffic); if (userinfo) res.setHeader("Subscription-Userinfo", userinfo);
       if (sample) res.setHeader('X-Wherever-Traffic-Scope', `server; basis=${sample.basis}`);
       recordSubscriptionAccess(subscription.id, format, req.headers["user-agent"]); res.end(output.body);
     };
     if (SUPPORT[format]) res.setHeader("X-Proxy-Console-Skipped", String(nodes.filter((node) => !canRenderNode(format, node)).length));
-    if (subscription.quota.mode === 'machine') return machineSubscriptionTraffic(state, subscription).then(finish);
+    if (subscription.quota.mode === 'machine') return machineSubscriptionTraffic(state, subscription).then(finish).catch(() => { res.statusCode = 500; res.end('subscription render failed'); });
     finish(null);
   } catch (error) { console.error("subscription render failed", error); res.statusCode = 500; res.end("subscription render failed"); }
 }
@@ -1418,7 +1432,7 @@ function parseExistingServiceDiscovery(params) {
   return result;
 }
 function newManagedNowhereValues() {
-  return { id: `nw-${randomId()}`, key: crypto.randomBytes(16).toString("hex"), version: "v3.0.0", role: "portal", out: "direct", port: 2077, tcpPort: 2077, udpPort: 2077, tcpCarrier: "tcp", udpCarrier: "udp", morph: 1, transportMemoryProfile: "throughput" };
+  return { id: `nw-${randomId()}`, key: crypto.randomBytes(16).toString("hex"), version: "v3.1.0", role: "portal", out: "direct", port: 2077, tcpPort: 2077, udpPort: 2077, tcpCarrier: "tcp", udpCarrier: "udp", morph: 1, transportMemoryProfile: "throughput" };
 }
 function managedNowherePorts(value) {
   if (value?.role === "egress") return [];
@@ -1463,7 +1477,7 @@ function createManagedNowhereDraft(params) {
   const machine = state.machines.find((item) => item.id === machineId && item.monitorClientId);
   if (!machine) throw new Error("请选择已绑定 Komari Agent 的服务器");
   input = certificateDeploymentInput(state, input, machineId, "nowhere");
-  if (!nowhereCapabilities(input.version).verified) throw new Error("该 Nowhere 版本尚未通过适配验证，不能创建实例");
+  if (!nowhereCapabilities(input.version).verified) throw new Error("当前仅支持已通过适配验证的 NW3 版本，不能创建实例");
   const plan = planManagedNowhere(input);
   if (input.client === "vector") throw new Error("托管节点至少需要生成 Anywhere 链接；可选择 Anywhere 或两者");
   if (state.managedInstances.some((item) => item.id === plan.id)) throw new Error("托管实例编号已经存在");
@@ -1540,9 +1554,8 @@ function prepareManagedNowhereAction(params) {
   const node = state.nodes.find((item) => item.id === instance?.nodeId && item.protocol === "nowhere");
   if (!instance || !machine || (!node && instance.role !== "egress")) throw new Error("托管实例、节点或宿主绑定已经不存在");
   const currentCapabilities = nowhereCapabilities(instance.version);
-  const legacyNW2 = /^v?2\./.test(instance.version) && !currentCapabilities.supported;
-  if (!currentCapabilities.supported && !legacyNW2) throw new Error("该实例版本没有可用的适配器，只能保留记录，不能生成远程命令");
-  if (!currentCapabilities.verified && !(legacyNW2 && ["upgrade", "start", "stop", "restart", "delete"].includes(action)) && !["status", "logs", "read-config"].includes(action)) throw new Error("该实例版本尚未通过适配验证，目前仅允许读取状态与配置");
+  if (!currentCapabilities.supported) throw new Error("该实例版本没有可用的适配器，只能保留记录，不能生成远程命令");
+  if (!currentCapabilities.verified && !["status", "logs", "read-config"].includes(action)) throw new Error("该实例版本尚未通过适配验证，目前仅允许读取状态与配置");
   if (action === "delete" && params.confirmation !== instance.id) throw new Error("删除托管实例需要确认实例编号");
   if (action === "delete" && instance.adoptionState === "adopted") throw new Error("请先恢复原服务，再删除接管实例");
   if (["start", "restart"].includes(action) && instance.adoptionState === "staged") throw new Error("待接管实例不能直接启动，请使用“切换接管”避免端口冲突");
@@ -1550,29 +1563,25 @@ function prepareManagedNowhereAction(params) {
   if (action === "rollback-adoption" && instance.adoptionState !== "adopted") throw new Error("该实例尚未接管原服务");
   if (action === "create" && !["draft", "validated", "failed"].includes(instance.status)) throw new Error("该实例已经创建，不能重复下发");
   if (["start", "stop", "restart", "logs", "upgrade"].includes(action) && ["draft", "validated"].includes(instance.status)) throw new Error("请先创建托管实例");
-  const plan = legacyNW2 ? {
-    kind: "managed-nowhere", id: instance.id, version: instance.version, role: "portal", name: instance.name,
-    directory: `/var/lib/proxy-console/instances/${instance.id}`, binaryPath: `/var/lib/proxy-console/instances/${instance.id}/bin/nowhere`,
-    environmentPath: `/var/lib/proxy-console/instances/${instance.id}/nowhere.env`, unitName: `proxy-console-nowhere@${instance.id}.service`, unitPath: `/etc/systemd/system/proxy-console-nowhere@${instance.id}.service`,
-    summary: { ...instance }, links: { anywhere: [], vector: [] }, certificateMode: instance.certificateMode,
-  } : planManagedNowhere(managedNowherePlanInput(instance, node));
+  const plan = planManagedNowhere(managedNowherePlanInput(instance, node));
   let targetVersion = "";
   if (action === "upgrade") {
     targetVersion = cleanText(params && params.targetVersion, 64);
     const capabilities = nowhereCapabilities(targetVersion);
     if (!capabilities.verified) throw new Error("请选择已通过适配验证的 Nowhere 版本");
+    if (requiresPreludeConfirmation(instance, targetVersion) && params.preludeClientsReady !== true) throw new Error("请先确认 Morph TCP 客户端支持认证 Prelude（原生 Vector ≥3.1.0），再升级到 3.2.0");
+    if (capabilities.protocolGeneration !== nowhereCapabilities(instance.version).protocolGeneration) throw new Error("不支持跨主版本直接替换二进制");
     planManagedNowhere({ ...managedNowherePlanInput(instance, node), version: targetVersion, log: capabilities.eventLog ? instance.log : instance.log === "event" ? "info" : instance.log, extensionEnvironment: Object.fromEntries(Object.entries(instance.extensionEnvironment).filter(([key]) => capabilities.eventLog || key !== "NOW_REPORT_INTERVAL")) });
     if (capabilities.version === nowhereCapabilities(instance.version).version) throw new Error("实例已经是所选版本");
-    if (capabilities.protocolGeneration !== (legacyNW2 ? 2 : nowhereCapabilities(instance.version).protocolGeneration)) throw new Error("不支持跨主版本直接替换二进制");
     const currentCapabilities = nowhereCapabilities(instance.version);
-    if (!legacyNW2 && instance.morph === 1 && capabilities.morphWireGeneration !== currentCapabilities.morphWireGeneration && params.confirmation !== "morph-peers-coordinated") {
+    if (instance.morph === 1 && capabilities.morphWireGeneration !== currentCapabilities.morphWireGeneration && params.confirmation !== "morph-peers-coordinated") {
       throw new Error("Morph 跨传输格式升级前，必须确认 Portal、客户端与原生下一跳已协同升级");
     }
   }
   const operationId = requestOperationId(params); const expiresAt = Date.now() + MANAGED_OPERATION_TTL_MS;
   retainOperation(MANAGED_OPERATIONS, operationId, { instanceId, machineId: machine.id, action, expiresAt, targetVersion, uri: plan.links.anywhere[0]?.uri || "" });
   for (const [id, operation] of MANAGED_OPERATIONS) if (operation.expiresAt < Date.now()) MANAGED_OPERATIONS.delete(id);
-  const commandInput = { ...plan, ...(targetVersion ? { targetVersion } : {}), sourceBinaryPath: instance.adoptionSourceBinary, sourceUnit: instance.adoptionSourceUnit, sourceWasEnabled: instance.adoptionSourceWasEnabled };
+  const commandInput = { ...plan, preludeClientsReady: params.preludeClientsReady === true, ...(targetVersion ? { targetVersion } : {}), sourceBinaryPath: instance.adoptionSourceBinary, sourceUnit: instance.adoptionSourceUnit, sourceWasEnabled: instance.adoptionSourceWasEnabled };
   return MANAGED_TASKS.prepare("nowhere", { schema: 1, operationId, expiresAt: new Date(expiresAt).toISOString(), instanceId, machineId: machine.id, clientId: machine.monitorClientId, action, command: buildManagedNowhereCommand(action, commandInput, instance.binarySource), plan: publicManagedNowherePlan(plan) });
 }
 function assertNoNowhereBatchTask(instanceId, requestId) {
@@ -1589,14 +1598,15 @@ function startNowhereBatch(params = {}) {
   const id = cleanText(params.requestId, 64);
   if (!/^[a-f0-9-]{32,36}$/.test(id)) throw new Error("批量请求编号无效");
   if (NOWHERE_BATCHES.get(id)) throw new Error("此批量请求已提交，请查看进度，勿重复执行");
-  const rows = planNowhereBatch(readState(), MANAGED_TASKS.list());
-  const batch = { id, createdAt: new Date().toISOString(), expiresAt: Date.now() + MANAGED_OPERATION_TTL_MS, rows };
+  const targetVersion=resolveNowhereBatchVersion(params.targetVersion);
+  const rows = planNowhereBatch(readState(), MANAGED_TASKS.list(), params.preludeClientsReady === true,targetVersion);
+  const batch = { id, targetVersion, createdAt: new Date().toISOString(), expiresAt: Date.now() + MANAGED_OPERATION_TTL_MS, rows };
   NOWHERE_BATCHES.set(id, batch);
   const specs = [];
   for (const row of rows) {
     if (row.phase !== "queued") continue;
     try {
-      const spec = prepareManagedNowhereAction({ instanceId: row.instanceId, action: "upgrade", targetVersion: row.targetVersion, requestId: crypto.randomUUID() });
+      const spec = prepareManagedNowhereAction({ instanceId: row.instanceId, action: "upgrade", targetVersion: row.targetVersion, preludeClientsReady: params.preludeClientsReady === true, requestId: crypto.randomUUID() });
       row.operationId = spec.operationId; row.phase = "prepared"; specs.push(spec);
     } catch (error) { row.phase = "skipped"; row.reason = cleanText(error.message, 240); }
     NOWHERE_BATCHES.set(id, batch);
@@ -1610,30 +1620,6 @@ function recordNowhereBatchSubmission(params = {}) {
   row.submissionError = "提交结果未确认，后台正在核对；请勿重复执行";
   NOWHERE_BATCHES.set(batch.id, batch);
   return getNowhereBatch({ batchId: batch.id });
-}
-function previewNowhereMigration(params = {}) {
-  const state = readState();
-  const instance = state.managedInstances.find(i => i.id === params.instanceId && i.kind === "nowhere");
-  const read = MANAGED_OPERATIONS.get(cleanText(params.readOperationId, 64));
-  if (!instance || !read || read.instanceId !== instance.id || read.action !== "read-config" || read.expiresAt < Date.now() || !read.completedResult?.ok) throw new Error("请先读取实例当前配置");
-  const migrated = planNowhereMigration(read.completedResult.configuration, { instanceId: instance.id, name: instance.name, targetVersion: cleanText(params.targetVersion, 64), key: String(params.key || "") });
-  return { ...publicManagedNowherePlan(migrated.plan), changes: migrated.changes };
-}
-function prepareNowhereMigration(params = {}) {
-  assertNoNowhereBatchTask(params.instanceId, params.requestId);
-  if (params.confirmation !== "nw3-clients-coordinated") throw new Error("请确认全部客户端及链路已准备迁移到 NW3");
-  previewNowhereMigration(params);
-  const state = readState(); const instance = state.managedInstances.find(i => i.id === params.instanceId);
-  if (!/^v?2\./.test(instance.version) || ["draft", "validated"].includes(instance.status) || instance.adoptionState === "staged") throw new Error("实例不处于可迁移状态");
-  if (MANAGED_TASKS.list().some(t => t.instanceId === instance.id && !["completed", "rejected"].includes(t.phase) && !MANAGED_OPERATIONS.get(t.operationId)?.completedResult)) throw new Error("此实例已有任务待完成或核对");
-  const machine = state.machines.find(m => m.id === instance.machineId && m.monitorClientId);
-  if (!machine) throw new Error("宿主未绑定 Agent");
-  const read = MANAGED_OPERATIONS.get(params.readOperationId);
-  const { input, plan } = planNowhereMigration(read.completedResult.configuration, { instanceId: instance.id, name: instance.name, targetVersion: params.targetVersion, key: String(params.key || "") });
-  if (hasManagedNowherePortConflict(state.managedInstances, machine.id, plan.summary, instance.id)) throw new Error("迁移端口与其他实例冲突");
-  const operationId = requestOperationId(params), expiresAt = Date.now() + MANAGED_OPERATION_TTL_MS;
-  retainOperation(MANAGED_OPERATIONS, operationId, { instanceId: instance.id, machineId: machine.id, action: "migrate", expiresAt, fromVersion: instance.version, targetVersion: plan.version, metadata: managedNowhereMetadata(input, plan), uri: plan.links.anywhere[0].uri });
-  return MANAGED_TASKS.prepare("nowhere", { operationId, instanceId: instance.id, clientId: machine.monitorClientId, action: "migrate", command: buildManagedNowhereCommand("migrate", { ...plan, fromVersion: instance.version, expectedHash: read.completedResult.configurationHash }), plan: publicManagedNowherePlan(plan) });
 }
 function prepareManagedNowhereUpdate(params) {
   assertNoNowhereBatchTask(params.instanceId, params.requestId);
@@ -1690,7 +1676,7 @@ function recordManagedNowhereResult(params) {
   if (index < 0 && pending.action === "delete" && result.ok === true && result.state === "deleted") return { state, result: { ok: true, state: "deleted" } };
   if (index < 0) throw new Error("托管实例已经不存在");
   const instance = state.managedInstances[index]; const now = new Date().toISOString();
-  if (result.ok === true && instance.certificateMode === "ephemeral" && ["start", "restart", "upgrade", "migrate", "update", "stop", "adopt"].includes(pending.action)) { instance.observedCertificatePin = ""; instance.pinCheckedAt = ""; }
+  if (result.ok === true && instance.certificateMode === "ephemeral" && ["start", "restart", "upgrade", "update", "stop", "adopt"].includes(pending.action)) { instance.observedCertificatePin = ""; instance.pinCheckedAt = ""; }
   if (result.ok !== true && result.error === "update-in-progress") {
     const normalized = { ok: false, error: "该实例正在更新，请稍后重试" };
     MANAGED_OPERATIONS.set(operationId, { ...pending, completedResult: normalized });
@@ -1754,14 +1740,8 @@ function recordManagedNowhereResult(params) {
         instance.status = "stopped";
         instance.adoptionState = "staged";
       }
-      else if (pending.action === "migrate") {
-        Object.assign(instance, pending.metadata);
-        instance.migration = { fromVersion: pending.fromVersion, migratedAt: now };
-        instance.status = result.state === "active" ? "running" : "stopped";
-        const linkedNode = state.nodes.find(i => i.id === instance.nodeId);
-        if (linkedNode) linkedNode.uri = pending.uri;
-      }
       else if (pending.action === "upgrade") {
+        if (nowhereCapabilities(pending.targetVersion).requiresAuthenticatedPrelude) delete instance.extensionEnvironment.NOW_UDP_DATA_BUF_SIZE;
         instance.version = nowhereCapabilities(pending.targetVersion).version;
         if (!nowhereCapabilities(instance.version).eventLog) {
           if (result.logMigrated === true || instance.log === "event") instance.log = "info";
@@ -1774,7 +1754,7 @@ function recordManagedNowhereResult(params) {
       else if (pending.action === "status") instance.status = result.state === "active" ? "running" : result.installed === false ? "failed" : "stopped";
       instance.lastError = "";
     } else {
-      const recovered = ["upgrade", "migrate"].includes(pending.action) && result.rolledBack === true;
+      const recovered = pending.action === "upgrade" && result.rolledBack === true;
       const adoptionRecovered = pending.action === "adopt" && result.rolledBack === true;
       const rollbackRecovered = pending.action === "rollback-adoption" && result.rolledBack === true;
       if (adoptionRecovered) { instance.status = "stopped"; instance.adoptionState = "staged"; }
@@ -2048,7 +2028,7 @@ function prepareConnectivityCheck(params) {
       : instance.observedCertificatePin || node.certificate?.fingerprintSha256 || instance.vectorPin;
     if (nowhereCapabilities(instance.version).strictSharedKey && instance.certificateMode !== "existing" && !/^[a-f0-9]{64}$/.test(pin || "")) throw new Error("请先刷新实例状态，读取当前证书指纹后再检测连接");
     const plan = planManagedNowhere({ ...managedNowherePlanInput(instance, node), client: "vector", vectorPin: pin || "none" });
-    command = buildConnectivityCommand({ kind: "vector", uri: plan.links.vector[0].uri, expectedIp: isIP(instance.publicHost) ? instance.publicHost : "", preferredBinary: localBinary });
+    command = buildConnectivityCommand({ kind: "vector", uri: plan.links.vector[0].uri, minimumNowhereVersion: instance.version, expectedIp: isIP(instance.publicHost) ? instance.publicHost : "", preferredBinary: localBinary });
   } else {
     const outbound = singBoxOutbound(node);
     if (!outbound) throw new Error("该协议暂不支持自动连接检查");
@@ -2067,9 +2047,9 @@ function prepareNodeConnectivityCheck(params) {
   const state = readState(); const node = state.nodes.find((item) => item.id === cleanText(params && params.nodeId, 64)); const source = state.machines.find((item) => item.id === cleanText(params && params.sourceMachineId, 64) && item.monitorClientId); if (!node || !source) throw new Error("节点或检测来源不存在");
   let command; let expectedIp = ""; try { const host = new URL(node.uri).hostname.replace(/^\[|\]$/g, ""); expectedIp = isIP(host) ? host : ""; } catch (_) {}
   if (node.protocol === "nowhere") { const nwInstance = state.managedInstances.find(item => item.nodeId === node.id); const share = new URL(node.uri);
-    const nw3 = nwInstance ? nowhereCapabilities(nwInstance.version).protocolGeneration === 3 : share.searchParams.has("net") && !share.searchParams.has("up") && !share.searchParams.has("down");
+    parseNode(node);if(nwInstance&&nowhereCapabilities(nwInstance.version).protocolGeneration!==3)throw new Error('仅支持 NW3 连接检查');
     const nw3Input = nwInstance ? { ...managedNowherePlanInput(nwInstance, node), up: nwInstance.tcpPort ? "tcp" : "udp" } : { version: "v3.0.0", publicHost: share.hostname.replace(/^\[|\]$/g, ""), key: decodeURIComponent(share.username), tcpPort: share.searchParams.get("net") === "udp" ? 0 : Number(share.port), udpPort: share.searchParams.get("net") === "udp" ? Number(share.port) : 0, morph: Number(share.searchParams.get("morph") ?? 1), vectorPin: share.searchParams.get("pin") || node.certificate?.fingerprintSha256 || "none", vectorSni: share.searchParams.get("sni") || "none" };
-    const url = new URL(nw3 ? buildVectorLink(nw3Input) : node.uri); url.protocol = "vector:"; if (!nw3) { if (!url.searchParams.has("mux")) url.searchParams.set("mux", "0"); } if (!url.searchParams.has("sni")) url.searchParams.set("sni", "none"); if (!url.searchParams.has("pin")) url.searchParams.set("pin", state.managedInstances.find(item => item.nodeId === node.id)?.observedCertificatePin || node.certificate?.fingerprintSha256 || "none"); url.hash = ""; command = buildConnectivityCommand({ kind: "vector", uri: url.toString(), expectedIp }); }
+    const url = new URL(buildVectorLink(nw3Input)); url.protocol = "vector:"; if (!url.searchParams.has("sni")) url.searchParams.set("sni", "none"); if (!url.searchParams.has("pin")) url.searchParams.set("pin", state.managedInstances.find(item => item.nodeId === node.id)?.observedCertificatePin || node.certificate?.fingerprintSha256 || "none"); url.hash = ""; command = buildConnectivityCommand({ kind: "vector", uri: url.toString(), minimumNowhereVersion: nwInstance?.version || "v3.2.0", expectedIp }); }
   else { const outbound = singBoxOutbound(node); if (!outbound) throw new Error("该协议暂不支持自动连接检查"); command = buildConnectivityCommand({ kind: "sing-box", outbound, expectedIp }); }
   return { operationId: requestOperationId(params), nodeId: node.id, sourceMachineId: source.id, clientId: source.monitorClientId, command };
 }
@@ -2124,9 +2104,18 @@ function load() {
   server.registerRPC("proxyConsole:createManagedNowhereAdoptionDraft", createManagedNowhereAdoptionDraft);
   server.registerRPC("proxyConsole:bindManagedTask", params => MANAGED_TASKS.bind(params));
   server.registerRPC("proxyConsole:getManagedTask", params => { const task = MANAGED_TASKS.get(params.operationId); return { task, ...(task.phase === "completed" ? { state: readState() } : {}) }; });
-  server.registerRPC("proxyConsole:previewNowhereMigration", previewNowhereMigration);
-  server.registerRPC("proxyConsole:prepareNowhereMigration", prepareNowhereMigration);
-  server.registerRPC("proxyConsole:previewNowhereBatch", () => ({ rows: planNowhereBatch(readState(), MANAGED_TASKS.list()) }));
+  server.registerRPC("proxyConsole:previewAjsonSubscription", params => {
+    const state=readState();const sub=params?.subscription;
+    if(!sub||typeof sub!=="object")throw new Error("缺少订阅草稿");
+    const nodes=uniqueNodes({...sub,groups:sub.groups||[]},state);
+    const output=renderAjson(nodes,sub);validateAjson(output.body);
+    const document=JSON.parse(output.body);
+    return {document, native:document.proxies.filter(p=>!p.link).length, links:document.proxies.filter(p=>p.link).length};
+  });
+  server.registerRPC("proxyConsole:previewNowhereBatch", (params = {}) => {
+    const versions=nowhereBatchVersions();const targetVersion=params.targetVersion || versions.find(item=>!item.prerelease)?.version || '';
+    return {versions,targetVersion,rows:targetVersion?planNowhereBatch(readState(),MANAGED_TASKS.list(),params.preludeClientsReady===true,targetVersion):[]};
+  });
   server.registerRPC("proxyConsole:startNowhereBatch", startNowhereBatch);
   server.registerRPC("proxyConsole:getNowhereBatch", getNowhereBatch);
   server.registerRPC("proxyConsole:recordNowhereBatchSubmission", recordNowhereBatchSubmission);

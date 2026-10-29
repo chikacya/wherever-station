@@ -102,58 +102,34 @@ function buildNW3ClientLink(input, scheme = "vector") {
 }
 
 function buildAnywhereLink(input) {
-  const capabilities = nowhereCapabilities(input.version || "v2.2.1");
-  if (!capabilities.supported) throw new Error("Nowhere 2.x or newer is required");
-  if (capabilities.protocolGeneration === 3) return buildNW3ClientLink(input, "nowhere");
-  const host = buildNowhereEndpoint(input.publicHost, input);
-  const key = encodeURIComponent(text(input.key, "shared key"));
-  const up = oneOf(input.up, ["tcp", "udp"], "udp", "upload transport");
-  const down = oneOf(input.down, ["tcp", "udp"], "udp", "download transport");
-  const name = encodeURIComponent(text(input.name || "Nowhere", "display name", 160));
-  const query = new URLSearchParams({ up, down });
-  query.set("morph", oneOf(String(input.morph ?? 0), ["0", "1"], "0", "morph"));
-  query.set("mux", oneOf(String(input.vectorMux ?? 0), ["0", "1"], "0", "vector mux"));
-  if (input.vectorSni && input.vectorSni !== "none") query.set("sni", text(input.vectorSni, "server name", 253));
-  return `nowhere://${key}@${host}?${query.toString()}#${name}`;
+  if (!nowhereCapabilities(input.version || 'v3.1.0').supported) throw new Error('仅支持 NW3');
+  return buildNW3ClientLink(input, 'nowhere');
 }
-
 function buildVectorLink(input) {
-  const capabilities = nowhereCapabilities(input.version || "v2.2.1");
-  if (!capabilities.supported) throw new Error("Nowhere 2.x or newer is required");
-  if (capabilities.protocolGeneration === 3) return buildNW3ClientLink(input);
-  const host = buildNowhereEndpoint(input.publicHost, input);
-  const key = encodeURIComponent(text(input.key, "shared key"));
-  const up = oneOf(input.up, ["tcp", "udp"], "udp", "upload transport");
-  const down = oneOf(input.down, ["tcp", "udp"], "udp", "download transport");
-  const query = new URLSearchParams({ up, down });
-  query.set("mux", oneOf(String(input.vectorMux ?? 0), ["0", "1"], "0", "vector mux"));
-  query.set("morph", oneOf(String(input.morph ?? 0), ["0", "1"], "0", "morph"));
-  query.set("sni", text(input.vectorSni || "none", "vector SNI"));
-  query.set("pin", text(input.vectorPin || "none", "vector pin"));
-  query.set("socks", text(input.vectorSocks || "127.0.0.1:1080", "vector SOCKS"));
-  return `vector://${key}@${host}?${query.toString()}`;
+  if (!nowhereCapabilities(input.version || 'v3.1.0').supported) throw new Error('仅支持 NW3');
+  return buildNW3ClientLink(input);
 }
 
 function planManagedNowhere(input = {}) {
   const id = cleanInstanceId(input.id);
   const name = text(input.name || `Nowhere ${id}`, "display name", 160);
-  const version = text(input.version || "v2.2.1", "version", 64);
-  if (!VERSION_PATTERN.test(version) || !versionAtLeast(version, 2, 0, 0)) throw new Error("Nowhere 2.x or newer is required");
+  const version = text(input.version || "v3.1.0", "version", 64);
+  if (!VERSION_PATTERN.test(version) || !versionAtLeast(version, 3, 0, 0)) throw new Error("仅支持 NW3");
   const capabilities = nowhereCapabilities(version);
-  if (!capabilities.supported) throw new Error("Unsupported Nowhere version adapter");
-  const isNW3 = capabilities.protocolGeneration === 3;
-  const role = oneOf(input.role, isNW3 ? ["portal", "egress"] : ["portal"], "portal", "role");
+  if (!capabilities.supported) throw new Error("仅支持 NW3：此版本没有可用适配器");
+
+  const role = oneOf(input.role, ["portal", "egress"], "portal", "role");
   const out = text(input.out || (input.socks && input.socks !== "none" ? input.socks : "direct"), "Portal output", 512);
   const publicHost = text(input.publicHost, "public host", 253);
   const listenHost = input.listenHost === undefined ? "127.0.0.1" : text(input.listenHost, "listen host", 253, true);
   const port = integer(input.port, "port", 1024, 65535);
   const key = text(input.key, "shared key");
-  if (!(isNW3 ? /^[0-9a-f]{32}$/ : /^[0-9a-f]{32,64}$/).test(key)) throw new Error(isNW3 ? "NW3 共享密钥必须为 32 字符小写十六进制" : "NW2 2.2.1 共享密钥必须为 32–64 字符小写十六进制");
+  if (!/^[0-9a-f]{32}$/.test(key)) throw new Error("NW3 共享密钥必须为 32 字符小写十六进制");
   const client = oneOf(input.client, ["anywhere", "vector", "both"], "anywhere", "client");
   let network = oneOf(input.network, ["mix", "tcp", "udp"], "mix", "network");
-  const hasExplicitV2Ports = Object.hasOwn(input, "tcpPort") || Object.hasOwn(input, "udpPort");
-  const tcpPort = optionalPort(hasExplicitV2Ports ? input.tcpPort : network === "udp" ? 0 : port, "TCP carrier port");
-  const udpPort = optionalPort(hasExplicitV2Ports ? input.udpPort : network === "tcp" ? 0 : port, "UDP carrier port");
+  const hasExplicitPorts = Object.hasOwn(input, "tcpPort") || Object.hasOwn(input, "udpPort");
+  const tcpPort = optionalPort(hasExplicitPorts ? input.tcpPort : network === "udp" ? 0 : port, "TCP carrier port");
+  const udpPort = optionalPort(hasExplicitPorts ? input.udpPort : network === "tcp" ? 0 : port, "UDP carrier port");
   if (!tcpPort && !udpPort) throw new Error("Nowhere requires at least one carrier");
   network = tcpPort && udpPort ? "mix" : tcpPort ? "tcp" : "udp";
   const tcpCarrier = carrierName(input.tcpCarrier, input.tcpFamily, "tcp");
@@ -190,15 +166,15 @@ function planManagedNowhere(input = {}) {
   if (vectorSni !== "none" && (!/^[A-Za-z0-9.-]+$/.test(vectorSni) || isIP(vectorSni))) throw new Error("Vector SNI must be an ASCII DNS name");
   if (vectorPin !== "none" && !/^[0-9a-f]{64}$/.test(vectorPin)) throw new Error("Invalid vector pin");
   const vectorMux = integer(input.vectorMux ?? 0, "vector mux", 0, 1);
-  if (isNW3 && vectorMux) throw new Error("NW3 不支持 TLS Mux");
-  if (isNW3 && (input.next || input.up || input.down)) throw new Error("NW3 不支持 next 或 split up/down");
-  if (isNW3 && !["direct", "egress"].includes(out)) {
+  if ( vectorMux) throw new Error("NW3 不支持 TLS Mux");
+  if ( (input.next || input.up || input.down)) throw new Error("NW3 不支持 next 或 split up/down");
+  if ( !["direct", "egress"].includes(out)) {
     try { const address = new URL(`socks5://${out}`); if (!address.hostname || !address.port || address.pathname || address.search || address.hash || /\s/.test(out)) throw new Error(); }
     catch (_) { throw new Error("Invalid NW3 SOCKS5 output address"); }
   }
-  if (isNW3 && role === "portal" && out === "egress" && (!udpPort || dial !== "auto" || dial4 || dial6)) throw new Error("Egress 出口要求 QUIC listener，且不能指定源地址");
+  if ( role === "portal" && out === "egress" && (!udpPort || dial !== "auto" || dial4 || dial6)) throw new Error("Egress 出口要求 QUIC listener，且不能指定源地址");
   if (role === "egress" && (!udpPort || tcpPort)) throw new Error("Egress 必须仅选择 QUIC carrier");
-  const morph = integer(input.morph ?? (isNW3 ? 1 : 0), "morph", 0, 1);
+  const morph = integer(input.morph ?? 1, "morph", 0, 1);
   const transportMemoryProfile = oneOf(input.transportMemoryProfile, ["memory", "balanced", "throughput"], "throughput", "transport memory profile");
   const directory = path.posix.join(INSTANCE_ROOT, id);
   const binaryPath = path.posix.join(directory, "bin", "nowhere");
@@ -218,12 +194,10 @@ function planManagedNowhere(input = {}) {
   if (dial4) query.set("dial4", dial4);
   if (dial6) query.set("dial6", dial6);
   if (!dial4 && !dial6 && dial !== "auto") query.set("dial", dial);
-  if (isNW3) query.set("out", out);
-  else if (socks !== "none") query.set("socks", socks);
+  query.set("out", out);
   if (rate) query.set("rate", String(rate));
   if (etar) query.set("etar", String(etar));
   if (tls === 2) { query.set("crt", certificatePath); query.set("key", privateKeyPath); }
-  if (!isNW3 && log !== "info") query.set("log", log);
   const portalEndpoint = buildNowhereEndpoint(listenHost || "*", { tcpPort, udpPort, tcpCarrier, udpCarrier });
   let portal = `portal://${encodeURIComponent(key)}@${portalEndpoint}?${query.toString()}`;
   if (role === "egress") {
@@ -249,20 +223,24 @@ function planManagedNowhere(input = {}) {
     NOWHERE_VECTOR_PIN_VALUE: vectorPin, NOWHERE_VECTOR_MUX_VALUE: vectorMux,
     NOWHERE_MORPH_VALUE: morph, NOWHERE_TRANSPORT_MEMORY_PROFILE_VALUE: transportMemoryProfile,
   };
-  if (isNW3) delete environmentValues.NOW_TELEMETRY_INTERVAL;
+  const prelude = input.morphPrelude || input.extensionEnvironment?.NOW_MORPH_TCP_PRELUDE || (capabilities.fadePrelude ? 'fade' : 'full8');
+  oneOf(prelude, capabilities.fadePrelude ? ['fade', 'full8', 'low7'] : ['full8', 'low7'], 'full8', 'Morph prelude');
+  environmentValues.NOW_MORPH_TCP_PRELUDE = prelude;
+  delete environmentValues.NOW_TELEMETRY_INTERVAL;
   environmentValues.NOW_TRANSPORT_MEMORY_PROFILE = transportMemoryProfile;
   const extensions = input.extensionEnvironment && typeof input.extensionEnvironment === "object" && !Array.isArray(input.extensionEnvironment)
     ? Object.entries(input.extensionEnvironment) : [];
   if (extensions.length > 32) throw new Error("Too many Nowhere extension settings");
   for (const [keyName, value] of extensions) {
     if (!/^NOW(?:HERE)?_[A-Z0-9_]{1,80}$/.test(keyName) || Object.hasOwn(environmentValues, keyName)) continue;
+    if (capabilities.requiresAuthenticatedPrelude && keyName === "NOW_UDP_DATA_BUF_SIZE") continue;
     if (!capabilities.eventLog && keyName === "NOW_REPORT_INTERVAL") throw new Error("NOW_REPORT_INTERVAL was removed in Nowhere 2.1.1");
     environmentValues[keyName] = text(value, `extension ${keyName}`, 4096, true);
   }
   const environment = Object.entries(environmentValues).map(([keyName, value]) => `${keyName}=${quoteEnvironment(value)}`).join("\n") + "\n";
   const unit = `[Unit]\nDescription=Wherever Station managed Nowhere ${id}\nDocumentation=https://github.com/NodePassProject/Nowhere\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nEnvironmentFile=${environmentPath}\nExecStart=${binaryPath} \${NOWHERE_PORTAL}\nRestart=on-failure\nRestartSec=3\nLimitNOFILE=1048576\nUMask=0077\nNoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=full\nProtectHome=read-only\n\n[Install]\nWantedBy=multi-user.target\n`;
   const linkInput = { publicHost, port, tcpPort, udpPort, tcpCarrier, udpCarrier, key, version, alpn, vectorMux, vectorSni, vectorPin, vectorSocks, morph, name };
-  const carriers = isNW3 ? (role === "egress" ? [] : [tcpPort ? ["tcp", "tcp"] : null, udpPort ? ["udp", "udp"] : null].filter(Boolean)) : network === "tcp" ? [["tcp", "tcp"]] : network === "udp" ? [["udp", "udp"]] : [["tcp", "tcp"], ["udp", "udp"], ["tcp", "udp"], ["udp", "tcp"]];
+  const carriers = role === "egress" ? [] : [tcpPort ? ["tcp", "tcp"] : null, udpPort ? ["udp", "udp"] : null].filter(Boolean);
   const links = {
     anywhere: client === "vector" ? [] : carriers.map(([up, down]) => ({ up, down, uri: buildAnywhereLink({ ...linkInput, up, down }) })),
     vector: client === "anywhere" ? [] : carriers.map(([up, down]) => ({ up, down, uri: buildVectorLink({ ...linkInput, up, down }) })),

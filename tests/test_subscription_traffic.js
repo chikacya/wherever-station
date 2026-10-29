@@ -28,6 +28,7 @@ test('public downloads survive missing telemetry; fresh traffic is cached', asyn
       await sandbox.publicSubscription({ url: '/proxy/sub/' + 'a'.repeat(48), query: { format }, headers: {} }, res);
       assert.equal(res.statusCode, 200); assert.equal(typeof res.body, 'string'); return res;
     }
+    const aj=await download('ajson');assert.equal(JSON.parse(aj.body).usage.upload,200);assert.equal(JSON.parse(aj.body).usage.download,300);
     const userinfo = (await download()).headers['Subscription-Userinfo'];
     assert.equal(userinfo, 'upload=200; download=300');
     const withPlan = sandbox.readState(); withPlan.machines[0].trafficPlan = { enabled: true, limitBytes: 2000 }; sandbox.saveState(withPlan);

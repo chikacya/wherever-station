@@ -4,12 +4,13 @@ const CONVERTED_PROTOCOLS = Object.freeze({
   surge: Object.freeze(["vmess", "hysteria2", "tuic", "anytls", "trojan", "ss", "socks5", "socks", "http", "https"]),
 });
 
-const PASSTHROUGH_FORMATS = Object.freeze(["raw", "base64", "anywhere", "loon"]);
+const PASSTHROUGH_FORMATS = Object.freeze(["raw", "base64", "anywhere", "ajson", "loon"]);
 
 // This list describes client-native URI schemes only. Passthrough feeds never
 // reject an unknown scheme: an unknown value remains byte-for-byte intact so a
 // newer client can consume it before Wherever Station gains a semantic adapter.
 const CLIENT_URI_PROTOCOLS = Object.freeze({
+  ajson: Object.freeze(["nowhere", "vless", "hysteria2", "hy2", "sudoku", "trojan", "anytls", "ss", "socks5", "socks", "rfc", "http", "https"]),
   anywhere: Object.freeze(["nowhere", "vless", "hysteria2", "hy2", "trojan", "anytls", "ss", "socks5", "socks", "sudoku", "http", "https", "quic", "naive"]),
   // Keep this list aligned with Loon's documented URI subscription schemes.
   // Other proxy types require Loon's native key/value syntax rather than a
@@ -29,6 +30,7 @@ function protocolCapability(format, protocol) {
   const scheme = String(protocol || "").toLowerCase();
   if (PASSTHROUGH_FORMATS.includes(target)) {
     const native = CLIENT_URI_PROTOCOLS[target];
+    if (target === "ajson" && !native.includes(scheme)) return { supported: false, mode: "unsupported", clientSupport: "unsupported" };
     return {
       supported: true,
       mode: "passthrough",

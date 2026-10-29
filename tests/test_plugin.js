@@ -13,7 +13,7 @@ vm.createContext(sandbox); vm.runInContext(fs.readFileSync(path.join(root, "scri
 
 let state = methods.get("proxyConsole:getState")();
 const compatibilityCatalog = methods.get("proxyConsole:getCompatibilityCatalog")();
-assert(compatibilityCatalog.nowhere.adapters.some((adapter) => adapter.id === "nowhere-v2"));
+assert.equal(compatibilityCatalog.nowhere.adapters.length,1);assert.equal(compatibilityCatalog.nowhere.adapters[0].id,"nowhere-v3");assert(!methods.has("proxyConsole:prepareNowhereMigration"));assert(!methods.has("proxyConsole:previewNowhereMigration"));
 assert(compatibilityCatalog.protocols.clientNativeUri.anywhere.includes("sudoku"));
 assert.equal(state.version, 14); assert.equal(state.revision, 0); assert.deepEqual(state.certificates, []);
 if (!state.machines.length) state.machines.push({ id: "fixture-machine", name: "测试宿主", provider: "fixture", region: "test", country: "测试", countryCode: "ZZ", tags: [], monitorClientId: "" });
@@ -35,7 +35,7 @@ assert.deepEqual(draftState.subscriptions[0].nodeIds, [], "discovery drafts must
 const machineId = state.machines[0].id;
 state.machines[0].monitorClientId = "test-client";
 const androidNode = { id: "test-android", name: "🇯🇵 | 东京 A#B 50% + 节点", protocol: "vless", machineId, uri: "vless://00000000-0000-4000-8000-000000000001@example.com:443?security=tls&type=tcp#Old", enabled: true, tags: [] };
-const nowhere = { id: "test-nowhere", name: "东京 · Nowhere TCP→UDP", protocol: "nowhere", machineId, uri: "nowhere://sample-key@example.com:443?up=udp&down=tcp&mux=1#Old", enabled: true, tags: ["test"] };
+const nowhere = { id: "test-nowhere", name: "东京 · Nowhere TCP→UDP", protocol: "nowhere", machineId, uri: "nowhere://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@example.com:443?net=tcp&morph=1#Old", enabled: true, tags: ["test"] };
 const vmessValue = { v: "2", ps: "Old VMess", add: "example.com", port: "443", id: "00000000-0000-4000-8000-000000000000", aid: "0", net: "ws", host: "example.com", path: "/", tls: "tls" };
 const vmess = { id: "test-vmess", name: "VMess 新名称", protocol: "vmess", machineId, uri: "vmess://" + Buffer.from(JSON.stringify(vmessValue)).toString("base64"), enabled: true, tags: [] };
 const airportSource = { id: "test-airport", name: "机场订阅", url: "https://example.com/sub", machineId: "", tags: ["机场"], enabled: true, refreshIntervalHours: 24, nodeIds: ["test-airport-node"] };
@@ -66,14 +66,14 @@ state = methods.get("proxyConsole:recordCertificateResult")({ operationId: certI
 assert.equal(state.certificates.find((item) => item.id === certificateAsset.id).status, "warning");
 const managedDefaults = methods.get("proxyConsole:newManagedNowhereValues")();
 assert(/^nw-[a-f0-9]{24}$/.test(managedDefaults.id)); assert(/^[a-f0-9]{32}$/.test(managedDefaults.key));
-assert.equal(managedDefaults.version, "v3.0.0");
+assert.equal(managedDefaults.version, "v3.1.0");
 const managedInput = { ...managedDefaults, name: "托管 Nowhere", machineId, publicHost: "managed.example.com", listenHost: "127.0.0.1", port: 52077, client: "anywhere", network: "mix", tls: 1, morph: 1 };
 const nowhereCertificatePreview = methods.get("proxyConsole:previewManagedNowhere")({ input: { ...managedInput, certificateAssetId: certificateAsset.id } });
 assert.equal(nowhereCertificatePreview.certificate.mode, "existing");
 assert.equal(nowhereCertificatePreview.certificate.certificatePath, "/etc/ssl/example.crt");
 assert.equal(nowhereCertificatePreview.certificate.privateKeyPath, "/etc/ssl/example.key");
 assert.throws(() => methods.get("proxyConsole:previewManagedNowhere")({ input: { ...managedInput, version: "v1.8.3" } }), /尚未通过/);
-assert.throws(() => methods.get("proxyConsole:previewManagedNowhere")({ input: { ...managedInput, version: "v3.0.1" } }), /尚未通过/);
+assert.throws(() => methods.get("proxyConsole:previewManagedNowhere")({ input: { ...managedInput, version: "v3.2.1" } }), /尚未通过/);
 const managedPreview = methods.get("proxyConsole:previewManagedNowhere")({ input: managedInput });
 assert.equal(managedPreview.summary.port, 52077); assert(managedPreview.links.anywhere[0].uri.startsWith("nowhere://")); assert(!JSON.stringify(managedPreview.summary).includes(managedDefaults.key));
 const managedCreated = methods.get("proxyConsole:createManagedNowhereDraft")({ input: managedInput }); state = managedCreated.state;
@@ -95,17 +95,12 @@ assert.equal(egressSaved.state.managedInstances.find(i=>i.id===egressInput.id).s
 methods.get('proxyConsole:saveState')({state:egressSaved.state});
 const egressDelete=methods.get('proxyConsole:prepareManagedNowhereAction')({instanceId:egressInput.id,action:'delete',confirmation:egressInput.id});
 state=methods.get('proxyConsole:recordManagedNowhereResult')({operationId:egressDelete.operationId,result:{ok:true,state:'deleted'}}).state;
-// Existing NW2 services retain generic lifecycle control without rebuilding old URLs.
-const legacyInput={...managedInput,id:'nw-legacy-test01',version:'v2.2.1',morph:0,tcpPort:52092,udpPort:52092};
-let legacyState=methods.get('proxyConsole:createManagedNowhereDraft')({input:legacyInput}).state;
-const legacyInstance=legacyState.managedInstances.find(i=>i.id===legacyInput.id);
-legacyInstance.version='v2.1.0'; legacyInstance.status='stopped';
-legacyState.nodes.find(n=>n.id===legacyInstance.nodeId).uri='nowhere://old-key@example.com:52092?up=tcp&down=tcp';
-sandbox.writeState(legacyState);
-for(const action of ['status','read-config','start','stop','restart']) assert(methods.get('proxyConsole:prepareManagedNowhereAction')({instanceId:legacyInput.id,action}).command);
-assert.throws(()=>methods.get('proxyConsole:prepareManagedNowhereAction')({instanceId:legacyInput.id,action:'upgrade',targetVersion:'v2.2.1'}),/32–64/);
-const legacyDelete=methods.get('proxyConsole:prepareManagedNowhereAction')({instanceId:legacyInput.id,action:'delete',confirmation:legacyInput.id});
-state=methods.get('proxyConsole:recordManagedNowhereResult')({operationId:legacyDelete.operationId,result:{ok:true,state:'deleted'}}).state;
+// Old records survive reads, but no NW2 command or creation is accepted.
+const legacyInput={...managedInput,id:'nw-legacy-test01',version:'v2.2.1'};
+assert.throws(()=>methods.get('proxyConsole:createManagedNowhereDraft')({input:legacyInput}),/NW3/);
+const legacyState=JSON.parse(JSON.stringify(state));const legacyInstance=legacyState.managedInstances.find(i=>i.kind==='nowhere');legacyInstance.version='v2.2.1';sandbox.writeState(legacyState);
+for(const action of ['status','read-config','start','stop','restart','delete','upgrade']) assert.throws(()=>methods.get('proxyConsole:prepareManagedNowhereAction')({instanceId:legacyInstance.id,action,targetVersion:'v3.1.0'}),/适配器/);
+sandbox.writeState(state);
 const disposableDefaults = methods.get("proxyConsole:newManagedNowhereValues")();
 const disposable = methods.get("proxyConsole:createManagedNowhereDraft")({ input: { ...managedInput, ...disposableDefaults, machineId, publicHost: "managed.example.com", port: 52079, tcpPort: 52079, udpPort: 52079 } });
 assert(disposable.state.managedInstances.some((item) => item.id === disposableDefaults.id && item.status === "draft"));
@@ -147,7 +142,7 @@ const pinRestart = methods.get("proxyConsole:prepareManagedNowhereAction")({ ins
 state = methods.get("proxyConsole:recordManagedNowhereResult")({ operationId: pinRestart.operationId, result: { ok: true, state: "active" } }).state;
 assert.equal(state.managedInstances.find(item => item.id === managedDefaults.id).observedCertificatePin, "");
 assert.throws(() => methods.get("proxyConsole:prepareConnectivityCheck")({ instanceId: managedDefaults.id, sourceMachineId: machineId }), /刷新实例状态/);
-assert.throws(() => methods.get("proxyConsole:prepareManagedNowhereAction")({ instanceId: managedDefaults.id, action: "upgrade", targetVersion: "v2.2.1" }), /跨主版本/);
+assert.throws(() => methods.get("proxyConsole:prepareManagedNowhereAction")({ instanceId: managedDefaults.id, action: "upgrade", targetVersion: "v2.2.1" }), /适配验证/);
 assert.throws(() => methods.get("proxyConsole:prepareManagedNowhereAction")({ instanceId: managedDefaults.id, action: "migrate-v2", targetVersion: "v2.0.2" }), /不支持/);
 assert.throws(() => methods.get("proxyConsole:prepareManagedNowhereAction")({ instanceId: managedDefaults.id, action: "delete", confirmation: "wrong" }), /确认/);
 const singDefaults = methods.get("proxyConsole:newManagedSingBoxValues")();
@@ -225,7 +220,7 @@ assert(state.nodes.some((node) => node.id === airportNode.id && node.machineId =
 assert(state.nodes.some((node) => node.id === unassignedManualNode.id && node.machineId === ""), "manual nodes do not require a host");
 assert.throws(() => methods.get("proxyConsole:saveState")({ state: { ...state, revision: 0 } }), /其他页面/);
 assert(methods.get("proxyConsole:validateNode")({ protocol: "nowhere", uri: nowhere.uri }).valid);
-assert.throws(() => methods.get("proxyConsole:validateNode")({ protocol: "nowhere", uri: "nowhere://key@example.com:1?up=bad" }), /udp/);
+assert.throws(() => methods.get("proxyConsole:validateNode")({ protocol: "nowhere", uri: "nowhere://key@example.com:1?up=bad" }), /NW2/);
 const parsed = methods.get("proxyConsole:parseNodeUris")({ text: `${nowhere.uri}\n${vmess.uri}\nnot-a-uri\n${nowhere.uri}` });
 assert.equal(parsed.nodes.length, 2); assert.equal(parsed.errors.length, 1); assert.equal(parsed.nodes[0].name, "Old");
 const httpParsed = methods.get("proxyConsole:parseNodeUris")({ text: "http://user:p%3Aa@proxy.example.com:8080#HTTP%20Proxy" });
@@ -383,7 +378,7 @@ for (const rule of [
 ]) assert.throws(() => sandbox.cleanCustomRules([rule]), /第 1 条规则/);
 assert.throws(() => sandbox.cleanCustomRules(Array(201).fill(customRules[0])), /200/);
 assert.deepEqual(sandbox.cleanCustomRules(undefined), []);
-const preflight = methods.get("proxyConsole:subscriptionPreflight")({ subscriptionId: "test-mixed" }); assert.equal(preflight.formats.length, 5); assert(preflight.formats.every((item) => item.bytes > 0)); assert(preflight.formats.find((item) => item.format === "mihomo").skipped >= 1); assert(preflight.formats.find((item) => item.format === "loon").skipped >= 1); assert(!JSON.stringify(preflight).includes("sample-key"));
+const preflight = methods.get("proxyConsole:subscriptionPreflight")({ subscriptionId: "test-mixed" }); assert.equal(preflight.formats.length, 6); assert(preflight.formats.every((item) => item.bytes > 0)); assert(preflight.formats.find((item) => item.format === "mihomo").skipped >= 1); assert(preflight.formats.find((item) => item.format === "loon").skipped >= 1); assert(!JSON.stringify(preflight).includes("sample-key"));
 for (const result of preflight.formats) {
   assert.equal(result.nodes.filter((node) => node.included).length, result.included);
   assert.equal(result.nodes.filter((node) => !node.included).length, result.skipped);
@@ -431,16 +426,19 @@ assert.throws(() => sandbox.render([vmess], { groups: [{ id: 'a', name: 'A', typ
 assert.equal(sandbox.parseNodeUris({ text: 'sudoku://' + 'x'.repeat(8192) }).errors.length, 1);
 console.log("plugin tests passed");
 // Batch preparation persists metadata and never calls admin:exec itself.
-const batchFixture={...managedInput,id:'nw-batch-test01',version:'v2.2.1',morph:0,tcpPort:52100,udpPort:52100};
+const batchFixture={...managedInput,id:'nw-batch-test01',version:'v3.0.0',morph:0,tcpPort:52100,udpPort:52100};
 let batchState=methods.get('proxyConsole:createManagedNowhereDraft')({input:batchFixture}).state;
 const batchInstance=batchState.managedInstances.find(i=>i.id===batchFixture.id);
-batchInstance.version='v2.1.0';batchInstance.status='stopped';sandbox.writeState(batchState);
+batchInstance.version='v3.0.0';batchInstance.status='stopped';sandbox.writeState(batchState);
 const batchPreview=methods.get('proxyConsole:previewNowhereBatch')();
-assert.equal(batchPreview.rows.find(r=>r.instanceId===batchFixture.id).targetVersion,'v2.2.1');
+assert.equal(batchPreview.rows.find(r=>r.instanceId===batchFixture.id).targetVersion,'v3.1.0');
+assert.equal(batchPreview.versions.length,2);assert.equal(batchPreview.targetVersion,'v3.1.0');
+assert.equal(methods.get('proxyConsole:previewNowhereBatch')({targetVersion:'v3.2.0',preludeClientsReady:true}).targetVersion,'v3.2.0');
+assert.throws(()=>methods.get('proxyConsole:startNowhereBatch')({requestId:require('crypto').randomUUID(),targetVersion:'v3.0.0'}),/最新两个/);
 const batchId=require('crypto').randomUUID();
 const preparedBatch=methods.get('proxyConsole:startNowhereBatch')({requestId:batchId});
 assert.equal(preparedBatch.specs.filter(s=>s.instanceId===batchFixture.id).length,1);
-assert.equal(preparedBatch.batch.done,false);
+assert.equal(preparedBatch.batch.done,false);assert.equal(preparedBatch.batch.targetVersion,'v3.1.0');
 assert.equal(methods.get('proxyConsole:getNowhereBatch')({batchId}).id,batchId);
 assert.throws(()=>methods.get('proxyConsole:startNowhereBatch')({requestId:require('crypto').randomUUID()}),/正在进行/);
 const batchSpec=preparedBatch.specs.find(s=>s.instanceId===batchFixture.id);
@@ -450,23 +448,12 @@ console.log('durable batch RPC preparation and duplicate guard passed');
 
 assert.throws(()=>methods.get('proxyConsole:prepareManagedNowhereAction')({instanceId:batchFixture.id,action:'start'}),/批量更新/);
 
-const migrationFixture={...managedInput,id:'nw-migration-test01',version:'v2.2.1',key:'a'.repeat(64),morph:0,tcpPort:52110,udpPort:52110};
-const migrationDraft=methods.get('proxyConsole:createManagedNowhereDraft')({input:migrationFixture});
-const migrationState=migrationDraft.state;migrationState.managedInstances.find(i=>i.id===migrationFixture.id).status='stopped';sandbox.writeState(migrationState);
-const migrationRead=methods.get('proxyConsole:prepareManagedNowhereAction')({instanceId:migrationFixture.id,action:'read-config'});
-const oldMigrationPlan=require('../tools/managed-nowhere').planManagedNowhere(migrationFixture);
-const migrationConfiguration=Object.fromEntries(oldMigrationPlan.environment.trim().split('\n').map(l=>{const i=l.indexOf('=');return[l.slice(0,i),JSON.parse(l.slice(i+1))]}));
-methods.get('proxyConsole:recordManagedNowhereResult')({operationId:migrationRead.operationId,result:{ok:true,configuration:migrationConfiguration,configurationHash:require('crypto').createHash('sha256').update(oldMigrationPlan.environment).digest('hex')}});
-const migrationParams={instanceId:migrationFixture.id,readOperationId:migrationRead.operationId,targetVersion:'v3.0.0',key:'b'.repeat(32)};
-assert.equal(methods.get('proxyConsole:previewNowhereMigration')(migrationParams).summary.alpn,'nw3');
-assert.throws(()=>methods.get('proxyConsole:prepareNowhereMigration')(migrationParams),/确认/);
-const migrationSpec=methods.get('proxyConsole:prepareNowhereMigration')({...migrationParams,confirmation:'nw3-clients-coordinated'});
-const rolledBack=methods.get('proxyConsole:recordManagedNowhereResult')({operationId:migrationSpec.operationId,result:{ok:false,state:'inactive',rolledBack:true,error:'start-failed'}}).state;
-assert.equal(rolledBack.managedInstances.find(i=>i.id===migrationFixture.id).version,'v2.2.1');
-assert.equal(rolledBack.nodes.find(n=>n.id===rolledBack.managedInstances.find(i=>i.id===migrationFixture.id).nodeId).uri,oldMigrationPlan.links.anywhere[0].uri);
-const migratedSpec=methods.get('proxyConsole:prepareNowhereMigration')({...migrationParams,confirmation:'nw3-clients-coordinated'});
-const migratedState=methods.get('proxyConsole:recordManagedNowhereResult')({operationId:migratedSpec.operationId,result:{ok:true,state:'inactive',version:'v3.0.0'}}).state;
-const migratedInstance=migratedState.managedInstances.find(i=>i.id===migrationFixture.id);
-assert.equal(migratedInstance.version,'v3.0.0');assert.equal(migratedInstance.alpn,'nw3');assert.equal(migratedInstance.status,'stopped');assert.equal(migratedInstance.migration.fromVersion,'v2.2.1');
-assert.equal(new URL(migratedState.nodes.find(n=>n.id===migratedInstance.nodeId).uri).searchParams.get('net'),'tcp');
-console.log('migration RPC conversion, failure preserves subscription, success publishes NW3 passed');
+const preludeFixture={...managedInput,id:'nw-prelude-test01',version:'v3.0.0',key:'a'.repeat(32),morph:0,tcpPort:52110,udpPort:52110};
+const preludeDraft=methods.get('proxyConsole:createManagedNowhereDraft')({input:preludeFixture});
+const preludeInitial=preludeDraft.state;preludeInitial.managedInstances.find(i=>i.id===preludeFixture.id).status='stopped';sandbox.writeState(preludeInitial);
+
+// A same-generation release can still introduce a Morph TCP admission boundary.
+const preludeState=sandbox.readState();const preludeInstance=preludeState.managedInstances.find(i=>i.id===preludeFixture.id);
+preludeInstance.morph=1;preludeInstance.version='v3.0.0';sandbox.writeState(preludeState);
+assert.throws(()=>methods.get('proxyConsole:prepareManagedNowhereAction')({instanceId:preludeInstance.id,action:'upgrade',targetVersion:'v3.2.0'}),/Prelude/);
+assert(methods.get('proxyConsole:prepareManagedNowhereAction')({instanceId:preludeInstance.id,action:'upgrade',targetVersion:'v3.2.0',preludeClientsReady:true}).command);

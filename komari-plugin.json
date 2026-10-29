@@ -11,7 +11,7 @@
   "author": "chikacya",
   "url": "https://github.com/chikacya/wherever-station",
   "icon": "icon.svg",
-  "version": "0.75.0",
+  "version": "0.76.0",
   "komari": ">=1.4.3",
   "entry": "script.js",
   "permissions": {

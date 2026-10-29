@@ -23,3 +23,6 @@ Copyright and license texts for packaged npm dependencies are included with thos
 The built-in “IP profile” probe uses an independently implemented, bounded and concurrent diagnostic flow. Its service-availability test coverage was informed by the MIT-licensed `MaYIHEI/paperclip` Loon IP-quality modules; upstream source and license remain available at <https://github.com/MaYIHEI/paperclip>.
 
 The optional provider-region lookup resolves endpoint hostnames through Cloudflare's DNS-over-HTTPS endpoint, then sends the resolved public IP addresses to the hosted [country.is](https://country.is/) API. No provider token or share URI is sent to country.is. country.is is open source under the MIT License.
+
+
+The optional icon picker links to public collections by Orz-3, ginibond, Koolson/Qure, Semporia, shindgewongxj, Twoandz9/TheMagic-Icons, tugepaopao and lodepuly. Icon catalogs and images are fetched on demand from their original repositories, not bundled in the plugin. The picker links to each source; artwork remains with its respective authors and follows the source's terms.

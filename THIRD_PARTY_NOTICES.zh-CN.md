@@ -23,3 +23,6 @@ Wherever Station 本身使用 GPL-3.0-only。以下项目是在插件中分发�
 内置的“IP 画像”使用独立实现、有超时边界的并发诊断流程。服务可用性检测范围参考了采用 MIT 许可证的 `MaYIHEI/paperclip` Loon IP 质量模块；上游源码和许可证见 <https://github.com/MaYIHEI/paperclip>。
 
 可选的外部面板节点地区识别会先通过 Cloudflare DNS-over-HTTPS 解析连接域名，再把得到的公网 IP 发送到托管的 [country.is](https://country.is/) API。不会向 country.is 发送 Provider Token 或分享 URI。country.is 以 MIT License 开源。
+
+
+可选图标选择器接入 Orz-3、ginibond、Koolson/Qure、Semporia、shindgewongxj、Twoandz9/TheMagic-Icons、tugepaopao 和 lodepuly 的公开图库。图标清单和图片按需从原仓库读取，不随插件打包；选择器保留各图库来源链接，作品归相应作者所有，使用遵循原来源条款。

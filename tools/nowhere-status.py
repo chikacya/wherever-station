@@ -76,9 +76,9 @@ def certificate_details(values, state):
             host = '::1'
         port = int(values.get('NOWHERE_TCP_PORT_VALUE') or values.get('NOWHERE_PORT_VALUE') or 0)
         version = tuple(int(part) for part in re.findall(r'\d+', values.get('NOWHERE_VERSION_VALUE', ''))[:3])
-        if version >= (2, 2, 0):
+        if version >= (3, 0, 0):
             endpoint_host = '[' + host + ']' if ':' in host else host
-            uri = 'nowhere://' + quote(values.get('NOWHERE_KEY_VALUE', ''), safe='') + '@' + endpoint_host + (':' if version >= (3, 0, 0) else '/tcp:') + str(port)
+            uri = 'nowhere://' + quote(values.get('NOWHERE_KEY_VALUE', ''), safe='') + '@' + endpoint_host + ':' + str(port)
             uri += '?' + urlencode({'morph': values.get('NOWHERE_MORPH_VALUE', '0')})
             inspected = run([P['binaryPath'], 'fingerprint', uri], 10)
             pin = inspected.stdout.strip()
@@ -87,19 +87,7 @@ def certificate_details(values, state):
             else:
                 result['note'] = 'fingerprint-probe-failed'
             return result
-        try:
-            context = ssl.create_default_context()
-            context.set_alpn_protocols(['nw2'])
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-            with socket.create_connection((host, port), timeout=5) as raw:
-                with context.wrap_socket(raw, server_hostname=values.get('NOWHERE_PUBLIC_HOST_VALUE') or None) as secure:
-                    leaf = secure.getpeercert(binary_form=True)
-            result['fingerprint'] = hashlib.sha256(leaf).hexdigest()
-            result['publicKeySha256'] = public_key_pin(leaf, 'DER')
-            result['ephemeral'] = True
-        except (OSError, ValueError, ssl.SSLError):
-            result['note'] = 'fingerprint-probe-failed'
+        result['error'] = 'unsupported-version'
         return result
     if not shutil.which('openssl'):
         result['error'] = 'openssl-not-found'

@@ -46,7 +46,7 @@ const verifiedVersions = new Set();
 for (const adapter of compatibility.adapters || []) {
   if (!adapter.id || adapterIds.has(adapter.id)) fail(`duplicate or missing adapter id: ${adapter.id || "(empty)"}`);
   adapterIds.add(adapter.id);
-  if (![2, 3].includes(adapter.generation) || adapter.major !== adapter.generation) fail(`invalid generation for ${adapter.id}`);
+  if (adapter.generation !== 3 || adapter.major !== adapter.generation) fail(`invalid generation for ${adapter.id}`);
   if (!Array.isArray(adapter.verifiedVersions) || !adapter.verifiedVersions.length) fail(`empty verified version list for ${adapter.id}`);
   for (const version of adapter.verifiedVersions || []) {
     if (verifiedVersions.has(version)) fail(`version appears in multiple adapters: ${version}`);

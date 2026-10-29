@@ -22,11 +22,11 @@ class ExistingServiceScanTests(unittest.TestCase):
             bin_dir.mkdir()
             nowhere_env = root / "nowhere.env"
             nowhere_binary = bin_dir / "nowhere"
-            nowhere_binary.write_text("#!/bin/sh\nprintf 'nowhere 2.0.2\\n'\n", encoding="utf-8")
+            nowhere_binary.write_text("#!/bin/sh\nprintf 'nowhere 3.0.0\\n'\n", encoding="utf-8")
             nowhere_binary.chmod(nowhere_binary.stat().st_mode | stat.S_IXUSR)
             nowhere_env.write_text(
                 "\n".join([
-                    "NOWHERE_VERSION_VALUE='v2.0.2'",
+                    "NOWHERE_VERSION_VALUE='v3.0.0'",
                     "NOWHERE_PUBLIC_HOST_VALUE='nowhere.example.com'",
                     "NOWHERE_PORT_VALUE='2077'",
                     "NOWHERE_TCP_PORT_VALUE='2077'",
@@ -87,7 +87,7 @@ class ExistingServiceScanTests(unittest.TestCase):
             self.assertEqual({item["protocol"] for item in document["candidates"]}, {"nowhere", "shadowsocks", "vless", "vmess", "trojan", "hysteria2", "tuic", "anytls"})
             nowhere = next(item for item in document["candidates"] if item["protocol"] == "nowhere")
             self.assertIn("nowhere.example.com:2077", nowhere["uri"])
-            self.assertIn("up=tcp&down=tcp", nowhere["uri"])
+            self.assertIn("net=tcp", nowhere["uri"])
             self.assertTrue(nowhere["adoption"]["eligible"])
             self.assertEqual(nowhere["adoption"]["sourceUnit"], "nowhere.service")
             self.assertEqual(nowhere["adoption"]["sourceBinaryPath"], str(nowhere_binary.resolve()))

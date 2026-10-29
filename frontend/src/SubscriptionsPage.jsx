@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { iconDataUrl } from './ajson-display.js';
+import AjsonEditor from './AjsonEditor.jsx';
 import RuleEditor from "./RuleEditor.jsx";
 import { createVisiblePoller } from "./polling.js";
 import subscriptionTrafficHelpers from "../../tools/subscription-traffic.js";
@@ -7,7 +9,7 @@ import { closestCenter, DndContext, DragOverlay, PointerSensor, pointerWithin, u
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { QRCodeSVG } from "qrcode.react";
-import { Boxes, Check, ChevronDown, ChevronUp, Copy, Database, Download, Edit3, ExternalLink, Globe2, GripVertical, Link2, Network, Plus, QrCode, RotateCw, Save, Search, Settings, Trash2, X } from "lucide-react";
+import { Boxes, Check, ChevronDown, ChevronUp, Copy, Database, Download, Edit3, ExternalLink, Globe2, GripVertical, Link2, MoreHorizontal, Network, Plus, QrCode, RotateCw, Save, Search, Settings, Trash2, X } from "lucide-react";
 import { androidAnywhereLink, anywhereLink, bytes, flag, hostFromUri, inferNodeCountryCode, localDateInput, randomId, subscriptionUrl } from "./lib.js";
 import { rpc, IconButton, Button, Status, Modal, Empty, ContextGuide, PageHead, TRAFFIC_ACCOUNTING, readSessionDraft, writeSessionDraft, clearSessionDraft, DraftStatus, Field } from './ui-shared.jsx';
 
@@ -21,7 +23,7 @@ const GROUP_LABELS = {
 };
 
 const DEVICE_CLIENTS = {
-  "anywhere-ios": { label: "Anywhere · iOS", format: "anywhere", note: "使用 Anywhere 深链接；Raw/Base64 保留 Nowhere。" },
+  "anywhere-ios": { label: "Anywhere · iOS", format: "anywhere", note: "新版自动协商 AJSON，旧版保留 Base64；首次切换稳定 ID 会重建节点身份。" },
   "anywhere-android": { label: "Anywhere · Android", format: "anywhere", note: "使用通用订阅地址；保留 Anywhere 能识别的原始 URI。" },
   mihomo: { label: "Mihomo / Clash", format: "mihomo", note: "支持代理组与规则；不支持 Nowhere。" },
   surge: { label: "Surge", format: "surge", note: "支持代理组与规则；VLESS 和 Nowhere 会跳过。" },
@@ -30,9 +32,19 @@ const DEVICE_CLIENTS = {
   generic: { label: "通用 URI 客户端", format: "base64", note: "Base64 URI 列表；是否支持各协议取决于客户端。" },
 };
 
+function SubscriptionIcon({ icons }) {
+  const value=icons?.light || icons?.dark;
+  const [failed,setFailed]=useState(null);
+  const custom=Boolean(value && failed!==value);
+  return <span className={'sub-icon'+(custom?' custom':'')} aria-hidden="true">
+    {custom ? <img src={iconDataUrl(value)} alt="" decoding="async" width={36} height={36} onError={()=>setFailed(value)}/> : <Link2 size={19}/>}
+  </span>;
+}
+
 function Subscriptions({ state, persist, notify, onOpenSettings }) {
   const [editor, setEditor] = useState(null);
   const [qr, setQr] = useState(null);
+  const [moreId,setMoreId] = useState(null);
   const [access, setAccess] = useState({});
   const [serverTraffic, setServerTraffic] = useState({});
   const trafficBusyRef = useRef(false);
@@ -144,6 +156,15 @@ function Subscriptions({ state, persist, notify, onOpenSettings }) {
     );
     setHistory(null);
   };
+  const shareOptions = [
+    ['generic','通用订阅（自动识别）'],['anywhere-ios','Anywhere · iOS'],['anywhere-android','Anywhere · Android'],
+    ['ajson','Anywhere · AJSON 文件'],['mihomo','Mihomo / Clash'],['sing-box','sing-box'],['loon','Loon'],['surge','Surge'],['raw','Raw 链接列表'],['base64','Base64 链接列表'],
+  ];
+  const openShare = (sub, client='generic') => {
+    const value=client==='anywhere-ios'?anywhereLink(state,sub):client==='anywhere-android'?androidAnywhereLink(state,sub):subscriptionUrl(state,sub,client==='generic'?'':client);
+    const note=client==='anywhere-ios'?'供 iPhone / iPad Anywhere 扫描，使用深链接导入；新版自动协商 AJSON。':client==='anywhere-android'?'供 Android Anywhere 导入，保留支持的原始节点链接。':client==='ajson'?'支持 AJSON 的 Anywhere 可导入此地址，也可下载文件导入。':DEVICE_CLIENTS[client]?.note||'用客户端扫描二维码，或复制订阅地址导入。';
+    setQr({sub,client,title:sub.name+' · 导入订阅',value,note});
+  };
   const deviceUrl = (sub, client) => client === "anywhere-ios" ? anywhereLink(state, sub) : client === "anywhere-android" ? androidAnywhereLink(state, sub) : subscriptionUrl(state, sub, DEVICE_CLIENTS[client]?.format || "base64");
   return (
     <section className="workspace-page subscriptions-panel">
@@ -176,9 +197,7 @@ function Subscriptions({ state, persist, notify, onOpenSettings }) {
           return (
             <article className="sub-card" key={sub.id}>
               <div className="sub-main">
-                <span className="sub-icon">
-                  <Link2 size={19} />
-                </span>
+                <SubscriptionIcon icons={sub.ajson?.icons} />
                 <div>
                   <h3>{sub.name}</h3>
                   <p>
@@ -200,78 +219,23 @@ function Subscriptions({ state, persist, notify, onOpenSettings }) {
               <code className="url-preview">
                 {url.replace(sub.token, "••••••••••••")}
               </code>
-              <div className="sub-actions">
-                <Button icon={Copy} onClick={() => copy(url)}>
-                  复制
-                </Button>
-                <Button
-                  icon={QrCode}
-                  onClick={() =>
-                    setQr({
-                      title: `${sub.name} · 通用订阅`,
-                      value: url,
-                      note: "适用于支持标准 HTTP 订阅的客户端。",
-                    })
-                  }
-                >
-                  通用码
-                </Button>
-                <Button
-                  icon={QrCode}
-                  onClick={() =>
-                    setQr({
-                      title: `${sub.name} · iOS Anywhere`,
-                      value: anywhereLink(state, sub),
-                      note: "供 iPhone / iPad Anywhere 扫描；使用 Anywhere 深链接。",
-                    })
-                  }
-                >
-                  iOS Anywhere
-                </Button>
-                <Button
-                  icon={QrCode}
-                  onClick={() =>
-                    setQr({
-                      title: `${sub.name} · Android Anywhere`,
-                      value: androidAnywhereLink(state, sub),
-                      note: "Android 使用普通订阅地址导入原始 URI；客户端只接纳自己支持的协议，代理组和规则不包含在 URI 列表中。",
-                    })
-                  }
-                >
-                  Android Anywhere
-                </Button>
-                <Button icon={Edit3} onClick={() => setEditor(sub)}>
-                  编辑
-                </Button>
-                <Button icon={Check} onClick={() => check(sub)}>
-                  客户端检查
-                </Button>
-                <Button icon={Database} onClick={() => openHistory(sub)}>
-                  版本历史
-                </Button>
-                <Button icon={Network} onClick={() => setDevices({ sub, values: (sub.devices || []).map((item) => ({ ...item })) })}>设备</Button>
-                <Button icon={RotateCw} onClick={() => rotate(sub)}>
-                  轮换令牌
-                </Button>
-                <div className="format-links">
-                  {["raw", "base64", "anywhere", "loon", "mihomo", "sing-box", "surge"].map(
-                    (format) => (
-                      <a
-                        key={format}
-                        href={subscriptionUrl(state, sub, format)}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {format}
-                        <ExternalLink size={12} />
-                      </a>
-                    ),
-                  )}
-                </div>
-                <IconButton label="删除订阅" onClick={() => remove(sub)}>
-                  <Trash2 size={16} />
-                </IconButton>
+              <div className="sub-actions sub-primary-actions">
+                <Button icon={Copy} variant="primary" onClick={() => copy(url)}>复制地址</Button>
+                <Button icon={QrCode} onClick={() => openShare(sub)}>导入订阅</Button>
+                <Button icon={Edit3} onClick={() => setEditor(sub)}>编辑</Button>
+                <Button icon={MoreHorizontal} aria-expanded={moreId===sub.id} aria-controls={'sub-more-'+sub.id} onClick={() => setMoreId(current => current===sub.id?null:sub.id)}>更多</Button>
               </div>
+              {moreId===sub.id&&<div className="sub-more-actions" id={'sub-more-'+sub.id} role="region" aria-label={sub.name+' · 更多操作'}>
+                <div><span>管理与检查</span><div>
+                  <Button icon={Check} onClick={() => {setMoreId(null);return check(sub);}}>客户端检查</Button>
+                  <Button icon={Database} onClick={() => {setMoreId(null);return openHistory(sub);}}>版本历史</Button>
+                  <Button icon={Network} onClick={() => {setMoreId(null);setDevices({sub,values:(sub.devices||[]).map(item=>({...item}))});}}>设备</Button>
+                </div></div>
+                <div className="sub-sensitive-actions"><span>订阅安全</span><div>
+                  <Button icon={RotateCw} onClick={() => rotate(sub)}>轮换令牌</Button>
+                  <Button icon={Trash2} onClick={() => remove(sub)}>删除订阅</Button>
+                </div></div>
+              </div>}
             </article>
           );
         })}
@@ -310,6 +274,7 @@ function Subscriptions({ state, persist, notify, onOpenSettings }) {
         eyebrow="订阅二维码"
         onClose={() => setQr(null)}
       >
+        {qr?.sub&&<div className="form-grid sub-import-options"><Field wide label="导入客户端"><select aria-label="导入客户端" value={qr.client} onChange={event=>openShare(qr.sub,event.target.value)}>{shareOptions.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></Field></div>}
         <div className="qr-box">
           {qr && (
             <QRCodeSVG
@@ -322,6 +287,7 @@ function Subscriptions({ state, persist, notify, onOpenSettings }) {
           )}
         </div>
         {qr?.note && <p className="qr-note">{qr.note}</p>}
+        {qr?.sub&&<div className="sub-import-links"><a href={subscriptionUrl(state,qr.sub,qr.client==='generic'?'':qr.client.startsWith('anywhere-')?'anywhere':qr.client)} target="_blank" rel="noreferrer">打开当前格式<ExternalLink size={12}/></a>{qr.client==='ajson'&&<a className="button" target="_blank" rel="noreferrer" href={subscriptionUrl(state,qr.sub,'ajson')+'&download=1'}><Download size={16}/>下载 .ajson</a>}</div>}
         <p className="warning">二维码包含私密订阅令牌，请勿公开截图。</p>
         <div className="dialog-actions">
           <Button icon={Copy} onClick={() => copy(qr.value)}>
@@ -715,6 +681,7 @@ function SubscriptionEditor({
   const [stage, setStage] = useState("nodes");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [ajsonValid, setAjsonValid] = useState(true);
   const [form, setForm] = useState(null);
   const [search, setSearch] = useState("");
   const [activeDrag, setActiveDrag] = useState(null);
@@ -756,6 +723,7 @@ function SubscriptionEditor({
         totalBytes: subscription?.quota?.totalBytes || 0,
         customTotalEnabled: subscription?.quota?.customTotalEnabled ?? Boolean(subscription?.quota?.totalBytes),
       },
+      ajson: structuredClone(subscription?.ajson || { icons: {}, templates: {}, overrides: {} }),
       policyMode: subscription?.policyMode || "proxy-all",
       customRules: (subscription?.customRules || []).map((rule) => ({ ...rule })),
       ruleSetIds: [...(subscription?.ruleSetIds || [])],
@@ -1087,6 +1055,7 @@ function SubscriptionEditor({
     setSaving(true);
     setSaveError("");
     try {
+      if (!ajsonValid) throw new Error("请先修复 AJSON 参数或图标错误");
       const token = form.token || review?.candidate?.token || (await rpc("proxyConsole:newToken")).token;
       const expiresAt = form.expiryDate
         ? new Date(`${form.expiryDate}T23:59:59.999`).toISOString()
@@ -1163,6 +1132,7 @@ function SubscriptionEditor({
           </label>
         </div>
       </div>
+      <AjsonEditor key={form.id} value={form.ajson} onChange={ajson => { setReview(null); setForm(current => ({ ...current, ajson })); }} nodes={nodes.filter(node => form.nodeIds.includes(node.id))} subscription={form} onValidityChange={setAjsonValid} />
       <details className="quota-editor">
         <summary>订阅流量展示</summary>
         <label className="check-line">

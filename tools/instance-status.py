@@ -78,31 +78,25 @@ for path in paths:
    peer_pid,peer_uid,_=struct.unpack('3i',sock.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,struct.calcsize('3i')))
    if peer_pid!=pid or peer_uid!=uid: raise RuntimeError('peer-mismatch')
   hello=receive(sock); descriptor=hello.get('data',{}).get('instance',{})
-  if hello.get('type')!='hello' or descriptor.get('contract',descriptor.get('telemetry_protocol'))!='nowhere.telemetry' or descriptor.get('id')!=match.group(1) or descriptor.get('pid')!=pid: raise RuntimeError('hello-mismatch')
-  nw3=descriptor.get('contract')=='nowhere.telemetry'
-  subscribed=nw3; snapshot=None; lifecycle=None
-  if not nw3: send(sock,{'type':'subscribe','data':{'request_id':1,'subscription':'summary'}})
+  if hello.get('type')!='hello' or descriptor.get('contract')!='nowhere.telemetry' or descriptor.get('id')!=match.group(1) or descriptor.get('pid')!=pid: raise RuntimeError('hello-mismatch')
+  snapshot=None
   for _ in range(6):
-   message=receive(sock); data=message.get('data',{})
-   if message.get('type')=='subscribed' and data.get('request_id')==1 and data.get('subscription')=='summary': subscribed=True
-   elif message.get('type')=='snapshot': snapshot=message
-   elif message.get('type')=='lifecycle': lifecycle=data
-   if subscribed and snapshot is not None and (nw3 or lifecycle is not None): break
+   message=receive(sock)
+   if message.get('type')=='snapshot': snapshot=message;break
   sock.close()
-  if not subscribed or snapshot is None: continue
+  if snapshot is None: continue
   data=snapshot.get('data',{})
-  if nw3:
-   expected=('tcp_upload_bytes','tcp_download_bytes','udp_upload_bytes','udp_download_bytes','tcp_active','udp_active')
-   if set(data)!=set(expected) or any(type(data[k]) is not int or data[k]<0 or data[k]>(2**63-1 if k.endswith('_active') else 2**64-1) for k in expected): continue
-   data={ {'tcp_upload_bytes':'tcp_logical_up','tcp_download_bytes':'tcp_logical_down','udp_upload_bytes':'udp_logical_up','udp_download_bytes':'udp_logical_down'}.get(k,k):v for k,v in data.items()}
+  expected=('tcp_upload_bytes','tcp_download_bytes','udp_upload_bytes','udp_download_bytes','tcp_active','udp_active')
+  if set(data)!=set(expected) or any(type(data[k]) is not int or data[k]<0 or data[k]>(2**63-1 if k.endswith('_active') else 2**64-1) for k in expected): continue
+  data={ {'tcp_upload_bytes':'tcp_logical_up','tcp_download_bytes':'tcp_logical_down','udp_upload_bytes':'udp_logical_up','udp_download_bytes':'udp_logical_down'}.get(k,k):v for k,v in data.items()}
   allowed=['sequence','timestamp_ms','uptime_ms','tcp_logical_up','tcp_logical_down','udp_logical_up','udp_logical_down','tls_payload_up','tls_payload_down','quic_payload_up','quic_payload_down','tcp_active','udp_active','tls_carriers_active','quic_carriers_active','ping_ms','cpu_percent','rss_bytes','open_fds']
   clean={key:data.get(key) for key in allowed}
   for key in ['tcp_logical_up','tcp_logical_down','udp_logical_up','udp_logical_down','tls_payload_up','tls_payload_down','quic_payload_up','quic_payload_down']:
    if isinstance(clean.get(key),int) and not isinstance(clean.get(key),bool) and clean[key]>=0: clean[key]=str(clean[key])
   hello_data=hello.get('data',{})
-  clean['lifecycle']=(lifecycle or {}).get('state',hello_data.get('lifecycle',''))
-  clean['lifecycle_reason']=(lifecycle or {}).get('reason',hello_data.get('lifecycle_reason',''))
-  clean['instance_id']=descriptor.get('id',''); clean['wire_protocol']='nw3' if nw3 else 'nw2'
+  clean['lifecycle']=hello_data.get('lifecycle','')
+  clean['lifecycle_reason']=hello_data.get('lifecycle_reason','')
+  clean['instance_id']=descriptor.get('id',''); clean['wire_protocol']='nw3'
   clean['role']=descriptor.get('role',''); clean['version']=descriptor.get('version','')
   clean['service_endpoint']=descriptor.get('endpoint',''); clean['config_summary']=descriptor.get('config_summary','')
   print(json.dumps(clean,separators=(',',':'))); raise SystemExit(0)

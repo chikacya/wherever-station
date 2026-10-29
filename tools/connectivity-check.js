@@ -1,4 +1,6 @@
 const { Buffer } = require("node:buffer");
+const { URL } = require("node:url");
+const { nowhereCapabilities } = require("./nowhere-capabilities");
 
 function buildConnectivityCommand(input = {}) {
   if (!["sing-box", "vector"].includes(input.kind)) throw new Error("Invalid connectivity client kind");
@@ -12,6 +14,7 @@ function buildConnectivityCommand(input = {}) {
     uri: input.kind === "vector" ? String(input.uri) : "",
     expectedIp: String(input.expectedIp || ""),
     preferredBinary,
+    minimumNowhereVersion: input.kind === "vector" && nowhereCapabilities(input.minimumNowhereVersion).requiresAuthenticatedPrelude && new URL(input.uri).searchParams.get("morph") !== "0" && !/\/udp[46]?:/.test(new URL(input.uri).pathname) ? "3.1.0" : "",
   };
   const script = String.raw`import base64,json,os,shutil,socket,subprocess,sys,tempfile,time,urllib.parse
 P=json.loads(base64.b64decode(sys.argv[1],validate=True).decode())
@@ -41,6 +44,10 @@ try:
  else:
   binary=executable("nowhere.service","nowhere",P.get("preferredBinary",""))
   if not binary: raise RuntimeError("client-binary-not-found")
+  if P.get("minimumNowhereVersion"):
+   import re
+   checked=run([binary,"--version"],5); match=re.search(r"(?:v|version\s+)?(\d+)\.(\d+)\.(\d+)",checked.stdout+checked.stderr)
+   if not match or tuple(map(int,match.groups()))<(3,1,0): raise RuntimeError("client-prelude-upgrade-required")
   uri=urllib.parse.urlsplit(P["uri"]); query=dict(urllib.parse.parse_qsl(uri.query,keep_blank_values=True)); query["in" if "in" in query else "socks"]="127.0.0.1:"+str(port)
   vector=urllib.parse.urlunsplit((uri.scheme,uri.netloc,uri.path,urllib.parse.urlencode(query),uri.fragment))
   process=subprocess.Popen([binary,vector],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -62,7 +69,7 @@ try:
 except subprocess.TimeoutExpired: emit({"ok":False,"error":"probe-timeout"})
 except Exception as exc:
  error=str(exc)
- if error not in ("client-binary-not-found","client-config-rejected","client-start-failed","client-start-timeout","proxy-https-failed","exit-ip-missing"): error="probe-failed"
+ if error not in ("client-prelude-upgrade-required","client-binary-not-found","client-config-rejected","client-start-failed","client-start-timeout","proxy-https-failed","exit-ip-missing"): error="probe-failed"
  emit({"ok":False,"error":error})
 finally:
  if process is not None and process.poll() is None:

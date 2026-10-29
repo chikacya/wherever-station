@@ -3,7 +3,7 @@ const path = require("node:path");
 const { cleanInstanceId, planManagedNowhere } = require("./managed-nowhere");
 const { nowhereCapabilities } = require("./nowhere-capabilities");
 
-const ACTIONS = new Set(["preflight", "create", "start", "stop", "restart", "status", "logs", "delete", "upgrade", "migrate", "update", "read-config", "adopt", "rollback-adoption"]);
+const ACTIONS = new Set(["preflight", "create", "start", "stop", "restart", "status", "logs", "delete", "upgrade", "update", "read-config", "adopt", "rollback-adoption"]);
 
 function encodedCommand(script, payload) {
   const code = Buffer.from(script, "utf8").toString("base64");
@@ -58,6 +58,7 @@ function buildManagedNowhereCommand(action, input, sourceMode = "download") {
   if (!ACTIONS.has(action)) throw new Error("Invalid managed Nowhere action");
   const plan = input && input.kind === "managed-nowhere" ? input : planManagedNowhere(input);
   const planCapabilities = nowhereCapabilities(plan.version);
+  if (planCapabilities.protocolGeneration !== 3) throw new Error("仅支持 NW3");
   if (["create", "update"].includes(action) && !planCapabilities.verified) throw new Error("Unverified Nowhere version is read-only");
   const payload = payloadFor(plan);
   if (action === "preflight") return encodedCommand(commonPython() + scriptFile("nowhere-preflight.py"), payload);
@@ -81,18 +82,13 @@ function buildManagedNowhereCommand(action, input, sourceMode = "download") {
   if (["adopt", "rollback-adoption"].includes(action)) {
     return encodedCommand(lockExistingInstance(scriptFile("nowhere-adopt.py")), { ...payload, action });
   }
-  if (action === "migrate") {
-    if (nowhereCapabilities(plan.version).protocolGeneration !== 3 || !nowhereCapabilities(plan.version).verified || !/^v?2\./.test(input.fromVersion || "")) throw new Error("Invalid NW2 → NW3 migration");
-    if (!/^[a-f0-9]{64}$/.test(input.expectedHash || "")) throw new Error("Current configuration hash required");
-    return encodedCommand(lockExistingInstance(scriptFile("nowhere-binary-upgrade.py")), { ...payload, targetVersion: plan.version, migration: true, targetEnvironment: plan.environment, expectedHash: input.expectedHash });
-  }
   if (action === "upgrade") {
     const targetVersion = String(input.targetVersion || "");
     if (!/^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(targetVersion)) throw new Error("Invalid target Nowhere version");
     const current = nowhereCapabilities(plan.version);
     const target = nowhereCapabilities(targetVersion);
-    if ((!current.verified && !/^v2\./.test(current.version)) || !target.verified || (current.protocolGeneration || (/^v2\./.test(current.version) ? 2 : 0)) !== target.protocolGeneration) throw new Error("Nowhere major-version migration required or version is unverified");
-    return encodedCommand(lockExistingInstance(scriptFile("nowhere-binary-upgrade.py")), { ...payload, targetVersion });
+    if (!current.verified || !target.verified || current.protocolGeneration !== target.protocolGeneration) throw new Error("Nowhere major-version migration required or version is unverified");
+    return encodedCommand(lockExistingInstance(scriptFile("nowhere-binary-upgrade.py")), { ...payload, targetVersion, preludeClientsReady: input.preludeClientsReady === true });
   }
   if (["start", "stop", "restart"].includes(action)) {
     return encodedCommand(lockExistingInstance(scriptFile("nowhere-action.py")), { ...payload, action });

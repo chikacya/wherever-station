@@ -70,9 +70,9 @@ function nowhereCapabilities(version) {
   const verified = adapter.verifiedVersions.includes(normalized);
   return {
     version: normalized, known: true, supported: true,
-    adapter: adapter.id, verified, compatibility: verified ? "verified" : "compatible-range",
+    adapter: adapter.id, previewRelease: (adapter.previewVersions || []).includes(normalized), verified, compatibility: verified ? "verified" : "compatible-range",
     vectorPin: true,
-    vectorMux: adapter.generation === 2,
+    vectorMux: false,
     localTelemetry: true,
     protocolGeneration: adapter.generation,
     wireProtocol: `nw${adapter.generation}`,
@@ -84,6 +84,9 @@ function nowhereCapabilities(version) {
     eventLog: false,
     dualStackDial: true,
     strictSharedKey: true,
+    authenticatedPrelude: adapter.generation === 3 && atLeast(normalized, "v3.1.0"),
+    requiresAuthenticatedPrelude: adapter.generation === 3 && atLeast(normalized, "v3.2.0"),
+    fadePrelude: adapter.generation === 3 && atLeast(normalized, "v3.0.1"),
   };
 }
 

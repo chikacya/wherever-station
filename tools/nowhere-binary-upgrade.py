@@ -64,6 +64,8 @@ environment_previous = None
 environment_replaced = False
 environment_candidate = P['environmentPath'] + '.version-next'
 try:
+    if P.get('migration') or not re.fullmatch(r'v?3\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?', P.get('targetVersion', '')) or not re.fullmatch(r'v?3\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?', P.get('version', '')):
+        stop('unsupported-version')
     if os.geteuid() != 0:
         stop('root-required')
     if not os.path.isfile(P['binaryPath']) or not os.path.isfile(P['unitPath']):
@@ -84,25 +86,32 @@ try:
         raise RuntimeError('binary-version-mismatch')
     with open(P['environmentPath'], 'rb') as handle:
         environment_previous = handle.read()
-    if P.get('migration') and hashlib.sha256(environment_previous).hexdigest() != P.get('expectedHash'):
-        raise RuntimeError('configuration-changed')
-    environment_text = P['targetEnvironment'] if P.get('migration') else environment_previous.decode('utf-8')
+    environment_text = environment_previous.decode('utf-8')
     target_parts = tuple(int(part) for part in P['targetVersion'].lstrip('v').split('.')[:3])
-    if target_parts >= (2, 2, 0):
+    if target_parts >= (3, 0, 0):
         values = {}
         for line in environment_text.splitlines():
             name, separator, raw = line.partition('=')
             if separator:
                 parsed = shlex.split(raw, comments=False)
                 if len(parsed) == 1: values[name] = parsed[0]
+        if values.get('NOWHERE_VERSION_VALUE', P['version']).lstrip('v').split('.')[0] != '3':
+            raise RuntimeError('unsupported-version')
         portal = urllib.parse.urlsplit(values.get('NOWHERE_PORTAL', ''))
-        key_pattern = r'[0-9a-f]{32}' if target_parts[0] == 3 else r'[0-9a-f]{32,64}' if target_parts >= (2, 2, 1) else r'[0-9a-f]{64}'
+        key_pattern = r'[0-9a-f]{32}'
         if not re.fullmatch(key_pattern, urllib.parse.unquote(portal.username or '')):
             raise RuntimeError('shared-key-upgrade-required')
         query = dict(urllib.parse.parse_qsl(portal.query))
+        if target_parts >= (3, 2, 0):
+            current_parts = tuple(int(part) for part in re.findall(r'\d+', P.get('version', ''))[:3])
+            tcp_enabled = bool(portal.port) or any(segment.startswith('tcp') for segment in portal.path.split('/'))
+            if current_parts < (3, 2, 0) and portal.scheme == 'portal' and tcp_enabled and query.get('morph', '1') == '1' and not P.get('preludeClientsReady'):
+                raise RuntimeError('prelude-clients-required')
         next_hop = query.get('next', '')
         if next_hop and next_hop != 'none' and not re.fullmatch(key_pattern, urllib.parse.unquote(next_hop.split('@', 1)[0])):
             raise RuntimeError('next-key-upgrade-required')
+    if target_parts >= (3, 2, 0):
+        environment_text = re.sub(r'^NOW_UDP_DATA_BUF_SIZE=.*\n?', '', environment_text, flags=re.MULTILINE)
     replacement = 'NOWHERE_VERSION_VALUE="' + P['targetVersion'] + '"'
     if re.search(r'^NOWHERE_VERSION_VALUE=.*$', environment_text, re.MULTILINE):
         environment_text = re.sub(r'^NOWHERE_VERSION_VALUE=.*$', replacement, environment_text, flags=re.MULTILINE)
@@ -131,7 +140,7 @@ try:
     os.replace(candidate, P['binaryPath'])
     os.replace(environment_candidate, P['environmentPath'])
     environment_replaced = True
-    if was_running or P.get('migration'):
+    if was_running:
         started = run(['systemctl', 'start', P['unitName']], 25)
         time.sleep(1)
         if started.returncode != 0 or active(P['unitName']) != 'active':
@@ -139,13 +148,7 @@ try:
         if not was_running:
             stopped = run(['systemctl', 'stop', P['unitName']], 25)
             if stopped.returncode != 0 or active(P['unitName']) == 'active': raise RuntimeError('stop-failed')
-    if P.get('migration'):
-        backup = P['binaryPath'] + '.nw2-backup'
-        with open(P['environmentPath'] + '.nw2-backup', 'wb') as handle:
-            os.fchmod(handle.fileno(), 0o600); handle.write(environment_previous); handle.flush(); os.fsync(handle.fileno())
-        os.replace(previous, backup)
-    else:
-        os.unlink(previous)
+    os.unlink(previous)
     try:
         os.unlink(candidate + '.archive')
     except OSError:
@@ -186,7 +189,7 @@ except Exception as exc:
     known = {
         'unsupported-architecture', 'release-not-found', 'release-asset-not-found', 'release-checksum-missing',
         'release-checksum-mismatch', 'binary-not-found', 'binary-version-mismatch',
-        'configuration-changed', 'stop-failed', 'start-failed', 'shared-key-upgrade-required', 'next-key-upgrade-required',
+        'prelude-clients-required', 'configuration-changed', 'stop-failed', 'start-failed', 'shared-key-upgrade-required', 'next-key-upgrade-required',
     }
     error = str(exc) if str(exc) in known else 'upgrade-failed'
     stop(error, rolledBack=restored, state=active(P['unitName']))

@@ -125,3 +125,6 @@ Restore replaces plugin records only. It does not install Komari Agents, move ce
 Node, certificate, provider, and instance options remain in their own workflows.
 
 Long editors keep an unfinished draft in the current browser tab. Closing and reopening the editor restores it; saving or choosing **Discard draft** removes it. Provider API tokens are deliberately excluded. Closing the browser tab clears session drafts.
+
+
+Subscription cards show Copy Address, Import Subscription, Edit and More. The import dialog selects the client/format and provides its QR code, copy action and an AJSON download when selected. More contains compatibility checks, history, device profiles, token rotation and deletion, retaining existing confirmations.

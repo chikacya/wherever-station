@@ -29,7 +29,7 @@ function decodeNowhereConfig(values) {
   try { input.nativeNext = new (require('node:url').URL)(values.NOWHERE_PORTAL).searchParams.get('next') || ''; } catch (_) { input.nativeNext = ''; }
   input.role ||= 'portal';
   input.out ||= 'direct';
-  if (!/^v?[23]\./.test(input.version)) throw new Error('Wherever Station 仅管理 NW2 / NW3 实例');
+  if (!/^v?3\./.test(input.version)) throw new Error('Wherever Station 仅管理 NW3 实例');
   input.tcpPort ??= input.network === 'udp' ? '0' : input.port;
   input.udpPort ??= input.network === 'tcp' ? '0' : input.port;
   input.tcpCarrier ||= 'tcp';
@@ -40,6 +40,7 @@ function decodeNowhereConfig(values) {
   input.transportMemoryProfile ||= 'throughput';
   for (const field of ['port', 'tcpPort', 'udpPort', 'tls', 'rate', 'etar', 'vectorMux', 'morph', 'certificateDays']) input[field] = Number(input[field]);
   const managedNames = new Set(Object.values(fields).map((suffix) => 'NOWHERE_' + suffix + '_VALUE'));
+  input.morphPrelude = values.NOW_MORPH_TCP_PRELUDE || "";
   input.extensionEnvironment = Object.fromEntries(Object.entries(values).filter(([key]) => /^NOW(?:HERE)?_[A-Z0-9_]+$/.test(key) && !managedNames.has(key) && key !== 'NOWHERE_PORTAL'));
   return input;
 }

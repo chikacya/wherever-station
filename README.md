@@ -41,7 +41,7 @@ Screenshots use illustrative server and node data.
 - Reads S-UI and 2S-UI `/apiv2` providers without changing their inbounds, users, routes, or services.
 - Creates isolated, opt-in sing-box presets and managed Nowhere instances on connected Linux Agents.
 - Manages stable self-signed certificates or references existing PEM files for managed instances.
-- Supports the NW2 2.2.1 baseline and NW3 3.0.0 through an explicit compatibility catalog and enables lifecycle operations only after verification.
+- Supports NW3 through an explicit compatibility catalog and enables lifecycle operations only after verification.
 
 ## What it does not do
 

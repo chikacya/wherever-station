@@ -18,5 +18,5 @@ assert(e.environment.includes('egress://'));assert.equal(e.links.anywhere.length
 const parts=[...buildManagedNowhereCommand('preflight',e).matchAll(/'([^']+)'/g)].map(m=>m[1]);
 assert.deepEqual(JSON.parse(Buffer.from(parts[2],'base64')).ports,[]);
 assert.throws(()=>buildManagedNowhereCommand('upgrade',{...p,targetVersion:'v2.2.1'}),/migration/);
-assert.throws(()=>buildManagedNowhereCommand('create',{...p,version:'v3.0.1'}),/Unverified/);
+assert.throws(()=>buildManagedNowhereCommand('create',{...p,version:'v3.2.1'}),/Unverified/);
 console.log('NW3 URL, key, Egress and migration guards passed');

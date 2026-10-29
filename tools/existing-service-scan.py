@@ -471,15 +471,15 @@ def discover_nowhere(unit, candidates, reviews):
             if token.lstrip("v").split(".")[0].isdigit() and token.count(".") >= 2:
                 version = token.strip("(),")
                 break
-    version = version or "v2.0.2"
+    version = version or "unknown"
     unit["adapter"] = "native-cli"
     unit["binaryVersion"] = clipped(version, 80)
     try:
         major_version = int(version.lstrip("v").split(".", 1)[0])
     except (TypeError, ValueError):
         major_version = 0
-    if major_version not in (2, 3):
-        reviews.append({"id": stable_id(unit["unit"], path, "unsupported-version"), "kind": "nowhere", "protocol": "nowhere", "name": f"{MACHINE_NAME} Nowhere", "source": path or "运行进程", "reason": "仅支持 NW2 / NW3；请核对内核与配置", "evidence": [unit["unit"], f"version={version}", "adapter=unsupported"], "confidence": "draft", "repair": {"publicHost": host, "port": 0, "sni": "", "reality": False, "userNames": [], "certificate": None}})
+    if major_version != 3:
+        reviews.append({"id": stable_id(unit["unit"], path, "unsupported-version"), "kind": "nowhere", "protocol": "nowhere", "name": f"{MACHINE_NAME} Nowhere", "source": path or "运行进程", "reason": "仅支持 NW3；旧版本只保留发现信息，不支持接管", "evidence": [unit["unit"], f"version={version}", "adapter=unsupported"], "confidence": "draft", "repair": {"publicHost": host, "port": 0, "sni": "", "reality": False, "userNames": [], "certificate": None}})
         return
     tcp_port = values.get("NOWHERE_TCP_PORT_VALUE") or ""
     udp_port = values.get("NOWHERE_UDP_PORT_VALUE") or ""
@@ -513,14 +513,9 @@ def discover_nowhere(unit, candidates, reviews):
         reviews.append({"id": stable_id(unit["unit"], path, "incomplete"), "kind": "nowhere", "protocol": "nowhere", "name": f"{MACHINE_NAME} Nowhere", "source": path or "运行进程", "reason": "还需补充：" + "、".join(missing), "evidence": [unit["unit"], path or "已读取运行进程参数", "adapter=native-cli"], "confidence": "confirm" if tcp_port or udp_port else "draft", "repair": {"publicHost": host, "port": tcp_port or udp_port, "sni": "", "reality": False, "userNames": [], "certificate": None}})
         return
     network = "mix" if tcp_port and udp_port else "tcp" if tcp_port else "udp"
-    up = "tcp" if tcp_port else "udp"
-    down = up
-    params = {"up": up, "down": down, "morph": values.get("NOWHERE_MORPH_VALUE") or portal_query.get("morph") or "0", "mux": values.get("NOWHERE_VECTOR_MUX_VALUE") or "0"}
     name = f"{MACHINE_NAME} Nowhere"
-    endpoint = f"{url_host(host)}:{tcp_port}" if tcp_port and udp_port and tcp_port == udp_port and tcp_carrier == "tcp" and udp_carrier == "udp" else f"{url_host(host)}/" + "/".join(value for value in (f"{tcp_carrier}:{tcp_port}" if tcp_port else "", f"{udp_carrier}:{udp_port}" if udp_port else "") if value)
-    if major_version == 3:
-        endpoint = f"{url_host(host)}:{tcp_port or udp_port}"
-        params = {"net": "tcp" if tcp_port else "udp", "morph": values.get("NOWHERE_MORPH_VALUE") or portal_query.get("morph") or "1"}
+    endpoint = f"{url_host(host)}:{tcp_port or udp_port}"
+    params = {"net": "tcp" if tcp_port else "udp", "morph": values.get("NOWHERE_MORPH_VALUE") or portal_query.get("morph") or "1"}
     uri = f"nowhere://{quote(key)}@{endpoint}?{query_string(params)}#{quote(name)}"
     tls_mode = values.get("NOWHERE_TLS_VALUE") or portal_query.get("tls") or "1"
     certificate = None

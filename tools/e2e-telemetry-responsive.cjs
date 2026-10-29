@@ -14,7 +14,7 @@ async function main() {
     await page.route('**/api/rpc2', async route => {
       const request = route.request().postDataJSON();
       const results = {
-        'proxyConsole:getState': { version: 14, revision: 0, settings: { publicBaseUrl: '', monitoring: {} }, machines: [{ id: 'jp', name: 'Oracle 东京', region: '东京', countryCode: 'JP', monitorClientId: 'oracle' }], nodes: [], subscriptions: [], externalSources: [], serviceBindings: [], managedInstances: [{ id: 'nowhere-demo', kind: 'nowhere', name: '东京 Nowhere', machineId: 'jp', version: 'v2.0.2', tcpPort: 2078, udpPort: 2078 }], deploymentPresets: [], providers: [] },
+        'proxyConsole:getState': { version: 14, revision: 0, settings: { publicBaseUrl: '', monitoring: {} }, machines: [{ id: 'jp', name: 'Oracle 东京', region: '东京', countryCode: 'JP', monitorClientId: 'oracle' }], nodes: [], subscriptions: [], externalSources: [], serviceBindings: [], managedInstances: [{ id: 'nowhere-demo', kind: 'nowhere', name: '东京 Nowhere', machineId: 'jp', version: 'v3.1.0', tcpPort: 2078, udpPort: 2078 }], deploymentPresets: [], providers: [] },
         'proxyConsole:listInstanceStates': [observed],
         'proxyConsole:listManagedTasks': [],
         'common:getNodes': { oracle: { name: 'Oracle 东京（主控）' } },

@@ -29,7 +29,7 @@ function instanceStatusCache(now = Date.now) {
     if (typeof value.serviceEndpoint === 'string' && value.serviceEndpoint.length <= 512 && !/[\x00-\x1f\x7f]/.test(value.serviceEndpoint)) clean.serviceEndpoint = value.serviceEndpoint;
     if (typeof value.configSummary === 'string' && value.configSummary.length <= 4096 && !/[\x00-\x1f\x7f]/.test(value.configSummary)) clean.configSummary = value.configSummary;
     if (/^[0-9a-f]{32}$/.test(value.instanceId || '')) clean.instanceId = value.instanceId;
-    if (['nw2', 'nw3'].includes(value.wireProtocol)) clean.wireProtocol = value.wireProtocol;
+    if (value.wireProtocol === 'nw3') clean.wireProtocol = value.wireProtocol;
     const previous = prior?.telemetry;
     const wallElapsed = (Date.parse(observedAt) - Date.parse(prior?.observedAt || '')) / 1000;
     const uptimeElapsed = Number.isFinite(clean.uptimeMs) && Number.isFinite(previous?.uptimeMs)

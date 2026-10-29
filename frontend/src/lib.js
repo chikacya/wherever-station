@@ -129,13 +129,9 @@ export function buildRepairUri(input = {}) {
     if (input.sni) query.set("sni", input.sni);
     if (input.insecure) query.set("insecure", "1");
     if (protocol === "nowhere") {
-      if (Number(input.nowhereGeneration ?? 3) === 2) {
-        if (!/^[0-9a-f]{32,64}$/.test(credential)) throw new Error("NW2 需要 32–64 字符小写 hex 密钥");
-        query.set("up", "udp"); query.set("down", "udp"); query.set("morph", "0");
-      } else {
-        if (!/^[0-9a-f]{32}$/.test(credential)) throw new Error("NW3 需要恰好 32 字符小写 hex 密钥");
-        query.delete("insecure"); query.set("net", "tcp"); query.set("morph", "1");
-      }
+      if (Number(input.nowhereGeneration ?? 3) !== 3) throw new Error("仅支持 NW3");
+      if (!/^[0-9a-f]{32}$/.test(credential)) throw new Error("NW3 需要恰好 32 字符小写 hex 密钥");
+      query.delete("insecure"); query.set("net", "tcp"); query.set("morph", "1");
     }
     return `${protocol}://${encodeURIComponent(credential)}@${host}:${port}${query.size ? `?${query}` : ""}#${name}`;
   }
@@ -154,18 +150,18 @@ export function normalizeNodeName(value) {
     return name;
   }
 }
-export const NOWHERE_RELEASE_FALLBACK = Object.freeze(["v3.0.0", "v2.2.1"]);
+export const NOWHERE_RELEASE_FALLBACK = Object.freeze(["v3.2.0", "v3.1.0", "v3.0.1", "v3.0.0"]);
 export function normalizeNowhereReleases(input) {
   const seen = new Set();
   return (Array.isArray(input) ? input : [])
     .map((release) => {
       const tag = String(release?.tag_name || "").trim();
-      const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag);
-      if (!match || release?.draft === true || release?.prerelease === true)
+      const match = /^v(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z0-9.-]+))?$/.exec(tag);
+      if (!match || release?.draft === true)
         return null;
-      const parts = match.slice(1).map(Number);
+      const parts = match.slice(1,4).map(Number);
       if (
-        parts[0] < 2 || (parts[0] === 2 && tag !== "v2.2.1") ||
+        parts[0] !== 3 ||
         seen.has(tag)
       )
         return null;
@@ -175,17 +171,36 @@ export function normalizeNowhereReleases(input) {
       )
         ? String(release.published_at)
         : "";
-      return { tag, parts, publishedAt };
+      return { tag, parts, publishedAt, prerelease: release?.prerelease === true || Boolean(match[4]), suffix: match[4] || "" };
     })
     .filter(Boolean)
     .sort(
       (a, b) =>
         b.parts[0] - a.parts[0] ||
         b.parts[1] - a.parts[1] ||
-        b.parts[2] - a.parts[2],
+        b.parts[2] - a.parts[2] ||
+        (a.suffix ? b.suffix ? b.suffix.localeCompare(a.suffix,undefined,{numeric:true}) : 1 : b.suffix ? -1 : 0),
     )
     .slice(0, 12)
-    .map(({ parts: _parts, ...release }) => release);
+    .map(({ parts: _parts, suffix: _suffix, ...release }) => release);
+}
+export function isNowherePreview(release) {
+  return Boolean(release?.prerelease || /-/.test(release?.tag || '') || nowhereVersionCapabilities(release?.tag).previewRelease);
+}
+export function latestStableNowhereRelease(releases, generation=3) {
+  return releases.find(release => !isNowherePreview(release) && nowhereVersionCapabilities(release.tag).verified && nowhereVersionCapabilities(release.tag).protocolGeneration===generation);
+}
+export function defaultNowhereTarget(releases,currentVersion) {
+  const generation=nowhereVersionCapabilities(currentVersion).protocolGeneration || Number(/^v?(\d+)\./.exec(currentVersion)?.[1]);
+  const target=latestStableNowhereRelease(releases,generation)?.tag;
+  if(!target)return currentVersion;
+  const parts=value=>String(value).replace(/^v/,'').split(/[.-]/).slice(0,3).map(Number);
+  const current=parts(currentVersion),next=parts(target);
+  for(let i=0;i<3;i++){if(current[i]!==next[i])return current[i]>next[i]?currentVersion:target;}
+  return target;
+}
+export function nowhereReleaseLabel(release,latestStableTag) {
+  return release.tag+(release.tag===latestStableTag?' · 最新稳定版':'')+(isNowherePreview(release)?' · 预发布':'');
 }
 export const SING_BOX_RELEASE_FALLBACK = Object.freeze([
   "1.13.11",
@@ -462,12 +477,13 @@ export function nowhereVersionCapabilities(value) {
     known: true,
     supported: true,
     adapter: adapter.id,
+    previewRelease: (adapter.previewVersions || []).includes(version),
     verified: adapter.verifiedVersions.includes(version),
     compatibility: adapter.verifiedVersions.includes(version) ? "verified" : "compatible-range",
     vectorPin: true,
-    vectorMux: adapter.generation === 2,
+    vectorMux: false,
     localTelemetry: true,
-    isV2: adapter.generation === 2,
+    isV2: false,
     protocolGeneration: adapter.generation,
     wireProtocol: `nw${adapter.generation}`,
     carrierEndpoints: true,
@@ -478,6 +494,9 @@ export function nowhereVersionCapabilities(value) {
     eventLog: false,
     dualStackDial: true,
     strictSharedKey: true,
+    authenticatedPrelude: adapter.generation === 3 && atLeast(3, 1, 0),
+    requiresAuthenticatedPrelude: adapter.generation === 3 && atLeast(3, 2, 0),
+    fadePrelude: adapter.generation === 3 && atLeast(3, 0, 1),
   };
 }
 export function moveItem(items, from, to) {

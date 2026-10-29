@@ -32,7 +32,7 @@ async function main() {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     // Model browsers without a native save picker (including the full-screen fallback path).
     await page.addInitScript(() => { window.showSaveFilePicker = undefined; });
-    await page.route('https://api.github.com/repos/NodePassProject/Nowhere/releases?**', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ tag_name: 'v2.0.0', draft: false, prerelease: false }]) }));
+    await page.route('https://api.github.com/repos/NodePassProject/Nowhere/releases?**', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ tag_name: 'v3.1.0', draft: false, prerelease: false }]) }));
     await page.route('https://api.github.com/repos/SagerNet/sing-box/releases?**', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ tag_name: 'v1.13.11', draft: false, prerelease: false }]) }));
     await page.route('**/proxy/backup/*', route => route.fulfill({ status: 200, headers: { 'content-type': 'application/octet-stream', 'content-disposition': 'attachment; filename="wherever-station-backup-2026-09-17.json"' }, body: JSON.stringify({ format: 'wherever-station-backup', schema: 1, state }) }));
     await page.route('**/api/rpc2', async route => {
@@ -51,7 +51,7 @@ async function main() {
       else if (request.method === 'proxyConsole:statusCommand') result = { command: 'status' };
       else if (request.method === 'admin:exec') result = { task_id: 'status-task' };
       else if (request.method === 'admin:getSpecificTaskResult') result = { exit_code: 0, result: 'PCSTATES\t1\teyJzdGF0ZXMiOltdfQ==' };
-      else if (request.method === 'proxyConsole:newManagedNowhereValues') result = { id: 'nw-new', key: 'secret', version: 'v2.0.0', port: 2077, tcpPort: 2077, udpPort: 2077 };
+      else if (request.method === 'proxyConsole:newManagedNowhereValues') result = { id: 'nw-new', key: 'secret', version: 'v3.1.0', port: 2077, tcpPort: 2077, udpPort: 2077 };
       else if (request.method === 'proxyConsole:newManagedSingBoxValues') result = { id: 'sb-new', uuid: '00000000-0000-4000-8000-000000000002', port: 20888 };
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) });
     });

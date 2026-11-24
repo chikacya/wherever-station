@@ -242,6 +242,7 @@ const MANAGED_ERROR = {
   "upgrade-failed": "升级失败，旧内核已保留或恢复",
   "shared-key-upgrade-required": "升级前请将共享密钥改为 32–64 字符小写十六进制，并同步所有客户端",
   "prelude-clients-required": "请先更新 Morph TCP 客户端并确认认证 Prelude 支持，远端未停止服务",
+  "client-cipher-upgrade-required": "检测来源的 Nowhere 客户端不支持 AES-128-CTR，请选择支持该算法的客户端",
   "client-prelude-upgrade-required": "检测来源的 Nowhere 客户端过旧，请升级到至少 3.1.0，避免误判 Morph TCP 连接失败",
   "next-key-upgrade-required": "下一跳密钥不符合 2.2.1 要求，请先同步更新下一跳配置",
   "configuration-changed": "目标机配置已变化，请重新打开编辑窗口",

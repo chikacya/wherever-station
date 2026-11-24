@@ -86,6 +86,7 @@ function nowhereCapabilities(version) {
     strictSharedKey: true,
     authenticatedPrelude: adapter.generation === 3 && atLeast(normalized, "v3.1.0"),
     requiresAuthenticatedPrelude: adapter.generation === 3 && atLeast(normalized, "v3.2.0"),
+    morphCipher: atLeast(normalized, "v3.4.0"),
     fadePrelude: adapter.generation === 3 && atLeast(normalized, "v3.0.1"),
   };
 }

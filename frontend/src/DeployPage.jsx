@@ -88,7 +88,7 @@ const NOWHERE_RESERVED_EXTENSION_KEYS = new Set([
   "NOWHERE_DIAL_VALUE", "NOWHERE_DIAL4_VALUE", "NOWHERE_DIAL6_VALUE", "NOWHERE_SOCKS_VALUE", "NOWHERE_LOG_VALUE", "NOWHERE_TELEMETRY_INTERVAL_VALUE",
   "NOWHERE_VECTOR_SOCKS_VALUE", "NOWHERE_VECTOR_SNI_VALUE", "NOWHERE_VECTOR_PIN_VALUE", "NOWHERE_VECTOR_MUX_VALUE",
   "NOWHERE_TCP_PORT_VALUE", "NOWHERE_UDP_PORT_VALUE", "NOWHERE_TCP_CARRIER_VALUE", "NOWHERE_UDP_CARRIER_VALUE",
-  "NOWHERE_MORPH_VALUE", "NOWHERE_TRANSPORT_MEMORY_PROFILE_VALUE", "NOWHERE_CERTIFICATE_MODE_VALUE",
+  "NOWHERE_MORPH_VALUE", "NOWHERE_CIPHER_VALUE", "NOWHERE_TRANSPORT_MEMORY_PROFILE_VALUE", "NOWHERE_CERTIFICATE_MODE_VALUE",
   "NOWHERE_CERTIFICATE_HOST_VALUE", "NOWHERE_CERTIFICATE_DAYS_VALUE", "NOW_TELEMETRY_INTERVAL", "NOW_TRANSPORT_MEMORY_PROFILE",
 ]);
 
@@ -115,6 +115,28 @@ function NowhereExtensionEditor({ value, onChange, capabilities }) {
   </Field>;
 }
 
+function NowhereMorphFields({ values, onPatch, capabilities }) {
+  if (!capabilities.morph) return null;
+  return <>
+    <Field label="Morph" hint="同一路径两端的 Morph 设置必须一致">
+      <select value={values.morph || 0} onChange={event => {
+        const morph = Number(event.target.value);
+        onPatch(morph ? { morph } : { morph, cipher: "chacha" });
+      }}>
+        <option value={0}>关闭</option>
+        <option value={1}>开启</option>
+      </select>
+    </Field>
+    {Number(values.morph) === 1 && capabilities.morphCipher &&
+      <Field label="Morph 加密算法" hint="AES 需要客户端支持，且两端选择一致">
+        <select value={values.cipher || "chacha"} onChange={event => onPatch({ cipher: event.target.value })}>
+          <option value="chacha">ChaCha20（默认）</option>
+          <option value="aes">AES-128-CTR</option>
+        </select>
+      </Field>}
+  </>;
+}
+
 function NowhereAdvancedFields({ values, onPatch, capabilities }) {
   const update = (key, value) => onPatch({ [key]: value });
   return <>
@@ -134,7 +156,6 @@ function NowhereAdvancedFields({ values, onPatch, capabilities }) {
     <Field label={values.role === "egress" ? "远端 Portal SNI" : "Vector SNI"}><input value={values.vectorSni || "none"} onChange={(event) => update("vectorSni", event.target.value)} /></Field>
     {capabilities.vectorPin && <Field label={values.role === "egress" ? "远端 Portal Pin" : "Vector Pin"} hint="原生客户端校验证书；自签证书须填写实际 SHA256。Anywhere 导入不支持此参数"><input value={values.vectorPin || "none"} onChange={(event) => update("vectorPin", event.target.value)} /></Field>}
     {capabilities.vectorMux && <Field label="Vector Mux"><select value={values.vectorMux || 0} onChange={(event) => update("vectorMux", Number(event.target.value))}><option value={0}>关闭</option><option value={1}>开启</option></select></Field>}
-    {capabilities.morph && <Field label="Morph" hint={values.morph === 1 && capabilities.morphTcpPrelude ? "同一路径必须使用相同协议代际与 Morph 设置" : "两端必须一致；跨 Morph 传输格式升级需要协同进行"}><select value={values.morph || 0} onChange={(event) => update("morph", Number(event.target.value))}><option value={0}>关闭</option><option value={1}>开启（两端必须一致）</option></select></Field>}
     {capabilities.morphTcpPrelude && <Field label="Morph TCP Prelude" hint="仅控制本端生成分布，不代表客户端已支持认证 Prelude"><select value={values.morphPrelude || values.extensionEnvironment?.NOW_MORPH_TCP_PRELUDE || (capabilities.fadePrelude ? "fade" : "full8")} onChange={event => onPatch({ morphPrelude: event.target.value, extensionEnvironment: { ...(values.extensionEnvironment || {}), NOW_MORPH_TCP_PRELUDE: event.target.value } })}>{(capabilities.fadePrelude ? ["fade", "full8", "low7"] : ["full8", "low7"]).map(mode => <option key={mode}>{mode}</option>)}</select></Field>}
     {capabilities.transportMemoryProfile && <Field label="Transport 内存策略"><select value={values.transportMemoryProfile || "throughput"} onChange={(event) => update("transportMemoryProfile", event.target.value)}><option value="memory">节省内存</option><option value="balanced">平衡</option><option value="throughput">吞吐优先</option></select></Field>}
     <details className="nowhere-experimental">
@@ -262,7 +283,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
   const [nowhereReleases, setNowhereReleases] = useState({
     loading: false,
     releases: NOWHERE_RELEASE_FALLBACK.map((tag) => ({ tag, publishedAt: "" })),
-    latest: latestStableNowhereRelease(NOWHERE_RELEASE_FALLBACK.map(tag=>({tag})))?.tag || "v3.1.0",
+    latest: latestStableNowhereRelease(NOWHERE_RELEASE_FALLBACK.map(tag=>({tag})))?.tag || "v3.4.0",
     stale: true,
     error: "",
   });
@@ -432,7 +453,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       ...current,
       binarySource: selection === "copy" ? "copy" : "download",
       version: selection === "copy" ? current.version : selection === "custom" ? "" : selection,
-      role: "portal", out: "direct", vectorMux: 0, morph: selection.startsWith("v3.") ? 1 : 0,
+      role: "portal", out: "direct", vectorMux: 0, cipher: "chacha", morph: selection.startsWith("v3.") ? 1 : 0,
     }));
     setPreview(null);
   };
@@ -656,7 +677,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       const saved = await executeTrackedManagedTask(spec, otp);
       if (!saved.result.ok) throw new Error(saved.result.error || "读取配置失败");
       if (upgradeTarget) setNowhereManager(null);
-      setConfigEdit({ instanceId: instance.id, name: instance.name, upgradeTarget, originalKey: saved.result.configuration.key, readOperationId: spec.operationId, values: { ...saved.result.configuration, name: instance.name, machineId: instance.machineId, certificateAssetId: instance.certificateId || "" } });
+      setConfigEdit({ instanceId: instance.id, name: instance.name, upgradeTarget, originalKey: saved.result.configuration.key, originalCipher: saved.result.configuration.cipher || "chacha", readOperationId: spec.operationId, values: { ...saved.result.configuration, name: instance.name, machineId: instance.machineId, certificateAssetId: instance.certificateId || "" } });
     } catch (error) { notify(error.message, true); }
     finally { endBusy(busyKey); }
   };
@@ -675,10 +696,12 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
   };
   const saveNowhereConfig = async () => {
     if (!configEdit) return; const busyKey = `update:${configEdit.instanceId}`; if (hasBusy(busyKey)) return;
+    const cipherChanged = (configEdit.values.cipher || "chacha") !== configEdit.originalCipher;
+    if (cipherChanged && !confirm("确定切换 Morph 加密算法？请先确认连接此实例的客户端或对端支持新算法。保存成功后请刷新订阅。")) return;
     const otp = operationOtp(); if (otp === null) return;
     beginBusy(busyKey); setConfigError("");
     try {
-      const spec = await rpc("proxyConsole:prepareManagedNowhereUpdate", { instanceId: configEdit.instanceId, readOperationId: configEdit.readOperationId, changes: configEdit.values, requestId: crypto.randomUUID() });
+      const spec = await rpc("proxyConsole:prepareManagedNowhereUpdate", { instanceId: configEdit.instanceId, readOperationId: configEdit.readOperationId, changes: configEdit.values, cipherPeersReady: cipherChanged, requestId: crypto.randomUUID() });
       const saved = await executeTrackedManagedTask(spec, otp);
       setState(saved.state);
       if (!saved.result.ok) throw new Error(`${saved.result.error || "保存失败"}${saved.result.rolledBack ? "，已恢复旧配置" : ""}`);
@@ -936,6 +959,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
     <Modal open={!!configEdit} title={`编辑 Nowhere · ${configEdit?.name || ""}`} onClose={() => !nowhereSaving && setConfigEdit(null)} size="large">
       <p>修改仅应用到此托管实例。运行中的实例会重启；停止的实例保持停止。保存失败会尝试恢复旧配置，成功后同步订阅链接。</p>
       {configEdit && <div className="form-grid">
+        <NowhereMorphFields values={configEdit.values} capabilities={configCapabilities} onPatch={patch => setConfigEdit(old => ({ ...old, values: { ...old.values, ...patch } }))} />
         <Field label="节点名称" wide><input autoFocus value={configEdit.values.name || ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, name: event.target.value } }))} /></Field>
         {[["publicHost", "公网域名或 IP"], ["listenHost", "监听地址"]].map(([key, label]) => <Field key={key} label={label}><input value={configEdit.values[key] ?? ""} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, [key]: event.target.value } }))} /></Field>)}
         {configEdit.values.role !== "egress" && <Field label="客户端输出"><select value={configEdit.values.client || "anywhere"} onChange={event => setConfigEdit(old => ({ ...old, values: { ...old.values, client: event.target.value } }))}><option value="anywhere">Anywhere</option><option value="both">Anywhere + Vector</option></select></Field>}
@@ -985,6 +1009,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
           {form.binarySource !== "copy" && !formCapabilities.verified && <small className="warning-text">此版本尚未进入已验证适配清单，只能识别，不能创建实例。</small>}
         </Field>
         <Field label={form.role === "egress" ? "远端 Portal 地址" : "公网域名或 IP"} hint={form.role === "egress" ? "填写远端 Portal 地址及 QUIC 端口；密钥和 Morph 必须与该 Portal 一致" : form.publicHost ? "已从 Komari 自动带出，可手动覆盖" : "Komari 未提供公网地址，请手动填写"}><input value={form.publicHost || ""} onChange={(event) => update("publicHost", event.target.value)} placeholder="example.com 或公网 IP" /></Field>
+        <NowhereMorphFields values={form} capabilities={formCapabilities} onPatch={patch => { setForm(old => ({ ...old, ...patch })); setPreview(null); }} />
         <NowhereCarrierFields values={form} error={formErrors.port} onPatch={(patch) => { setForm((old) => ({ ...old, ...patch })); setFormErrors({}); setPreview(null); }} />
         <Field label={form.role === "egress" ? "本地地址（Egress 不监听）" : "监听地址"}><input disabled={form.role === "egress"} value={form.listenHost || "0.0.0.0"} onChange={(event) => update("listenHost", event.target.value)} /></Field>
         {form.role !== "egress" && <Field label="客户端输出"><select value={form.client || "anywhere"} onChange={(event) => update("client", event.target.value)}><option value="anywhere">Anywhere</option><option value="both">Anywhere + Vector</option></select></Field>}

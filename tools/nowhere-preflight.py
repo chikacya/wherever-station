@@ -1,6 +1,7 @@
 """Check whether a blank VPS can host a plugin-owned Nowhere instance."""
 import os
 import platform
+import re
 import shutil
 
 try:
@@ -47,7 +48,11 @@ try:
     version = ''
     if source:
         checked = run([source, '--version'], 5)
-        version = ((checked.stdout or '') + '\n' + (checked.stderr or '')).strip().splitlines()[0][:160]
+        lines = ((checked.stdout or '') + '\n' + (checked.stderr or '')).strip().splitlines()
+        version = lines[0][:160] if lines else ''
+        match = re.search(r'v(\d+)\.(\d+)\.(\d+)', version)
+        if P.get('cipher') == 'aes' and (not match or tuple(map(int, match.groups())) < (3, 4, 0)):
+            source = ''
     emit({
         'ok': True,
         'root': True,

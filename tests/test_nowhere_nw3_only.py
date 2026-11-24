@@ -10,7 +10,7 @@ import types
 SOURCE=pathlib.Path(__file__).resolve().parents[1]/'tools/nowhere-binary-upgrade.py'
 
 class NW3UpgradeTransactionTest(unittest.TestCase):
-    def execute(self,running=False,fail_start=False,stale=False,prelude=False,ready=False):
+    def execute(self,running=False,fail_start=False,stale=False,prelude=False,ready=False,nw34=False):
         with tempfile.TemporaryDirectory(prefix='nw3-upgrade-') as tmp:
             binary=pathlib.Path(tmp)/'nowhere';env=pathlib.Path(tmp)/'nowhere.env';unit=pathlib.Path(tmp)/'unit.service'
             binary.write_text('old binary');unit.touch();old='NOWHERE_PORTAL="portal://'+'a'*32+'@localhost:2077?morph=0&out=direct"\nNOWHERE_VERSION_VALUE="v3.0.0"\n';env.write_text(old)
@@ -19,6 +19,10 @@ class NW3UpgradeTransactionTest(unittest.TestCase):
             if stale: payload['migration']=True
             if prelude:
                 payload['targetVersion']='v3.2.0';old=old.replace('morph=0','morph=1');env.write_text(old);payload['preludeClientsReady']=ready
+            if nw34:
+                payload.update(version='v3.2.0',targetVersion='v3.4.0')
+                old=old.replace('v3.0.0','v3.2.0').replace('morph=0','morph=1')+'NOW_MORPH_TCP_PRELUDE="low7"\n'
+                env.write_text(old)
             states=['active' if running else 'inactive'];calls=[];outputs=[];starts=[0]
             def run(args,timeout):
                 calls.append(args)
@@ -39,6 +43,7 @@ class NW3UpgradeTransactionTest(unittest.TestCase):
                 self.assertEqual(env.read_text(),old);self.assertEqual(binary.read_text(),'old binary')
             else:
                 self.assertIn('out=direct',env.read_text());self.assertEqual(binary.read_text(),'new binary')
+                if nw34:self.assertEqual(env.read_text(),old.replace('v3.2.0','v3.4.0'))
 
             self.assertEqual(states[0],'active' if running else 'inactive')
             if stale or (prelude and not ready):self.assertFalse(any(cmd[0]=='systemctl' for cmd in calls))
@@ -52,3 +57,10 @@ class NW3UpgradeTransactionTest(unittest.TestCase):
 
     def test_prelude_confirmation_before_stop(self):self.assertEqual(self.execute(running=True,prelude=True)[0]['error'],'prelude-clients-required')
     def test_prelude_confirmation_allows_upgrade(self):self.assertTrue(self.execute(running=True,prelude=True,ready=True)[0]['ok'])
+
+
+    def test_34_preserves_morph_configuration(self):
+        self.assertTrue(self.execute(running=True,nw34=True)[0]['ok'])
+
+    def test_34_restores_binary_and_config_on_failure(self):
+        self.assertTrue(self.execute(running=True,nw34=True,fail_start=True)[0]['rolledBack'])

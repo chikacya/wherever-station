@@ -43,6 +43,7 @@ function payloadFor(plan) {
     ports,
     network: plan.summary.network,
     version: plan.version,
+    cipher: plan.summary.cipher,
     certificateMode: plan.certificateMode,
     certificatePath: plan.certificatePath,
     privateKeyPath: plan.privateKeyPath,

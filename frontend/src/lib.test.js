@@ -119,7 +119,7 @@ describe("ui helpers", () => {
     expect(releases.map(r=>r.tag)).toEqual(['v3.3.0-rc.2','v3.2.0','v3.1.0']);
     expect(latestStableNowhereRelease(releases).tag).toBe('v3.1.0');
     expect(nowhereReleaseLabel(releases[1])).toBe('v3.2.0 · 预发布');
-    expect(nowhereReleaseLabel({tag:'v3.2.0'})).toBe('v3.2.0 · 预发布');
+    expect(nowhereReleaseLabel({tag:'v3.2.0'})).toBe('v3.2.0');
     expect(defaultNowhereTarget(releases,'v3.0.0')).toBe('v3.1.0');
     expect(defaultNowhereTarget(releases,'v3.2.0')).toBe('v3.2.0');
     expect(defaultNowhereTarget(releases,'v2.2.1')).toBe('v2.2.1');

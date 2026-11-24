@@ -102,6 +102,8 @@ try:
         if not re.fullmatch(key_pattern, urllib.parse.unquote(portal.username or '')):
             raise RuntimeError('shared-key-upgrade-required')
         query = dict(urllib.parse.parse_qsl(portal.query))
+        if target_parts < (3, 4, 0) and query.get('cipher') == 'aes':
+            raise RuntimeError('unsupported-version')
         if target_parts >= (3, 2, 0):
             current_parts = tuple(int(part) for part in re.findall(r'\d+', P.get('version', ''))[:3])
             tcp_enabled = bool(portal.port) or any(segment.startswith('tcp') for segment in portal.path.split('/'))

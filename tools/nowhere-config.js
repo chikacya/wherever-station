@@ -7,14 +7,14 @@ const fields = {
   dial4: 'DIAL4', dial6: 'DIAL6', dial: 'DIAL', socks: 'SOCKS', log: 'LOG', telemetryInterval: 'TELEMETRY_INTERVAL',
   vectorSocks: 'VECTOR_SOCKS', vectorSni: 'VECTOR_SNI', vectorPin: 'VECTOR_PIN',
   vectorMux: 'VECTOR_MUX',
-  morph: 'MORPH', transportMemoryProfile: 'TRANSPORT_MEMORY_PROFILE',
+  morph: 'MORPH', cipher: 'CIPHER', transportMemoryProfile: 'TRANSPORT_MEMORY_PROFILE',
   certificateMode: 'CERTIFICATE_MODE', certificateHost: 'CERTIFICATE_HOST',
   certificateDays: 'CERTIFICATE_DAYS',
 };
 function decodeNowhereConfig(values) {
   if (!values || typeof values !== 'object') throw new Error('缺少当前托管配置');
   const input = {};
-  const optional = new Set(['role', 'out', 'dial4', 'dial6', 'certificateMode', 'certificateHost', 'certificateDays', 'tcpPort', 'udpPort', 'tcpCarrier', 'udpCarrier', 'morph', 'transportMemoryProfile']);
+  const optional = new Set(['role', 'out', 'dial4', 'dial6', 'certificateMode', 'certificateHost', 'certificateDays', 'tcpPort', 'udpPort', 'tcpCarrier', 'udpCarrier', 'morph', 'cipher', 'transportMemoryProfile']);
   for (const [field, suffix] of Object.entries(fields)) {
     const value = values['NOWHERE_' + suffix + '_VALUE'];
     if (typeof value !== 'string') {
@@ -37,6 +37,8 @@ function decodeNowhereConfig(values) {
   input.dial4 ||= '';
   input.dial6 ||= '';
   input.morph ||= '0';
+  const portalCipher = new URL(values.NOWHERE_PORTAL || 'portal://localhost').searchParams.get('cipher');
+  input.cipher = portalCipher || input.cipher || 'chacha';
   input.transportMemoryProfile ||= 'throughput';
   for (const field of ['port', 'tcpPort', 'udpPort', 'tls', 'rate', 'etar', 'vectorMux', 'morph', 'certificateDays']) input[field] = Number(input[field]);
   const managedNames = new Set(Object.values(fields).map((suffix) => 'NOWHERE_' + suffix + '_VALUE'));

@@ -1,6 +1,6 @@
 const { URL } = require('node:url');
 const PROTOCOLS = {
-  nowhere: ['key','network','morph','morphPrelude'],
+  nowhere: ['key','network','morph','morphPrelude','cipher'],
   vless: ['uuid','encryption','flow','security','transport'],
   hysteria: ['password','sni','congestion','upMbps','downMbps','obfs'],
   sudoku: ['key','aeadMethod','paddingMin','paddingMax','asciiMode','customTables','enablePureDownlink','multiplex','httpMask'],
@@ -31,7 +31,8 @@ function validateNative(proxy) {
   const required={nowhere:'key',vless:'uuid',hysteria:'password',sudoku:'key',trojan:'password',anytls:'password',shadowsocks:'method'}[proxy.protocol];if(required&&!proxy[required])throw Error('AJSON 缺少 '+required);
   if(proxy.protocol==='nowhere'&&!/^[0-9a-f]{32}$/.test(proxy.key))throw Error('AJSON Nowhere 原生模式要求 NW3 32 字符密钥');
   for(const k of ['upMbps','downMbps','paddingMin','paddingMax','idleCheckInterval','idleTimeout','minIdleSession'])if(proxy[k]!=null&&(!Number.isSafeInteger(proxy[k])||proxy[k]<0))throw Error('AJSON 字段必须为非负整数：'+k);
-  enumValue('network',['tcp','udp']);enumValue('morphPrelude',['fade','full8','low7']);enumValue('congestion',['brutal','bbr']);enumValue('aeadMethod',['chacha20-poly1305','aes-128-gcm','none']);enumValue('asciiMode',['prefer_entropy','prefer_ascii','up_ascii_down_entropy','up_entropy_down_ascii']);enumValue('multiplex',['off','auto','on']);
+  if (proxy.cipher === 'aes' && proxy.morph === false) throw Error('AES-128-CTR 需要开启 Morph');
+  enumValue('network',['tcp','udp']);enumValue('cipher',['chacha','aes']);enumValue('morphPrelude',['fade','full8','low7']);enumValue('congestion',['brutal','bbr']);enumValue('aeadMethod',['chacha20-poly1305','aes-128-gcm','none']);enumValue('asciiMode',['prefer_entropy','prefer_ascii','up_ascii_down_entropy','up_entropy_down_ascii']);enumValue('multiplex',['off','auto','on']);
   if(proxy.customTables!=null&&(!Array.isArray(proxy.customTables)||proxy.customTables.some(v=>typeof v!=='string')))throw Error('customTables 必须是字符串数组');
   if(proxy.security!=null){const s=typeof proxy.security==='string'?{type:proxy.security}:proxy.security;if(!object(s)||!['none','tls','reality'].includes(s.type))throw Error('AJSON security 无效');if(s.type==='reality'&&proxy.protocol!=='vless')throw Error('Reality 只适用于 VLESS');if(!['vless','trojan','anytls','rfc'].includes(proxy.protocol))throw Error('此协议不支持配置 security');
     const allowed=s.type==='tls'?['type','sni','alpn','fingerprint','minVersion','maxVersion','insecure','ech']:s.type==='reality'?['type','sni','publicKey','shortId','fingerprint']:['type'];for(const k of Object.keys(s))if(!allowed.includes(k))throw Error('AJSON security 不支持字段：'+k);
@@ -71,7 +72,7 @@ function nativeFromUri(node) {
   if(u.pathname&&u.pathname!=='/')return null;
   const p={id:node.id,name:node.name||'Proxy',server:u.hostname.replace(/^\[|\]$/g,''),port:Number(u.port||(['http','https'].includes(scheme)?scheme==='https'?443:80:0))};
   const user=decodeURIComponent(u.username),pass=decodeURIComponent(u.password);const known=(keys)=>all.every(k=>keys.includes(k));const bool=(v)=>{if(!['0','1'].includes(v))throw Error();return v==='1';};
-  if(scheme==='nowhere'){if(!known(['net','morph'])||u.password||!/^[0-9a-f]{32}$/.test(user))return null;Object.assign(p,{protocol:'nowhere',key:user,network:q.get('net')||'tcp',morph:q.has('morph')?bool(q.get('morph')):true});}
+  if(scheme==='nowhere'){if(!known(['net','morph','cipher'])||u.password||!/^[0-9a-f]{32}$/.test(user))return null;Object.assign(p,{protocol:'nowhere',key:user,network:q.get('net')||'tcp',morph:q.has('morph')?bool(q.get('morph')):true});if(q.has('cipher'))p.cipher=q.get('cipher');}
   else if(scheme==='vless'){
    if(!known(['type','security','flow','encryption','sni','fp','pbk','sid','alpn','insecure','allowInsecure','ech','host','path','serviceName','authority','mode','extra'])||u.password)return null;
    Object.assign(p,{protocol:'vless',uuid:user});for(const k of ['flow','encryption'])if(q.get(k))p[k]=q.get(k);

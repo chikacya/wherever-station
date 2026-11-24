@@ -45,7 +45,7 @@ const state = {
       } else if (method === 'proxyConsole:getManagedTask') {
         const operation = prepared.get(params.operationId);
         const value = { ok: true, state: 'active', installed: true, binaryVersion: 'v3.0.0' };
-        if (operation.action === 'read-config') value.configuration = configuration;
+        if (operation.action === 'read-config') value.configuration = { ...configuration, version: state.managedInstances[0].version };
         if (operation.action === 'update') {
           savedKey = operation.params.changes.key;
           const uri = new URL(state.nodes[0].uri); uri.username = savedKey; state.nodes[0].uri = uri.toString(); state.revision++;
@@ -106,6 +106,20 @@ const state = {
     await dialog.getByLabel('目标版本',{exact:true}).selectOption('v3.2.0');await dialog.getByText('预发布版需配合兼容的客户端使用，可手动选择更新。',{exact:true}).waitFor();assert(!(await dialog.getByRole('button',{name:'切换此实例',exact:true}).isDisabled()));
     await page.screenshot({path:require('node:path').join(__dirname,'../artifacts/nowhere-preview-0759/manager.png')});
     await dialog.getByRole('button',{name:'关闭',exact:true}).last().click();state.managedInstances[0].version='v2.2.1';await page.reload();await page.locator('.nav').getByRole('button',{name:'部署节点',exact:true}).click();await page.getByText('已停止支持',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'版本与证书',exact:true}).count(),0);
+    state.managedInstances[0].version = 'v3.4.0';
+    await page.reload();
+    await page.locator('.nav').getByRole('button', { name: '部署节点', exact: true }).click();
+    await page.getByRole('button', { name: '编辑运行配置', exact: true }).click();
+    dialog = page.locator('dialog[open]');
+    const cipher = dialog.getByLabel(/^Morph 加密算法/);
+    assert.equal(await cipher.inputValue(), 'chacha');
+    assert(await cipher.isVisible(), 'cipher selection is hidden in advanced settings');
+    await cipher.selectOption('aes');
+    const morph = dialog.locator('label').filter({ has: page.getByText('Morph', { exact: true }) }).locator('select');
+    await morph.selectOption('0');
+    assert.equal(await cipher.count(), 0);
+    await morph.selectOption('1');
+    assert.equal(await cipher.inputValue(), 'chacha');
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ ok: true, previewSelectable:true,stableDefault:true,unadaptedPreviewBlocked:true,NW3KeyRotation: true, NW2ReadOnlyRecord:true, explicitGeneration: true, savePublishesLink: true, generationBoundaryPreserved: true, noAutomaticUpgrade: true }));
   } finally { await browser.close(); }

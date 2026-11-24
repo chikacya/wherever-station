@@ -68,3 +68,15 @@ assert(planManagedNowhere({ ...v220Input, dial4: "auto" }).environment.includes(
 assert.equal(planManagedNowhere(v220Input).version,'v3.1.0');
 for (const n of [31,33,48,64,65]) assert.throws(() => planManagedNowhere({...v220Input,key:'a'.repeat(n)}),/32/);
 assert.throws(()=>planManagedNowhere({...v220Input,version:'v2.2.1'}),/NW3/);
+
+const aesInput = { id: "test-node-aes01", version: "v3.4.0", publicHost: "example.com",
+  port: 2078, key: "a".repeat(32), morph: 1, cipher: "aes", client: "both" };
+const aesPlan = planManagedNowhere(aesInput);
+assert(aesPlan.environment.includes('NOWHERE_CIPHER_VALUE="aes"'));
+assert(aesPlan.environment.includes("cipher=aes"));
+for (const link of [...aesPlan.links.vector, ...aesPlan.links.anywhere]) {
+  assert.equal(new URL(link.uri).searchParams.get("cipher"), "aes");
+}
+assert(!planManagedNowhere({ ...aesInput, cipher: "chacha" }).clientLink.includes("cipher="));
+assert.throws(() => planManagedNowhere({ ...aesInput, version: "v3.2.0" }), /AES/);
+assert.throws(() => planManagedNowhere({ ...aesInput, morph: 0 }), /AES/);

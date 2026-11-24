@@ -72,3 +72,12 @@ test('built-in presets are available to existing subscriptions and match native 
  for(const preset of AJSON_PRESETS){const protocol=preset.protocol==='hysteria2'?'hysteria':preset.protocol;const base={id:'n',name:'Test',server:'host',port:443,protocol,...({nowhere:{key:'a'.repeat(32)},vless:{uuid:'u'},hysteria:{password:'p'},anytls:{password:'p'},sudoku:{key:'k'},trojan:{password:'p'}}[protocol])};assert.doesNotThrow(()=>validateNative(merge(base,preset.settings)),preset.name);assert(presetsFor(preset.protocol).includes(preset));}
  assert.equal(presetsFor('ss').length,0);assert.equal(presetsFor('hy2')[0].protocol,'hysteria2');
 });
+
+test('Nowhere Morph cipher survives native and pinned AJSON export',()=>{
+ const {ajsonProxy}=require('../tools/anywhere-ajson');
+ const uri='nowhere://'+'a'.repeat(32)+'@test.example:2078?morph=1&cipher=aes';
+ const node={id:'aes',name:'AES',uri};
+ assert.equal(ajsonProxy(node,cleanAjsonSettings()).cipher,'aes');
+ const pinned=uri+'&pin='+'b'.repeat(64);
+ assert.equal(ajsonProxy({...node,uri:pinned},cleanAjsonSettings()).link,pinned);
+});

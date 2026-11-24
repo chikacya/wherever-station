@@ -353,6 +353,7 @@ function cleanState(input) {
     vectorSocks: cleanText(item && item.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(item && item.vectorSni, 253) || "none",
     vectorPin: cleanText(item && item.vectorPin, 64) || "none", vectorMux: Number(item && item.vectorMux) === 1 ? 1 : 0,
     morph: Number(item && item.morph) === 1 ? 1 : 0,
+    cipher: item?.cipher === "aes" ? "aes" : "chacha",
     transportMemoryProfile: ["memory", "balanced", "throughput"].includes(item && item.transportMemoryProfile) ? item.transportMemoryProfile : "throughput",
     certificateMode: ["ephemeral", "managed", "existing"].includes(item && item.certificateMode) ? item.certificateMode : Number(item && item.tls) === 2 ? "existing" : "ephemeral",
     certificatePath: cleanText(item && item.certificatePath, 512), privateKeyPath: cleanText(item && item.privateKeyPath, 512),
@@ -789,7 +790,9 @@ function parseNode(node) {
     if (!/^[0-9a-f]{32}$/.test(decodedUser)) throw new Error('NW3 共享密钥必须为 32 字符小写十六进制');
     const net=query('net','tcp');if(!['tcp','udp'].includes(net))throw new Error('NW3 net 仅支持 tcp 或 udp');
     if (!url.hostname || !Number(url.port)) throw new Error('Nowhere 链接缺少地址或端口');
-    return {...node,key:decodedUser,host:url.hostname.replace(/^\[|\]$/g,''),port:Number(url.port),net,sni:query('sni'),alpn:query('alpn')};
+    const cipher = query("cipher", "chacha");
+    if (!["chacha", "aes"].includes(cipher) || (cipher === "aes" && query("morph") === "0")) throw new Error("Nowhere Morph 算法无效");
+    return {...node,cipher,key:decodedUser,host:url.hostname.replace(/^\[|\]$/g,''),port:Number(url.port),net,sni:query('sni'),alpn:query('alpn')};
   }
   if (node.protocol === "ss") { let credentials = url.password ? `${decodedUser}:${decodeURIComponent(url.password)}` : decodedUser; if (!url.password) { try { let raw = credentials.replace(/-/g, "+").replace(/_/g, "/"); raw += "=".repeat((4 - raw.length % 4) % 4); const decoded = Buffer.from(raw, "base64").toString("utf8"); if (decoded.includes(":")) credentials = decoded; } catch (_) {} } const split = credentials.indexOf(":"); if (split < 1) throw new Error("Shadowsocks 链接缺少加密方式或密码"); return { ...node, host: url.hostname.replace(/^\[|\]$/g, ""), port: Number(url.port), cipher: credentials.slice(0, split), password: credentials.slice(split + 1) }; }
   if (node.protocol === "trojan") return { ...node, host: url.hostname.replace(/^\[|\]$/g, ""), port: Number(url.port), password: decodedUser, transport: query("type", "tcp"), sni: query("sni") || query("peer"), insecure: query("allowInsecure") === "1" || query("insecure") === "1" };
@@ -1432,7 +1435,7 @@ function parseExistingServiceDiscovery(params) {
   return result;
 }
 function newManagedNowhereValues() {
-  return { id: `nw-${randomId()}`, key: crypto.randomBytes(16).toString("hex"), version: "v3.1.0", role: "portal", out: "direct", port: 2077, tcpPort: 2077, udpPort: 2077, tcpCarrier: "tcp", udpCarrier: "udp", morph: 1, transportMemoryProfile: "throughput" };
+  return { id: `nw-${randomId()}`, key: crypto.randomBytes(16).toString("hex"), version: compatibilityCatalog().adapters[0].automaticVersion, role: "portal", out: "direct", port: 2077, tcpPort: 2077, udpPort: 2077, tcpCarrier: "tcp", udpCarrier: "udp", morph: 1, transportMemoryProfile: "throughput" };
 }
 function managedNowherePorts(value) {
   if (value?.role === "egress") return [];
@@ -1485,7 +1488,7 @@ function createManagedNowhereDraft(params) {
   const nodeId = plan.role === "egress" ? "" : randomId(); const now = new Date().toISOString();
   const certificate = input.certificateAssetId ? { assetId: cleanText(input.certificateAssetId, 64), selfSigned: input.certificateSelfSigned === true, fingerprintSha256: cleanText(input.certificateFingerprintSha256, 64), publicKeySha256: cleanText(input.certificatePublicKeySha256, 64), expiresAt: cleanIsoDate(input.certificateExpiresAt) } : null;
   if (plan.role !== "egress") state.nodes.push({ id: nodeId, name: plan.name, protocol: "nowhere", machineId, uri: plan.links.anywhere[0].uri, enabled: true, tags: ["托管", "Nowhere"], source: "manual", sourceId: "", certificate });
-  state.managedInstances.push({ id: plan.id, kind: "nowhere", name: plan.name, machineId, nodeId, status: "draft", role: plan.role, out: plan.out, sharedKey: plan.role === "egress" ? input.key : "", version: plan.version, publicHost: plan.summary.publicHost, listenHost: input.listenHost === undefined ? "127.0.0.1" : cleanText(input.listenHost, 253), port: plan.summary.port, tcpPort: plan.summary.tcpPort, udpPort: plan.summary.udpPort, tcpCarrier: plan.summary.tcpCarrier, udpCarrier: plan.summary.udpCarrier, client: plan.summary.client, network: plan.summary.network, tls: plan.summary.tls, alpn: plan.summary.alpn, rate: plan.summary.rate, etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", dial4: plan.summary.dial4, dial6: plan.summary.dial6, socks: cleanText(input.socks, 512) || "none", log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s", vectorSocks: cleanText(input.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(input.vectorSni, 253) || "none", vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph, transportMemoryProfile: plan.summary.transportMemoryProfile, certificateId: certificate?.assetId || "", certificateMode: plan.certificateMode, certificatePath: plan.certificatePath, privateKeyPath: plan.privateKeyPath, certificateHost: plan.certificateHost, certificateDays: plan.certificateDays, extensionEnvironment: cleanNowhereExtensions(input.extensionEnvironment), binarySource: input.binarySource === "copy" ? "copy" : "download", createdAt: now, updatedAt: now, lastError: "", lastOperationId: "" });
+  state.managedInstances.push({ id: plan.id, kind: "nowhere", name: plan.name, machineId, nodeId, status: "draft", role: plan.role, out: plan.out, sharedKey: plan.role === "egress" ? input.key : "", version: plan.version, publicHost: plan.summary.publicHost, listenHost: input.listenHost === undefined ? "127.0.0.1" : cleanText(input.listenHost, 253), port: plan.summary.port, tcpPort: plan.summary.tcpPort, udpPort: plan.summary.udpPort, tcpCarrier: plan.summary.tcpCarrier, udpCarrier: plan.summary.udpCarrier, client: plan.summary.client, network: plan.summary.network, tls: plan.summary.tls, alpn: plan.summary.alpn, rate: plan.summary.rate, etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", dial4: plan.summary.dial4, dial6: plan.summary.dial6, socks: cleanText(input.socks, 512) || "none", log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s", vectorSocks: cleanText(input.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(input.vectorSni, 253) || "none", vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph, cipher: plan.summary.cipher, transportMemoryProfile: plan.summary.transportMemoryProfile, certificateId: certificate?.assetId || "", certificateMode: plan.certificateMode, certificatePath: plan.certificatePath, privateKeyPath: plan.privateKeyPath, certificateHost: plan.certificateHost, certificateDays: plan.certificateDays, extensionEnvironment: cleanNowhereExtensions(input.extensionEnvironment), binarySource: input.binarySource === "copy" ? "copy" : "download", createdAt: now, updatedAt: now, lastError: "", lastOperationId: "" });
   state.revision += 1; writeState(cleanState(state));
   return { state: readState(), instanceId: plan.id, plan: publicManagedNowherePlan(plan) };
 }
@@ -1538,7 +1541,7 @@ function managedNowhereMetadata(input, plan) {
     etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", dial4: plan.summary.dial4, dial6: plan.summary.dial6, socks: cleanText(input.socks, 512) || "none",
     log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s",
     vectorSocks: cleanText(input.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(input.vectorSni, 253) || "none",
-    vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph,
+    vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph, cipher: plan.summary.cipher,
     transportMemoryProfile: plan.summary.transportMemoryProfile, certificateMode: plan.certificateMode,
     certificatePath: plan.certificatePath, privateKeyPath: plan.privateKeyPath, certificateHost: plan.certificateHost,
     certificateDays: plan.certificateDays, extensionEnvironment: cleanNowhereExtensions(input.extensionEnvironment),
@@ -1569,7 +1572,7 @@ function prepareManagedNowhereAction(params) {
     targetVersion = cleanText(params && params.targetVersion, 64);
     const capabilities = nowhereCapabilities(targetVersion);
     if (!capabilities.verified) throw new Error("请选择已通过适配验证的 Nowhere 版本");
-    if (requiresPreludeConfirmation(instance, targetVersion) && params.preludeClientsReady !== true) throw new Error("请先确认 Morph TCP 客户端支持认证 Prelude（原生 Vector ≥3.1.0），再升级到 3.2.0");
+    if (requiresPreludeConfirmation(instance, targetVersion) && params.preludeClientsReady !== true) throw new Error("请先确认 Morph TCP 客户端支持认证 Prelude（原生 Vector ≥3.1.0）后再升级");
     if (capabilities.protocolGeneration !== nowhereCapabilities(instance.version).protocolGeneration) throw new Error("不支持跨主版本直接替换二进制");
     planManagedNowhere({ ...managedNowherePlanInput(instance, node), version: targetVersion, log: capabilities.eventLog ? instance.log : instance.log === "event" ? "info" : instance.log, extensionEnvironment: Object.fromEntries(Object.entries(instance.extensionEnvironment).filter(([key]) => capabilities.eventLog || key !== "NOW_REPORT_INTERVAL")) });
     if (capabilities.version === nowhereCapabilities(instance.version).version) throw new Error("实例已经是所选版本");
@@ -1639,6 +1642,9 @@ function prepareManagedNowhereUpdate(params) {
   input.id = instance.id;
   input.name = cleanText(changes.name, 160) || instance.name;
   if (input.role !== instance.role) throw new Error("请新建独立实例切换角色");
+  if (input.cipher !== read.completedResult.configuration.cipher && params.cipherPeersReady !== true) {
+    throw new Error("请确认客户端或对端支持所选 Morph 加密算法后再切换");
+  }
   input.machineId = instance.machineId;
   input = certificateDeploymentInput(state, input, machine.id, "nowhere");
   const plan = planManagedNowhere(input);
@@ -1748,8 +1754,7 @@ function recordManagedNowhereResult(params) {
           delete instance.extensionEnvironment.NOW_REPORT_INTERVAL;
         }
         instance.status = result.state === "active" ? "running" : "stopped";
-        const linkedNode = state.nodes.find((item) => item.id === instance.nodeId);
-        if (linkedNode) linkedNode.uri = planManagedNowhere(managedNowherePlanInput(instance, linkedNode)).links.anywhere[0].uri;
+        // A binary upgrade preserves the URI and its certificate and Morph settings.
       }
       else if (pending.action === "status") instance.status = result.state === "active" ? "running" : result.installed === false ? "failed" : "stopped";
       instance.lastError = "";
@@ -2048,7 +2053,7 @@ function prepareNodeConnectivityCheck(params) {
   let command; let expectedIp = ""; try { const host = new URL(node.uri).hostname.replace(/^\[|\]$/g, ""); expectedIp = isIP(host) ? host : ""; } catch (_) {}
   if (node.protocol === "nowhere") { const nwInstance = state.managedInstances.find(item => item.nodeId === node.id); const share = new URL(node.uri);
     parseNode(node);if(nwInstance&&nowhereCapabilities(nwInstance.version).protocolGeneration!==3)throw new Error('仅支持 NW3 连接检查');
-    const nw3Input = nwInstance ? { ...managedNowherePlanInput(nwInstance, node), up: nwInstance.tcpPort ? "tcp" : "udp" } : { version: "v3.0.0", publicHost: share.hostname.replace(/^\[|\]$/g, ""), key: decodeURIComponent(share.username), tcpPort: share.searchParams.get("net") === "udp" ? 0 : Number(share.port), udpPort: share.searchParams.get("net") === "udp" ? Number(share.port) : 0, morph: Number(share.searchParams.get("morph") ?? 1), vectorPin: share.searchParams.get("pin") || node.certificate?.fingerprintSha256 || "none", vectorSni: share.searchParams.get("sni") || "none" };
+    const nw3Input = nwInstance ? { ...managedNowherePlanInput(nwInstance, node), up: nwInstance.tcpPort ? "tcp" : "udp" } : { version: share.searchParams.get("cipher") === "aes" ? "v3.4.0" : "v3.0.0", cipher: share.searchParams.get("cipher") || "chacha", publicHost: share.hostname.replace(/^\[|\]$/g, ""), key: decodeURIComponent(share.username), tcpPort: share.searchParams.get("net") === "udp" ? 0 : Number(share.port), udpPort: share.searchParams.get("net") === "udp" ? Number(share.port) : 0, morph: Number(share.searchParams.get("morph") ?? 1), vectorPin: share.searchParams.get("pin") || node.certificate?.fingerprintSha256 || "none", vectorSni: share.searchParams.get("sni") || "none" };
     const url = new URL(buildVectorLink(nw3Input)); url.protocol = "vector:"; if (!url.searchParams.has("sni")) url.searchParams.set("sni", "none"); if (!url.searchParams.has("pin")) url.searchParams.set("pin", state.managedInstances.find(item => item.nodeId === node.id)?.observedCertificatePin || node.certificate?.fingerprintSha256 || "none"); url.hash = ""; command = buildConnectivityCommand({ kind: "vector", uri: url.toString(), minimumNowhereVersion: nwInstance?.version || "v3.2.0", expectedIp }); }
   else { const outbound = singBoxOutbound(node); if (!outbound) throw new Error("该协议暂不支持自动连接检查"); command = buildConnectivityCommand({ kind: "sing-box", outbound, expectedIp }); }
   return { operationId: requestOperationId(params), nodeId: node.id, sourceMachineId: source.id, clientId: source.monitorClientId, command };

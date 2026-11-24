@@ -4,7 +4,7 @@ const state={machines:[{id:'host',name:'Test host',monitorClientId:'agent'}],man
  {id:'legacy',name:'Legacy',kind:'nowhere',version:'v2.1.0',status:'running',machineId:'host'},
  {id:'lts',name:'LTS',kind:'nowhere',version:'v2.2.1',status:'stopped',machineId:'host'},
  {id:'nw3',name:'NW3',kind:'nowhere',version:'v3.1.0',morph:1,tcpPort:2077,status:'running',machineId:'host'},
- {id:'future',name:'Future',kind:'nowhere',version:'v3.3.0',status:'running',machineId:'host'},
+ {id:'future',name:'Future',kind:'nowhere',version:'v3.5.0',status:'running',machineId:'host'},
  {id:'draft',name:'Draft',kind:'nowhere',version:'v2.1.0',status:'draft',machineId:'host'},
  {id:'other',kind:'sing-box',version:'1.13.18',status:'running',machineId:'host'},
 ]};
@@ -21,15 +21,15 @@ console.log('Nowhere batch targets, skips, slow jobs and failure progress passed
 
 assert.equal(summarizeNowhereBatch({...batch,createdAt:new Date(Date.now()-180000).toISOString(),rows:[{phase:'queued'}]},()=>null).done,true);
 
-assert.equal(planNowhereBatch(state,[],true)[2].phase,'skipped');
-assert.equal(planNowhereBatch(state)[2].targetVersion,'v3.1.0');
+assert.equal(planNowhereBatch(state,[],true)[2].phase,'queued');
+assert.equal(planNowhereBatch(state)[2].targetVersion,'v3.4.0');
 const {nowhereBatchVersions}=require('../tools/nowhere-batch');
-assert.deepEqual(nowhereBatchVersions(),[{version:'v3.2.0',prerelease:true},{version:'v3.1.0',prerelease:false}]);
+assert.deepEqual(nowhereBatchVersions(),[{version:'v3.4.0',prerelease:false},{version:'v3.2.0',prerelease:false}]);
 assert.throws(()=>planNowhereBatch(state,[],true,'v3.0.1'),/最新两个/);
 assert.throws(()=>planNowhereBatch(state,[],true,'v2.2.1'),/最新两个/);
 assert.equal(planNowhereBatch(state,[],false,'v3.2.0')[2].phase,'skipped');
 assert(planNowhereBatch(state,[],false,'v3.2.0')[2].reason.includes('Prelude'));
 assert.equal(planNowhereBatch(state,[],true,'v3.2.0')[2].phase,'queued');
 assert.equal(planNowhereBatch(state,[],true,'v3.2.0')[2].targetVersion,'v3.2.0');
-const newer={...state,managedInstances:[{...state.managedInstances[2],version:'v3.2.0'}]};
-assert(planNowhereBatch(newer,[],true,'v3.1.0')[0].reason.includes('不降级'));
+const newer={...state,managedInstances:[{...state.managedInstances[2],version:'v3.4.0'}]};
+assert(planNowhereBatch(newer,[],true,'v3.2.0')[0].reason.includes('不降级'));

@@ -85,6 +85,14 @@ function validateAbsoluteFile(value, label) {
   return result;
 }
 
+function resolveMorphCipher(input, morph) {
+  const cipher = oneOf(input.cipher, ["chacha", "aes"], "chacha", "Morph cipher");
+  if (cipher === "aes" && (!morph || !nowhereCapabilities(input.version).morphCipher)) {
+    throw new Error("AES-128-CTR 需要启用 Morph 并使用支持 AES 的 Nowhere 内核");
+  }
+  return cipher;
+}
+
 function buildNW3ClientLink(input, scheme = "vector") {
   const key = text(input.key, "shared key");
   if (!/^[0-9a-f]{32}$/.test(key)) throw new Error("NW3 共享密钥必须为 32 字符小写十六进制");
@@ -92,7 +100,10 @@ function buildNW3ClientLink(input, scheme = "vector") {
   const port = optionalPort(carrier === "tcp" ? input.tcpPort : input.udpPort, "carrier port");
   if (!port) throw new Error("Selected NW3 carrier is not available");
   const host = hostForUrl(input.publicHost);
-  const query = new URLSearchParams({ morph: String(input.morph ?? 1) });
+  const morph = integer(input.morph ?? 1, "morph", 0, 1);
+  const cipher = resolveMorphCipher(input, morph);
+  const query = new URLSearchParams({ morph: String(morph) });
+  if (cipher === "aes") query.set("cipher", cipher);
   if (scheme === "nowhere") query.set("net", carrier);
   else query.set("in", text(input.vectorSocks || "127.0.0.1:1080", "Vector ingress"));
   if (input.vectorSni && input.vectorSni !== "none") query.set("sni", text(input.vectorSni, "server name", 253));
@@ -175,6 +186,7 @@ function planManagedNowhere(input = {}) {
   if ( role === "portal" && out === "egress" && (!udpPort || dial !== "auto" || dial4 || dial6)) throw new Error("Egress 出口要求 QUIC listener，且不能指定源地址");
   if (role === "egress" && (!udpPort || tcpPort)) throw new Error("Egress 必须仅选择 QUIC carrier");
   const morph = integer(input.morph ?? 1, "morph", 0, 1);
+  const cipher = resolveMorphCipher({ ...input, version }, morph);
   const transportMemoryProfile = oneOf(input.transportMemoryProfile, ["memory", "balanced", "throughput"], "throughput", "transport memory profile");
   const directory = path.posix.join(INSTANCE_ROOT, id);
   const binaryPath = path.posix.join(directory, "bin", "nowhere");
@@ -191,6 +203,7 @@ function planManagedNowhere(input = {}) {
   const certificateDays = integer(input.certificateDays ?? 825, "certificate validity", 1, 3650);
   const query = new URLSearchParams({ tls: String(tls) });
   query.set("morph", String(morph));
+  if (cipher === "aes") query.set("cipher", cipher);
   if (dial4) query.set("dial4", dial4);
   if (dial6) query.set("dial6", dial6);
   if (!dial4 && !dial6 && dial !== "auto") query.set("dial", dial);
@@ -221,7 +234,7 @@ function planManagedNowhere(input = {}) {
     NOWHERE_TELEMETRY_INTERVAL_VALUE: telemetryInterval, NOW_TELEMETRY_INTERVAL: telemetryInterval,
     NOWHERE_VECTOR_SOCKS_VALUE: vectorSocks, NOWHERE_VECTOR_SNI_VALUE: vectorSni,
     NOWHERE_VECTOR_PIN_VALUE: vectorPin, NOWHERE_VECTOR_MUX_VALUE: vectorMux,
-    NOWHERE_MORPH_VALUE: morph, NOWHERE_TRANSPORT_MEMORY_PROFILE_VALUE: transportMemoryProfile,
+    NOWHERE_MORPH_VALUE: morph, NOWHERE_CIPHER_VALUE: cipher, NOWHERE_TRANSPORT_MEMORY_PROFILE_VALUE: transportMemoryProfile,
   };
   const prelude = input.morphPrelude || input.extensionEnvironment?.NOW_MORPH_TCP_PRELUDE || (capabilities.fadePrelude ? 'fade' : 'full8');
   oneOf(prelude, capabilities.fadePrelude ? ['fade', 'full8', 'low7'] : ['full8', 'low7'], 'full8', 'Morph prelude');
@@ -239,7 +252,7 @@ function planManagedNowhere(input = {}) {
   }
   const environment = Object.entries(environmentValues).map(([keyName, value]) => `${keyName}=${quoteEnvironment(value)}`).join("\n") + "\n";
   const unit = `[Unit]\nDescription=Wherever Station managed Nowhere ${id}\nDocumentation=https://github.com/NodePassProject/Nowhere\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nEnvironmentFile=${environmentPath}\nExecStart=${binaryPath} \${NOWHERE_PORTAL}\nRestart=on-failure\nRestartSec=3\nLimitNOFILE=1048576\nUMask=0077\nNoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=full\nProtectHome=read-only\n\n[Install]\nWantedBy=multi-user.target\n`;
-  const linkInput = { publicHost, port, tcpPort, udpPort, tcpCarrier, udpCarrier, key, version, alpn, vectorMux, vectorSni, vectorPin, vectorSocks, morph, name };
+  const linkInput = { publicHost, port, tcpPort, udpPort, tcpCarrier, udpCarrier, key, version, alpn, vectorMux, vectorSni, vectorPin, vectorSocks, morph, cipher, name };
   const carriers = role === "egress" ? [] : [tcpPort ? ["tcp", "tcp"] : null, udpPort ? ["udp", "udp"] : null].filter(Boolean);
   const links = {
     anywhere: client === "vector" ? [] : carriers.map(([up, down]) => ({ up, down, uri: buildAnywhereLink({ ...linkInput, up, down }) })),
@@ -250,7 +263,7 @@ function planManagedNowhere(input = {}) {
     unitName, unitPath, environment, unit, links, certificateMode, certificatePath,
     privateKeyPath, certificateHost, certificateDays,
     clientLink: links.anywhere[0]?.uri || links.vector[0]?.uri || "",
-    summary: { role, out, name, publicHost, listenHost: listenHost || "全部地址", port, tcpPort, udpPort, tcpCarrier, udpCarrier, client, network, tls, version, protocolGeneration: capabilities.protocolGeneration, wireProtocol: capabilities.wireProtocol, morphWireGeneration: capabilities.morphWireGeneration, alpn, morph, transportMemoryProfile, rate, etar, dial4, dial6, log, unitName, certificateMode, certificateHost, certificateDays },
+    summary: { role, out, name, publicHost, listenHost: listenHost || "全部地址", port, tcpPort, udpPort, tcpCarrier, udpCarrier, client, network, tls, version, protocolGeneration: capabilities.protocolGeneration, wireProtocol: capabilities.wireProtocol, morphWireGeneration: capabilities.morphWireGeneration, alpn, morph, cipher, transportMemoryProfile, rate, etar, dial4, dial6, log, unitName, certificateMode, certificateHost, certificateDays },
     safeguards: ["create-new-directory", "copy-or-download-private-binary", "managed-unit-prefix-only", "never-touch-existing-nowhere-service"],
   };
 }

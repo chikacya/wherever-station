@@ -66,7 +66,7 @@ state = methods.get("proxyConsole:recordCertificateResult")({ operationId: certI
 assert.equal(state.certificates.find((item) => item.id === certificateAsset.id).status, "warning");
 const managedDefaults = methods.get("proxyConsole:newManagedNowhereValues")();
 assert(/^nw-[a-f0-9]{24}$/.test(managedDefaults.id)); assert(/^[a-f0-9]{32}$/.test(managedDefaults.key));
-assert.equal(managedDefaults.version, "v3.1.0");
+assert.equal(managedDefaults.version, "v3.4.0");
 const managedInput = { ...managedDefaults, name: "托管 Nowhere", machineId, publicHost: "managed.example.com", listenHost: "127.0.0.1", port: 52077, client: "anywhere", network: "mix", tls: 1, morph: 1 };
 const nowhereCertificatePreview = methods.get("proxyConsole:previewManagedNowhere")({ input: { ...managedInput, certificateAssetId: certificateAsset.id } });
 assert.equal(nowhereCertificatePreview.certificate.mode, "existing");
@@ -431,14 +431,14 @@ let batchState=methods.get('proxyConsole:createManagedNowhereDraft')({input:batc
 const batchInstance=batchState.managedInstances.find(i=>i.id===batchFixture.id);
 batchInstance.version='v3.0.0';batchInstance.status='stopped';sandbox.writeState(batchState);
 const batchPreview=methods.get('proxyConsole:previewNowhereBatch')();
-assert.equal(batchPreview.rows.find(r=>r.instanceId===batchFixture.id).targetVersion,'v3.1.0');
-assert.equal(batchPreview.versions.length,2);assert.equal(batchPreview.targetVersion,'v3.1.0');
+assert.equal(batchPreview.rows.find(r=>r.instanceId===batchFixture.id).targetVersion,'v3.4.0');
+assert.equal(batchPreview.versions.length,2);assert.equal(batchPreview.targetVersion,'v3.4.0');
 assert.equal(methods.get('proxyConsole:previewNowhereBatch')({targetVersion:'v3.2.0',preludeClientsReady:true}).targetVersion,'v3.2.0');
 assert.throws(()=>methods.get('proxyConsole:startNowhereBatch')({requestId:require('crypto').randomUUID(),targetVersion:'v3.0.0'}),/最新两个/);
 const batchId=require('crypto').randomUUID();
 const preparedBatch=methods.get('proxyConsole:startNowhereBatch')({requestId:batchId});
 assert.equal(preparedBatch.specs.filter(s=>s.instanceId===batchFixture.id).length,1);
-assert.equal(preparedBatch.batch.done,false);assert.equal(preparedBatch.batch.targetVersion,'v3.1.0');
+assert.equal(preparedBatch.batch.done,false);assert.equal(preparedBatch.batch.targetVersion,'v3.4.0');
 assert.equal(methods.get('proxyConsole:getNowhereBatch')({batchId}).id,batchId);
 assert.throws(()=>methods.get('proxyConsole:startNowhereBatch')({requestId:require('crypto').randomUUID()}),/正在进行/);
 const batchSpec=preparedBatch.specs.find(s=>s.instanceId===batchFixture.id);

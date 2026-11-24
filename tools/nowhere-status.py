@@ -79,7 +79,10 @@ def certificate_details(values, state):
         if version >= (3, 0, 0):
             endpoint_host = '[' + host + ']' if ':' in host else host
             uri = 'nowhere://' + quote(values.get('NOWHERE_KEY_VALUE', ''), safe='') + '@' + endpoint_host + ':' + str(port)
-            uri += '?' + urlencode({'morph': values.get('NOWHERE_MORPH_VALUE', '0')})
+            options = {'morph': values.get('NOWHERE_MORPH_VALUE', '0')}
+            if values.get('NOWHERE_CIPHER_VALUE') == 'aes':
+                options['cipher'] = 'aes'
+            uri += '?' + urlencode(options)
             inspected = run([P['binaryPath'], 'fingerprint', uri], 10)
             pin = inspected.stdout.strip()
             if inspected.returncode == 0 and re.fullmatch(r'[0-9a-f]{64}', pin):

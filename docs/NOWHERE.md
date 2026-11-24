@@ -2,7 +2,7 @@
 
 [简体中文](NOWHERE.zh-CN.md)
 
-Wherever Station manages Nowhere without requiring `nowhere-sh`. It owns installation, configuration, service lifecycle, telemetry, certificates, and share URI generation for instances created through the plugin. Only NW3 is supported; new instances default to stable v3.1.0. NW2 adapters, management and migration have been removed; historical records and backups are preserved.
+Wherever Station manages Nowhere without requiring `nowhere-sh`. It owns installation, configuration, service lifecycle, telemetry, certificates, and share URI generation for instances created through the plugin. Only NW3 is supported; new instances default to stable v3.4.0. NW2 adapters, management and migration have been removed; historical records and backups are preserved.
 
 ## Continuous compatibility
 
@@ -66,11 +66,13 @@ Keep the page open during submission. Once submitted, Agent tasks continue indep
 
 Advanced settings expose fade/full8/low7 generation policies, independently of authentication capability. Existing explicit settings remain intact. Obsolete NOW_UDP_DATA_BUF_SIZE is removed for 3.2.0. Connectivity probes report an outdated native client separately from a server failure.
 
-As checked on 2026-10-28, upstream v3.2.0 is marked prerelease. Default installation and batch updates target stable v3.1.0. Verified v3.2.0 support remains available for deliberate manual selection and does not become an automatic target.
+The default is v3.4.0, and v3.2.0 remains a verified stable target. v3.3.0 is skipped because its Linux x86-64 GNU build may crash on CPUs without AVX.
+
+With Morph enabled, the main form offers ChaCha20 (the default) and AES-128-CTR. Both peers must select the same cipher, and AES requires a compatible runtime. AES share links include `cipher=aes`. Confirm client support before switching a deployed instance and refresh the subscription after saving.
 
 
 ## Prereleases
 
-NW3 prereleases remain visible with an explicit label. Adapted and verified builds can be manually selected for creation or instance upgrades, including verified v3.2.0 in the offline list. Stable defaults still target v3.1.0; batch updates can explicitly select a prerelease from the two latest adapted releases; an existing higher version is not preselected for downgrade. Unadapted builds, including rc/beta tags, are listed but disabled pending adaptation. NW2 management and migration are no longer supported. As checked on 2026-10-29, upstream v3.2.0 is still a prerelease and its authenticated Morph TCP Prelude compatibility checks remain enforced.
+Verified prereleases are labelled and may be selected manually. Batch updates offer the two latest verified versions and default to a stable version. Binary upgrades preserve the current Morph cipher and subscription link.
 
 Batch targets are validated server-side and persisted with the batch. Running batches cannot change target; reloads retain it. Instances already at or above the selected version are skipped, so batch updates never downgrade them.

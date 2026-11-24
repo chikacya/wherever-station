@@ -516,6 +516,9 @@ def discover_nowhere(unit, candidates, reviews):
     name = f"{MACHINE_NAME} Nowhere"
     endpoint = f"{url_host(host)}:{tcp_port or udp_port}"
     params = {"net": "tcp" if tcp_port else "udp", "morph": values.get("NOWHERE_MORPH_VALUE") or portal_query.get("morph") or "1"}
+    cipher = portal_query.get("cipher") or values.get("NOWHERE_CIPHER_VALUE") or "chacha"
+    if cipher != "chacha":
+        params["cipher"] = cipher
     uri = f"nowhere://{quote(key)}@{endpoint}?{query_string(params)}#{quote(name)}"
     tls_mode = values.get("NOWHERE_TLS_VALUE") or portal_query.get("tls") or "1"
     certificate = None
@@ -534,7 +537,7 @@ def discover_nowhere(unit, candidates, reviews):
         "NOWHERE_CERTIFICATE_HOST_VALUE", "NOWHERE_CERTIFICATE_DAYS_VALUE", "NOWHERE_DIAL_VALUE", "NOWHERE_DIAL4_VALUE", "NOWHERE_DIAL6_VALUE",
         "NOWHERE_SOCKS_VALUE", "NOWHERE_LOG_VALUE", "NOWHERE_TELEMETRY_INTERVAL_VALUE",
         "NOWHERE_VECTOR_SOCKS_VALUE", "NOWHERE_VECTOR_SNI_VALUE", "NOWHERE_VECTOR_PIN_VALUE",
-        "NOWHERE_VECTOR_MUX_VALUE", "NOWHERE_MORPH_VALUE", "NOWHERE_TRANSPORT_MEMORY_PROFILE_VALUE",
+        "NOWHERE_VECTOR_MUX_VALUE", "NOWHERE_MORPH_VALUE", "NOWHERE_CIPHER_VALUE", "NOWHERE_TRANSPORT_MEMORY_PROFILE_VALUE",
         "NOW_TELEMETRY_INTERVAL", "NOW_TRANSPORT_MEMORY_PROFILE",
     }
     source_binary = os.path.realpath(args_binary) if args_binary and os.path.isfile(args_binary) else ""
@@ -561,6 +564,7 @@ def discover_nowhere(unit, candidates, reviews):
         "vectorPin": values.get("NOWHERE_VECTOR_PIN_VALUE") or "none",
         "vectorMux": integer(values.get("NOWHERE_VECTOR_MUX_VALUE")),
         "morph": integer(values.get("NOWHERE_MORPH_VALUE") or portal_query.get("morph") or ("1" if major_version == 3 else "0")),
+        "cipher": cipher,
         "transportMemoryProfile": values.get("NOWHERE_TRANSPORT_MEMORY_PROFILE_VALUE") or values.get("NOW_TRANSPORT_MEMORY_PROFILE") or "throughput",
         "extensionEnvironment": {key_name: value for key_name, value in values.items() if key_name.startswith(("NOWHERE_", "NOW_")) and key_name not in managed_names},
     }

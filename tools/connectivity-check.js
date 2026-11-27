@@ -11,7 +11,8 @@ function buildConnectivityCommand(input = {}) {
   const vector = input.kind === "vector" ? new URL(input.uri) : null;
   const requiresPrelude = vector && nowhereCapabilities(input.minimumNowhereVersion).requiresAuthenticatedPrelude
     && vector.searchParams.get("morph") !== "0" && !/\/udp[46]?:/.test(vector.pathname);
-  const minimumVersion = vector?.searchParams.get("cipher") === "aes" ? "3.4.0" : requiresPrelude ? "3.1.0" : "";
+  const usesCore = vector?.searchParams.get("grade") === "core";
+  const minimumVersion = usesCore ? "3.5.0" : vector?.searchParams.get("cipher") === "aes" ? "3.4.0" : requiresPrelude ? "3.1.0" : "";
   const payload = {
     kind: input.kind,
     outbound: input.kind === "sing-box" ? input.outbound : null,
@@ -53,7 +54,8 @@ try:
    checked=run([binary,"--version"],5); match=re.search(r"(?:v|version\s+)?(\d+)\.(\d+)\.(\d+)",checked.stdout+checked.stderr)
    required=tuple(map(int,P["minimumNowhereVersion"].split(".")))
    if not match or tuple(map(int,match.groups()))<required:
-    raise RuntimeError("client-cipher-upgrade-required" if required >= (3,4,0) else "client-prelude-upgrade-required")
+    reason = "client-grade-upgrade-required" if required >= (3,5,0) else "client-cipher-upgrade-required" if required >= (3,4,0) else "client-prelude-upgrade-required"
+    raise RuntimeError(reason)
   uri=urllib.parse.urlsplit(P["uri"]); query=dict(urllib.parse.parse_qsl(uri.query,keep_blank_values=True)); query["in" if "in" in query else "socks"]="127.0.0.1:"+str(port)
   vector=urllib.parse.urlunsplit((uri.scheme,uri.netloc,uri.path,urllib.parse.urlencode(query),uri.fragment))
   process=subprocess.Popen([binary,vector],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -75,7 +77,7 @@ try:
 except subprocess.TimeoutExpired: emit({"ok":False,"error":"probe-timeout"})
 except Exception as exc:
  error=str(exc)
- if error not in ("client-cipher-upgrade-required","client-prelude-upgrade-required","client-binary-not-found","client-config-rejected","client-start-failed","client-start-timeout","proxy-https-failed","exit-ip-missing"): error="probe-failed"
+ if error not in ("client-grade-upgrade-required","client-cipher-upgrade-required","client-prelude-upgrade-required","client-binary-not-found","client-config-rejected","client-start-failed","client-start-timeout","proxy-https-failed","exit-ip-missing"): error="probe-failed"
  emit({"ok":False,"error":error})
 finally:
  if process is not None and process.poll() is None:

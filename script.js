@@ -16,7 +16,7 @@ const { managedSingBoxInput } = require(path.join(__dirname, "tools/managed-sing
 const { buildCertificateCommand, certificateId: newCertificateId, planCertificateAsset } = require(path.join(__dirname, "tools/certificate-manager"));
 const { operationStore } = require(path.join(__dirname, "tools/operation-store"));
 const { managedTaskTracker } = require(path.join(__dirname, "tools/managed-task-tracker"));
-const { decodeNowhereConfig } = require(path.join(__dirname, "tools/nowhere-config"));
+const { decodeNowhereConfig, parseNowhereMorph, anywhereNowhereUri } = require(path.join(__dirname, "tools/nowhere-config"));
 const { buildInstanceStatus, buildServiceStatus } = require(path.join(__dirname, "tools/instance-status"));
 const { buildConnectivityCommand, parseConnectivityOutput } = require(path.join(__dirname, "tools/connectivity-check"));
 const { createSuiProvider, normalizeSuiBaseUrl } = require(path.join(__dirname, "tools/provider-s-ui"));
@@ -59,7 +59,7 @@ const DEFAULT_DEPLOYMENT_PRESETS = Object.freeze([
 ]);
 const { planNowhereBatch, summarizeNowhereBatch, nowhereBatchVersions, resolveNowhereBatchVersion } = require(path.join(__dirname, "tools/nowhere-batch"));
 const NOWHERE_BATCHES = operationStore(path.join(__storageDir__, "nowhere-batches.json"));
-const { ajsonSupported, renderAjson, validateAjson, cleanAjsonSettings } = require(path.join(__dirname, "tools/anywhere-ajson"));
+const { ajsonSupported, renderAjson, validateAjson, cleanAjsonSettings, ajsonProxy } = require(path.join(__dirname, "tools/anywhere-ajson"));
 const { requiresPreludeConfirmation } = require(path.join(__dirname, "tools/nowhere-upgrade-policy"));
 const MANAGED_OPERATIONS = operationStore(path.join(__storageDir__, "nowhere-operations.json"));
 const MANAGED_SINGBOX_OPERATIONS = operationStore(path.join(__storageDir__, "singbox-operations.json"));
@@ -353,6 +353,7 @@ function cleanState(input) {
     vectorSocks: cleanText(item && item.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(item && item.vectorSni, 253) || "none",
     vectorPin: cleanText(item && item.vectorPin, 64) || "none", vectorMux: Number(item && item.vectorMux) === 1 ? 1 : 0,
     morph: Number(item && item.morph) === 1 ? 1 : 0,
+    grade: item?.grade === "core" ? "core" : "full",
     cipher: item?.cipher === "aes" ? "aes" : "chacha",
     transportMemoryProfile: ["memory", "balanced", "throughput"].includes(item && item.transportMemoryProfile) ? item.transportMemoryProfile : "throughput",
     certificateMode: ["ephemeral", "managed", "existing"].includes(item && item.certificateMode) ? item.certificateMode : Number(item && item.tls) === 2 ? "existing" : "ephemeral",
@@ -790,9 +791,10 @@ function parseNode(node) {
     if (!/^[0-9a-f]{32}$/.test(decodedUser)) throw new Error('NW3 共享密钥必须为 32 字符小写十六进制');
     const net=query('net','tcp');if(!['tcp','udp'].includes(net))throw new Error('NW3 net 仅支持 tcp 或 udp');
     if (!url.hostname || !Number(url.port)) throw new Error('Nowhere 链接缺少地址或端口');
+    const { morph, grade } = parseNowhereMorph(url.searchParams);
     const cipher = query("cipher", "chacha");
-    if (!["chacha", "aes"].includes(cipher) || (cipher === "aes" && query("morph") === "0")) throw new Error("Nowhere Morph 算法无效");
-    return {...node,cipher,key:decodedUser,host:url.hostname.replace(/^\[|\]$/g,''),port:Number(url.port),net,sni:query('sni'),alpn:query('alpn')};
+    if (!["chacha", "aes"].includes(cipher) || (cipher === "aes" && !morph)) throw new Error("Nowhere Morph 算法无效");
+    return {...node,morph,grade,cipher,key:decodedUser,host:url.hostname.replace(/^\[|\]$/g,''),port:Number(url.port),net,sni:query('sni'),alpn:query('alpn')};
   }
   if (node.protocol === "ss") { let credentials = url.password ? `${decodedUser}:${decodeURIComponent(url.password)}` : decodedUser; if (!url.password) { try { let raw = credentials.replace(/-/g, "+").replace(/_/g, "/"); raw += "=".repeat((4 - raw.length % 4) % 4); const decoded = Buffer.from(raw, "base64").toString("utf8"); if (decoded.includes(":")) credentials = decoded; } catch (_) {} } const split = credentials.indexOf(":"); if (split < 1) throw new Error("Shadowsocks 链接缺少加密方式或密码"); return { ...node, host: url.hostname.replace(/^\[|\]$/g, ""), port: Number(url.port), cipher: credentials.slice(0, split), password: credentials.slice(split + 1) }; }
   if (node.protocol === "trojan") return { ...node, host: url.hostname.replace(/^\[|\]$/g, ""), port: Number(url.port), password: decodedUser, transport: query("type", "tcp"), sni: query("sni") || query("peer"), insecure: query("allowInsecure") === "1" || query("insecure") === "1" };
@@ -844,7 +846,7 @@ function nodeFingerprint(node) {
       if (normalized.port) normalized.port = String(Number(normalized.port));
       return `vmess:${JSON.stringify(normalized)}`;
     }
-    const url = new URL(node.uri); url.hash = ""; url.hostname = url.hostname.toLowerCase();
+    const url = new URL(anywhereNowhereUri(node.uri)); url.hash = ""; url.hostname = url.hostname.toLowerCase();
     const entries = [...url.searchParams.entries()].sort(([leftKey, leftValue], [rightKey, rightValue]) => leftKey.localeCompare(rightKey) || leftValue.localeCompare(rightValue));
     url.search = "";
     for (const [key, value] of entries) url.searchParams.append(key, value);
@@ -1024,7 +1026,11 @@ function render(nodes, subscription, format) {
   }
   const raw = nodes.map((node) => node.uri).join("\n") + "\n";
   if (format === "raw") return { body: raw, type: "text/plain; charset=utf-8" };
-  if (["base64", "anywhere"].includes(format)) return { body: Buffer.from(raw, "utf8").toString("base64"), type: "text/plain; charset=utf-8" };
+  if (format === "anywhere") {
+    const links = nodes.map(node => anywhereNowhereUri(node.uri)).join("\n") + "\n";
+    return { body: Buffer.from(links, "utf8").toString("base64"), type: "text/plain; charset=utf-8" };
+  }
+  if (format === "base64") return { body: Buffer.from(raw, "utf8").toString("base64"), type: "text/plain; charset=utf-8" };
   if (format === "loon") return { body: renderLoon(nodes, subscription), type: "text/plain; charset=utf-8" };
   if (format === "mihomo") return { body: renderMihomo(nodes, subscription), type: "text/yaml; charset=utf-8" };
   if (format === "sing-box") return { body: renderSingBox(nodes, subscription), type: "application/json; charset=utf-8" };
@@ -1488,7 +1494,7 @@ function createManagedNowhereDraft(params) {
   const nodeId = plan.role === "egress" ? "" : randomId(); const now = new Date().toISOString();
   const certificate = input.certificateAssetId ? { assetId: cleanText(input.certificateAssetId, 64), selfSigned: input.certificateSelfSigned === true, fingerprintSha256: cleanText(input.certificateFingerprintSha256, 64), publicKeySha256: cleanText(input.certificatePublicKeySha256, 64), expiresAt: cleanIsoDate(input.certificateExpiresAt) } : null;
   if (plan.role !== "egress") state.nodes.push({ id: nodeId, name: plan.name, protocol: "nowhere", machineId, uri: plan.links.anywhere[0].uri, enabled: true, tags: ["托管", "Nowhere"], source: "manual", sourceId: "", certificate });
-  state.managedInstances.push({ id: plan.id, kind: "nowhere", name: plan.name, machineId, nodeId, status: "draft", role: plan.role, out: plan.out, sharedKey: plan.role === "egress" ? input.key : "", version: plan.version, publicHost: plan.summary.publicHost, listenHost: input.listenHost === undefined ? "127.0.0.1" : cleanText(input.listenHost, 253), port: plan.summary.port, tcpPort: plan.summary.tcpPort, udpPort: plan.summary.udpPort, tcpCarrier: plan.summary.tcpCarrier, udpCarrier: plan.summary.udpCarrier, client: plan.summary.client, network: plan.summary.network, tls: plan.summary.tls, alpn: plan.summary.alpn, rate: plan.summary.rate, etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", dial4: plan.summary.dial4, dial6: plan.summary.dial6, socks: cleanText(input.socks, 512) || "none", log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s", vectorSocks: cleanText(input.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(input.vectorSni, 253) || "none", vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph, cipher: plan.summary.cipher, transportMemoryProfile: plan.summary.transportMemoryProfile, certificateId: certificate?.assetId || "", certificateMode: plan.certificateMode, certificatePath: plan.certificatePath, privateKeyPath: plan.privateKeyPath, certificateHost: plan.certificateHost, certificateDays: plan.certificateDays, extensionEnvironment: cleanNowhereExtensions(input.extensionEnvironment), binarySource: input.binarySource === "copy" ? "copy" : "download", createdAt: now, updatedAt: now, lastError: "", lastOperationId: "" });
+  state.managedInstances.push({ id: plan.id, kind: "nowhere", name: plan.name, machineId, nodeId, status: "draft", role: plan.role, out: plan.out, sharedKey: plan.role === "egress" ? input.key : "", version: plan.version, publicHost: plan.summary.publicHost, listenHost: input.listenHost === undefined ? "127.0.0.1" : cleanText(input.listenHost, 253), port: plan.summary.port, tcpPort: plan.summary.tcpPort, udpPort: plan.summary.udpPort, tcpCarrier: plan.summary.tcpCarrier, udpCarrier: plan.summary.udpCarrier, client: plan.summary.client, network: plan.summary.network, tls: plan.summary.tls, alpn: plan.summary.alpn, rate: plan.summary.rate, etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", dial4: plan.summary.dial4, dial6: plan.summary.dial6, socks: cleanText(input.socks, 512) || "none", log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s", vectorSocks: cleanText(input.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(input.vectorSni, 253) || "none", vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph, grade: plan.summary.grade, cipher: plan.summary.cipher, transportMemoryProfile: plan.summary.transportMemoryProfile, certificateId: certificate?.assetId || "", certificateMode: plan.certificateMode, certificatePath: plan.certificatePath, privateKeyPath: plan.privateKeyPath, certificateHost: plan.certificateHost, certificateDays: plan.certificateDays, extensionEnvironment: cleanNowhereExtensions(input.extensionEnvironment), binarySource: input.binarySource === "copy" ? "copy" : "download", createdAt: now, updatedAt: now, lastError: "", lastOperationId: "" });
   state.revision += 1; writeState(cleanState(state));
   return { state: readState(), instanceId: plan.id, plan: publicManagedNowherePlan(plan) };
 }
@@ -1541,7 +1547,7 @@ function managedNowhereMetadata(input, plan) {
     etar: plan.summary.etar, dial: cleanText(input.dial, 253) || "auto", dial4: plan.summary.dial4, dial6: plan.summary.dial6, socks: cleanText(input.socks, 512) || "none",
     log: plan.summary.log, telemetryInterval: cleanText(input.telemetryInterval, 16) || "1s",
     vectorSocks: cleanText(input.vectorSocks, 512) || "127.0.0.1:1080", vectorSni: cleanText(input.vectorSni, 253) || "none",
-    vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph, cipher: plan.summary.cipher,
+    vectorPin: cleanText(input.vectorPin, 64) || "none", vectorMux: Number(input.vectorMux) === 1 ? 1 : 0, morph: plan.summary.morph, grade: plan.summary.grade, cipher: plan.summary.cipher,
     transportMemoryProfile: plan.summary.transportMemoryProfile, certificateMode: plan.certificateMode,
     certificatePath: plan.certificatePath, privateKeyPath: plan.privateKeyPath, certificateHost: plan.certificateHost,
     certificateDays: plan.certificateDays, extensionEnvironment: cleanNowhereExtensions(input.extensionEnvironment),
@@ -1645,12 +1651,23 @@ function prepareManagedNowhereUpdate(params) {
   if (input.cipher !== read.completedResult.configuration.cipher && params.cipherPeersReady !== true) {
     throw new Error("请确认客户端或对端支持所选 Morph 加密算法后再切换");
   }
+  if (input.grade !== read.completedResult.configuration.grade && params.gradePeersReady !== true) {
+    throw new Error("请确认客户端或对端支持所选 Morph 档位后再切换");
+  }
   input.machineId = instance.machineId;
   input = certificateDeploymentInput(state, input, machine.id, "nowhere");
   const plan = planManagedNowhere(input);
   if (plan.role !== "egress" && !plan.links.anywhere.length) throw new Error("托管节点需要保留 Anywhere 输出");
   if (hasManagedNowherePortConflict(state.managedInstances, instance.machineId, plan.summary, instance.id)) throw new Error("该宿主已有托管实例使用相同的传输协议与端口");
   const operationId = requestOperationId(params); const expiresAt = Date.now() + MANAGED_OPERATION_TTL_MS;
+  if (node && plan.summary.grade === "core") {
+    const nextNode = { ...node, uri: plan.links.anywhere[0].uri };
+    for (const subscription of state.subscriptions) {
+      if (subscription.ajson.overrides[node.id] && selectedNodeIds(subscription).includes(node.id)) {
+        ajsonProxy(nextNode, subscription.ajson);
+      }
+    }
+  }
   const metadata = { ...input, certificateId: input.certificateAssetId || "", sharedKey: plan.role === "egress" ? input.key : "" }; delete metadata.key;
   const expectedHash = crypto.createHash("sha256").update(plan.environment).digest("hex");
   retainOperation(MANAGED_OPERATIONS, operationId, { instanceId: instance.id, machineId: machine.id, action: "update", expiresAt, metadata, uri: plan.links.anywhere[0]?.uri || "", expectedHash });
@@ -2052,8 +2069,9 @@ function prepareNodeConnectivityCheck(params) {
   const state = readState(); const node = state.nodes.find((item) => item.id === cleanText(params && params.nodeId, 64)); const source = state.machines.find((item) => item.id === cleanText(params && params.sourceMachineId, 64) && item.monitorClientId); if (!node || !source) throw new Error("节点或检测来源不存在");
   let command; let expectedIp = ""; try { const host = new URL(node.uri).hostname.replace(/^\[|\]$/g, ""); expectedIp = isIP(host) ? host : ""; } catch (_) {}
   if (node.protocol === "nowhere") { const nwInstance = state.managedInstances.find(item => item.nodeId === node.id); const share = new URL(node.uri);
-    parseNode(node);if(nwInstance&&nowhereCapabilities(nwInstance.version).protocolGeneration!==3)throw new Error('仅支持 NW3 连接检查');
-    const nw3Input = nwInstance ? { ...managedNowherePlanInput(nwInstance, node), up: nwInstance.tcpPort ? "tcp" : "udp" } : { version: share.searchParams.get("cipher") === "aes" ? "v3.4.0" : "v3.0.0", cipher: share.searchParams.get("cipher") || "chacha", publicHost: share.hostname.replace(/^\[|\]$/g, ""), key: decodeURIComponent(share.username), tcpPort: share.searchParams.get("net") === "udp" ? 0 : Number(share.port), udpPort: share.searchParams.get("net") === "udp" ? Number(share.port) : 0, morph: Number(share.searchParams.get("morph") ?? 1), vectorPin: share.searchParams.get("pin") || node.certificate?.fingerprintSha256 || "none", vectorSni: share.searchParams.get("sni") || "none" };
+    const { morph, grade, cipher } = parseNode(node);
+    if(nwInstance&&nowhereCapabilities(nwInstance.version).protocolGeneration!==3)throw new Error('仅支持 NW3 连接检查');
+    const nw3Input = nwInstance ? { ...managedNowherePlanInput(nwInstance, node), up: nwInstance.tcpPort ? "tcp" : "udp" } : { version: grade === "core" ? "v3.5.0" : cipher === "aes" ? "v3.4.0" : "v3.0.0", grade, cipher, publicHost: share.hostname.replace(/^\[|\]$/g, ""), key: decodeURIComponent(share.username), tcpPort: share.searchParams.get("net") === "udp" ? 0 : Number(share.port), udpPort: share.searchParams.get("net") === "udp" ? Number(share.port) : 0, morph, vectorPin: share.searchParams.get("pin") || node.certificate?.fingerprintSha256 || "none", vectorSni: share.searchParams.get("sni") || "none" };
     const url = new URL(buildVectorLink(nw3Input)); url.protocol = "vector:"; if (!url.searchParams.has("sni")) url.searchParams.set("sni", "none"); if (!url.searchParams.has("pin")) url.searchParams.set("pin", state.managedInstances.find(item => item.nodeId === node.id)?.observedCertificatePin || node.certificate?.fingerprintSha256 || "none"); url.hash = ""; command = buildConnectivityCommand({ kind: "vector", uri: url.toString(), minimumNowhereVersion: nwInstance?.version || "v3.2.0", expectedIp }); }
   else { const outbound = singBoxOutbound(node); if (!outbound) throw new Error("该协议暂不支持自动连接检查"); command = buildConnectivityCommand({ kind: "sing-box", outbound, expectedIp }); }
   return { operationId: requestOperationId(params), nodeId: node.id, sourceMachineId: source.id, clientId: source.monitorClientId, command };

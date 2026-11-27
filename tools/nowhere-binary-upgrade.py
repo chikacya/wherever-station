@@ -102,6 +102,8 @@ try:
         if not re.fullmatch(key_pattern, urllib.parse.unquote(portal.username or '')):
             raise RuntimeError('shared-key-upgrade-required')
         query = dict(urllib.parse.parse_qsl(portal.query))
+        if target_parts < (3, 5, 0) and query.get('grade') == 'core':
+            raise RuntimeError('core-version-required')
         if target_parts < (3, 4, 0) and query.get('cipher') == 'aes':
             raise RuntimeError('unsupported-version')
         if target_parts >= (3, 2, 0):
@@ -191,7 +193,7 @@ except Exception as exc:
     known = {
         'unsupported-architecture', 'release-not-found', 'release-asset-not-found', 'release-checksum-missing',
         'release-checksum-mismatch', 'binary-not-found', 'binary-version-mismatch',
-        'prelude-clients-required', 'configuration-changed', 'stop-failed', 'start-failed', 'shared-key-upgrade-required', 'next-key-upgrade-required',
+        'core-version-required', 'prelude-clients-required', 'configuration-changed', 'stop-failed', 'start-failed', 'shared-key-upgrade-required', 'next-key-upgrade-required',
     }
     error = str(exc) if str(exc) in known else 'upgrade-failed'
     stop(error, rolledBack=restored, state=active(P['unitName']))

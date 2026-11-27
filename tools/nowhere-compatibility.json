@@ -13,9 +13,10 @@
         "v3.0.1",
         "v3.1.0",
         "v3.2.0",
-        "v3.4.0"
+        "v3.4.0",
+        "v3.5.0"
       ],
-      "automaticVersion": "v3.4.0",
+      "automaticVersion": "v3.5.0",
       "previewVersions": []
     }
   ],

@@ -80,6 +80,8 @@ def certificate_details(values, state):
             endpoint_host = '[' + host + ']' if ':' in host else host
             uri = 'nowhere://' + quote(values.get('NOWHERE_KEY_VALUE', ''), safe='') + '@' + endpoint_host + ':' + str(port)
             options = {'morph': values.get('NOWHERE_MORPH_VALUE', '0')}
+            if values.get('NOWHERE_GRADE_VALUE') == 'core':
+                options['grade'] = 'core'
             if values.get('NOWHERE_CIPHER_VALUE') == 'aes':
                 options['cipher'] = 'aes'
             uri += '?' + urlencode(options)

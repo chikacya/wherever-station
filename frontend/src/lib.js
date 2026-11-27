@@ -150,7 +150,7 @@ export function normalizeNodeName(value) {
     return name;
   }
 }
-export const NOWHERE_RELEASE_FALLBACK = Object.freeze(["v3.4.0", "v3.2.0", "v3.1.0", "v3.0.1", "v3.0.0"]);
+export const NOWHERE_RELEASE_FALLBACK = Object.freeze(["v3.5.0", "v3.4.0", "v3.2.0", "v3.1.0", "v3.0.1", "v3.0.0"]);
 export function normalizeNowhereReleases(input) {
   const seen = new Set();
   return (Array.isArray(input) ? input : [])
@@ -497,6 +497,7 @@ export function nowhereVersionCapabilities(value) {
     authenticatedPrelude: adapter.generation === 3 && atLeast(3, 1, 0),
     requiresAuthenticatedPrelude: adapter.generation === 3 && atLeast(3, 2, 0),
     morphCipher: atLeast(3, 4, 0),
+    morphGrade: atLeast(3, 5, 0),
     fadePrelude: adapter.generation === 3 && atLeast(3, 0, 1),
   };
 }

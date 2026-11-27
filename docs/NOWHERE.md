@@ -2,7 +2,7 @@
 
 [简体中文](NOWHERE.zh-CN.md)
 
-Wherever Station manages Nowhere without requiring `nowhere-sh`. It owns installation, configuration, service lifecycle, telemetry, certificates, and share URI generation for instances created through the plugin. Only NW3 is supported; new instances default to stable v3.4.0. NW2 adapters, management and migration have been removed; historical records and backups are preserved.
+Wherever Station manages Nowhere without requiring `nowhere-sh`. It owns installation, configuration, service lifecycle, telemetry, certificates, and share URI generation for instances created through the plugin. Only NW3 is supported; new instances default to stable v3.5.0. NW2 adapters, management and migration have been removed; historical records and backups are preserved.
 
 ## Continuous compatibility
 
@@ -66,7 +66,7 @@ Keep the page open during submission. Once submitted, Agent tasks continue indep
 
 Advanced settings expose fade/full8/low7 generation policies, independently of authentication capability. Existing explicit settings remain intact. Obsolete NOW_UDP_DATA_BUF_SIZE is removed for 3.2.0. Connectivity probes report an outdated native client separately from a server failure.
 
-The default is v3.4.0, and v3.2.0 remains a verified stable target. v3.3.0 is skipped because its Linux x86-64 GNU build may crash on CPUs without AVX.
+The default is v3.5.0, and v3.4.0 remains a verified stable target. v3.3.0 is skipped because its Linux x86-64 GNU build may crash on CPUs without AVX.
 
 With Morph enabled, the main form offers ChaCha20 (the default) and AES-128-CTR. Both peers must select the same cipher, and AES requires a compatible runtime. AES share links include `cipher=aes`. Confirm client support before switching a deployed instance and refresh the subscription after saving.
 
@@ -76,3 +76,5 @@ With Morph enabled, the main form offers ChaCha20 (the default) and AES-128-CTR.
 Verified prereleases are labelled and may be selected manually. Batch updates offer the two latest verified versions and default to a stable version. Binary upgrades preserve the current Morph cipher and subscription link.
 
 Batch targets are validated server-side and persisted with the batch. Running batches cannot change target; reloads retain it. Instances already at or above the selected version are skipped, so batch updates never downgrade them.
+
+Full is the default Morph grade. Core masks selected bytes and requires matching settings at both ends. Vector uses `morph=1&grade=core`, Anywhere share links use `morph=2`, and native AJSON uses `morph: true` with `grade: "core"`. The grade and cipher are independent. A Core instance must switch to Full before downgrading to a runtime without Core support.

@@ -44,6 +44,7 @@ function payloadFor(plan) {
     network: plan.summary.network,
     version: plan.version,
     cipher: plan.summary.cipher,
+    grade: plan.summary.grade,
     certificateMode: plan.certificateMode,
     certificatePath: plan.certificatePath,
     privateKeyPath: plan.privateKeyPath,

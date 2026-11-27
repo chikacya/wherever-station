@@ -1,3 +1,4 @@
+const { anywhereNowhereUri } = require('./nowhere-config');
 const { nativeFromUri, validateNative, checkAdvanced, merge, object } = require('./anywhere-native');
 const SCHEMES = new Set(['nowhere','vless','hysteria2','hy2','sudoku','trojan','anytls','ss','socks5','socks','rfc','http','https']);
 function ajsonSupported(node) { return SCHEMES.has(String(node.uri || '').split(':', 1)[0].toLowerCase()); }
@@ -38,7 +39,7 @@ function cleanAjsonSettings(value) {
 }
 function ajsonProxy(node,config) {
   const base=nativeFromUri(node),entry=config.overrides[node.id];
-  if(!base){if(entry&&(entry.template||Object.keys(entry.settings).length))throw Error('此节点 URI 含尚未适配的参数，不能覆盖原生高级设置：'+node.name);return {id:node.id,name:node.name||'Proxy',link:node.uri};}
+  if(!base){if(entry&&(entry.template||Object.keys(entry.settings).length))throw Error('此节点 URI 含尚未适配的参数，不能覆盖原生高级设置：'+node.name);return {id:node.id,name:node.name||'Proxy',link:anywhereNowhereUri(node.uri)};}
   const settings=entry?merge(entry.template?config.templates[entry.template]:{},entry.settings):{};
   const result=validateNative(merge(base,settings));
   if(entry?.template){const emitted={...result,use:entry.template};for(const [key,value]of Object.entries(config.templates[entry.template]))if(JSON.stringify(emitted[key])===JSON.stringify(value))delete emitted[key];return emitted;}

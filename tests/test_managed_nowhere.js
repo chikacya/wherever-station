@@ -80,3 +80,17 @@ for (const link of [...aesPlan.links.vector, ...aesPlan.links.anywhere]) {
 assert(!planManagedNowhere({ ...aesInput, cipher: "chacha" }).clientLink.includes("cipher="));
 assert.throws(() => planManagedNowhere({ ...aesInput, version: "v3.2.0" }), /AES/);
 assert.throws(() => planManagedNowhere({ ...aesInput, morph: 0 }), /AES/);
+
+const corePlan = planManagedNowhere({ ...aesInput, version: "v3.5.0", grade: "core" });
+const decode = require("../tools/nowhere-config").decodeNowhereConfig;
+const envValues = Object.fromEntries(corePlan.environment.trim().split("\n").map(line => {
+  const pivot = line.indexOf("=");
+  return [line.slice(0, pivot), JSON.parse(line.slice(pivot + 1))];
+}));
+assert.equal(decode(envValues).grade, "core");
+assert.equal(new URL(envValues.NOWHERE_PORTAL).searchParams.get("grade"), "core");
+assert.equal(new URL(corePlan.links.anywhere[0].uri).searchParams.get("morph"), "2");
+assert.equal(new URL(corePlan.links.vector[0].uri).searchParams.get("grade"), "core");
+assert.equal(new URL(corePlan.links.vector[0].uri).searchParams.get("morph"), "1");
+assert.throws(() => planManagedNowhere({ ...aesInput, grade: "core" }), /Core Morph/);
+assert(!planManagedNowhere({ ...aesInput, version: "v3.5.0" }).clientLink.includes("grade="));

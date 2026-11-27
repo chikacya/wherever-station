@@ -88,7 +88,7 @@ const NOWHERE_RESERVED_EXTENSION_KEYS = new Set([
   "NOWHERE_DIAL_VALUE", "NOWHERE_DIAL4_VALUE", "NOWHERE_DIAL6_VALUE", "NOWHERE_SOCKS_VALUE", "NOWHERE_LOG_VALUE", "NOWHERE_TELEMETRY_INTERVAL_VALUE",
   "NOWHERE_VECTOR_SOCKS_VALUE", "NOWHERE_VECTOR_SNI_VALUE", "NOWHERE_VECTOR_PIN_VALUE", "NOWHERE_VECTOR_MUX_VALUE",
   "NOWHERE_TCP_PORT_VALUE", "NOWHERE_UDP_PORT_VALUE", "NOWHERE_TCP_CARRIER_VALUE", "NOWHERE_UDP_CARRIER_VALUE",
-  "NOWHERE_MORPH_VALUE", "NOWHERE_CIPHER_VALUE", "NOWHERE_TRANSPORT_MEMORY_PROFILE_VALUE", "NOWHERE_CERTIFICATE_MODE_VALUE",
+  "NOWHERE_MORPH_VALUE", "NOWHERE_GRADE_VALUE", "NOWHERE_CIPHER_VALUE", "NOWHERE_TRANSPORT_MEMORY_PROFILE_VALUE", "NOWHERE_CERTIFICATE_MODE_VALUE",
   "NOWHERE_CERTIFICATE_HOST_VALUE", "NOWHERE_CERTIFICATE_DAYS_VALUE", "NOW_TELEMETRY_INTERVAL", "NOW_TRANSPORT_MEMORY_PROFILE",
 ]);
 
@@ -121,12 +121,19 @@ function NowhereMorphFields({ values, onPatch, capabilities }) {
     <Field label="Morph" hint="同一路径两端的 Morph 设置必须一致">
       <select value={values.morph || 0} onChange={event => {
         const morph = Number(event.target.value);
-        onPatch(morph ? { morph } : { morph, cipher: "chacha" });
+        onPatch(morph ? { morph } : { morph, grade: "full", cipher: "chacha" });
       }}>
         <option value={0}>关闭</option>
         <option value={1}>开启</option>
       </select>
     </Field>
+    {Number(values.morph) === 1 && capabilities.morphGrade &&
+      <Field label="Morph 档位" hint="Core 仅掩码部分数据，两端需支持并选择同一档位">
+        <select value={values.grade || "full"} onChange={event => onPatch({ grade: event.target.value })}>
+          <option value="full">Full（默认）</option>
+          <option value="core">Core</option>
+        </select>
+      </Field>}
     {Number(values.morph) === 1 && capabilities.morphCipher &&
       <Field label="Morph 加密算法" hint="AES 需要客户端支持，且两端选择一致">
         <select value={values.cipher || "chacha"} onChange={event => onPatch({ cipher: event.target.value })}>
@@ -283,7 +290,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
   const [nowhereReleases, setNowhereReleases] = useState({
     loading: false,
     releases: NOWHERE_RELEASE_FALLBACK.map((tag) => ({ tag, publishedAt: "" })),
-    latest: latestStableNowhereRelease(NOWHERE_RELEASE_FALLBACK.map(tag=>({tag})))?.tag || "v3.4.0",
+    latest: latestStableNowhereRelease(NOWHERE_RELEASE_FALLBACK.map(tag=>({tag})))?.tag || "v3.5.0",
     stale: true,
     error: "",
   });
@@ -453,7 +460,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       ...current,
       binarySource: selection === "copy" ? "copy" : "download",
       version: selection === "copy" ? current.version : selection === "custom" ? "" : selection,
-      role: "portal", out: "direct", vectorMux: 0, cipher: "chacha", morph: selection.startsWith("v3.") ? 1 : 0,
+      role: "portal", out: "direct", vectorMux: 0, grade: "full", cipher: "chacha", morph: selection.startsWith("v3.") ? 1 : 0,
     }));
     setPreview(null);
   };
@@ -677,7 +684,7 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
       const saved = await executeTrackedManagedTask(spec, otp);
       if (!saved.result.ok) throw new Error(saved.result.error || "读取配置失败");
       if (upgradeTarget) setNowhereManager(null);
-      setConfigEdit({ instanceId: instance.id, name: instance.name, upgradeTarget, originalKey: saved.result.configuration.key, originalCipher: saved.result.configuration.cipher || "chacha", readOperationId: spec.operationId, values: { ...saved.result.configuration, name: instance.name, machineId: instance.machineId, certificateAssetId: instance.certificateId || "" } });
+      setConfigEdit({ instanceId: instance.id, name: instance.name, upgradeTarget, originalKey: saved.result.configuration.key, originalCipher: saved.result.configuration.cipher || "chacha", originalGrade: saved.result.configuration.grade || "full", readOperationId: spec.operationId, values: { ...saved.result.configuration, name: instance.name, machineId: instance.machineId, certificateAssetId: instance.certificateId || "" } });
     } catch (error) { notify(error.message, true); }
     finally { endBusy(busyKey); }
   };
@@ -697,11 +704,12 @@ function ManagedNowhereDeploy({ state, setState, clients, me, notify, persist, o
   const saveNowhereConfig = async () => {
     if (!configEdit) return; const busyKey = `update:${configEdit.instanceId}`; if (hasBusy(busyKey)) return;
     const cipherChanged = (configEdit.values.cipher || "chacha") !== configEdit.originalCipher;
-    if (cipherChanged && !confirm("确定切换 Morph 加密算法？请先确认连接此实例的客户端或对端支持新算法。保存成功后请刷新订阅。")) return;
+    const gradeChanged = (configEdit.values.grade || "full") !== configEdit.originalGrade;
+    if ((cipherChanged || gradeChanged) && !confirm("确定切换 Morph 设置？请先确认客户端或对端支持所选档位和算法。保存成功后请刷新订阅。")) return;
     const otp = operationOtp(); if (otp === null) return;
     beginBusy(busyKey); setConfigError("");
     try {
-      const spec = await rpc("proxyConsole:prepareManagedNowhereUpdate", { instanceId: configEdit.instanceId, readOperationId: configEdit.readOperationId, changes: configEdit.values, cipherPeersReady: cipherChanged, requestId: crypto.randomUUID() });
+      const spec = await rpc("proxyConsole:prepareManagedNowhereUpdate", { instanceId: configEdit.instanceId, readOperationId: configEdit.readOperationId, changes: configEdit.values, cipherPeersReady: cipherChanged, gradePeersReady: gradeChanged, requestId: crypto.randomUUID() });
       const saved = await executeTrackedManagedTask(spec, otp);
       setState(saved.state);
       if (!saved.result.ok) throw new Error(`${saved.result.error || "保存失败"}${saved.result.rolledBack ? "，已恢复旧配置" : ""}`);

@@ -106,7 +106,7 @@ const state = {
     await dialog.getByLabel('目标版本',{exact:true}).selectOption('v3.2.0');await dialog.getByText('预发布版需配合兼容的客户端使用，可手动选择更新。',{exact:true}).waitFor();assert(!(await dialog.getByRole('button',{name:'切换此实例',exact:true}).isDisabled()));
     await page.screenshot({path:require('node:path').join(__dirname,'../artifacts/nowhere-preview-0759/manager.png')});
     await dialog.getByRole('button',{name:'关闭',exact:true}).last().click();state.managedInstances[0].version='v2.2.1';await page.reload();await page.locator('.nav').getByRole('button',{name:'部署节点',exact:true}).click();await page.getByText('已停止支持',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'版本与证书',exact:true}).count(),0);
-    state.managedInstances[0].version = 'v3.4.0';
+    state.managedInstances[0].version = 'v3.5.0';
     await page.reload();
     await page.locator('.nav').getByRole('button', { name: '部署节点', exact: true }).click();
     await page.getByRole('button', { name: '编辑运行配置', exact: true }).click();
@@ -114,11 +114,17 @@ const state = {
     const cipher = dialog.getByLabel(/^Morph 加密算法/);
     assert.equal(await cipher.inputValue(), 'chacha');
     assert(await cipher.isVisible(), 'cipher selection is hidden in advanced settings');
+    const grade = dialog.getByLabel(/^Morph 档位/);
+    assert.equal(await grade.inputValue(), 'full');
+    assert(await grade.isVisible());
+    await grade.selectOption('core');
     await cipher.selectOption('aes');
     const morph = dialog.locator('label').filter({ has: page.getByText('Morph', { exact: true }) }).locator('select');
     await morph.selectOption('0');
     assert.equal(await cipher.count(), 0);
+    assert.equal(await grade.count(), 0);
     await morph.selectOption('1');
+    assert.equal(await grade.inputValue(), 'full');
     assert.equal(await cipher.inputValue(), 'chacha');
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ ok: true, previewSelectable:true,stableDefault:true,unadaptedPreviewBlocked:true,NW3KeyRotation: true, NW2ReadOnlyRecord:true, explicitGeneration: true, savePublishesLink: true, generationBoundaryPreserved: true, noAutomaticUpgrade: true }));

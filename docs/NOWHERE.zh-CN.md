@@ -2,7 +2,7 @@
 
 [English](NOWHERE.md)
 
-Wherever Station 无需依赖 `nowhere-sh` 即可管理 Nowhere。对于由插件创建的实例，它负责安装、配置、服务生命周期、遥测、证书和分享 URI。目前仅支持 NW3，新建实例默认使用稳定版 3.4.0。NW2 的适配、新建、管理和迁移入口已移除；历史记录与备份不自动删除。
+Wherever Station 无需依赖 `nowhere-sh` 即可管理 Nowhere。对于由插件创建的实例，它负责安装、配置、服务生命周期、遥测、证书和分享 URI。目前仅支持 NW3，新建实例默认使用稳定版 3.5.0。NW2 的适配、新建、管理和迁移入口已移除；历史记录与备份不自动删除。
 
 ## 持续适配
 
@@ -74,7 +74,7 @@ NW3 遥测只读 Hello 和周期 Snapshot，不发送订阅指令；保留进程
 
 官方依据：[3.0.1](https://github.com/NodePassProject/Nowhere/releases/tag/v3.0.1)、[3.1.0](https://github.com/NodePassProject/Nowhere/releases/tag/v3.1.0)、[3.2.0](https://github.com/NodePassProject/Nowhere/releases/tag/v3.2.0)。
 
-默认使用 3.4.0，3.2.0 为已验证稳定版。3.3.0 因 Linux x86‑64 GNU 的非 AVX CPU 兼容问题跳过。
+默认使用 3.5.0，批量更新还可选择已验证的稳定版 3.4.0。3.3.0 因 Linux x86‑64 GNU 的非 AVX CPU 兼容问题跳过。
 
 Morph 开启后可在普通表单选择 ChaCha20（默认）或 AES‑128‑CTR。AES 需要支持该算法的内核，两端设置必须一致。使用 AES 时，分享链接带有 `cipher=aes`。切换已部署的实例前请确认客户端或对端兼容，切换后刷新订阅。
 
@@ -86,3 +86,5 @@ Morph 开启后可在普通表单选择 ChaCha20（默认）或 AES‑128‑CTR�
 
 
 批次提交后目标版本写入持久化记录，刷新页面或返回进度时保持不变；运行中不能更改目标。已是目标版本或版本更高的实例跳过，不批量降级。后端同时验证目标是否属于最新两个版本，不仅限制下拉框。
+
+Morph 默认使用 Full 档位。Core 只掩码部分数据，两端必须使用相同档位和算法。Vector 使用 `morph=1&grade=core`，Anywhere 分享链接使用 `morph=2`，原生 AJSON 使用 `morph: true` 和 `grade: "core"`。要降级到不支持 Core 的内核，需先切回 Full。

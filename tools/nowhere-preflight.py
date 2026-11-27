@@ -51,7 +51,8 @@ try:
         lines = ((checked.stdout or '') + '\n' + (checked.stderr or '')).strip().splitlines()
         version = lines[0][:160] if lines else ''
         match = re.search(r'v(\d+)\.(\d+)\.(\d+)', version)
-        if P.get('cipher') == 'aes' and (not match or tuple(map(int, match.groups())) < (3, 4, 0)):
+        minimum = (3, 5, 0) if P.get('grade') == 'core' else (3, 4, 0) if P.get('cipher') == 'aes' else None
+        if minimum and (not match or tuple(map(int, match.groups())) < minimum):
             source = ''
     emit({
         'ok': True,

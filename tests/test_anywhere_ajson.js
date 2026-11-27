@@ -81,3 +81,19 @@ test('Nowhere Morph cipher survives native and pinned AJSON export',()=>{
  const pinned=uri+'&pin='+'b'.repeat(64);
  assert.equal(ajsonProxy({...node,uri:pinned},cleanAjsonSettings()).link,pinned);
 });
+
+test('Core Morph renders to Anywhere links and native AJSON without losing the pin',()=>{
+ const {ajsonProxy}=require('../tools/anywhere-ajson');
+ const base='nowhere://'+'a'.repeat(32)+'@test.example:2078?cipher=aes';
+ const node={id:'core',name:'Core',uri:base+'&morph=1&grade=core'};
+ for(const uri of [node.uri,base+'&morph=2']){
+  const p=ajsonProxy({...node,uri},cleanAjsonSettings());
+  assert.equal(p.grade,'core');
+  assert.equal(p.morph,true);
+ }
+ const pin='b'.repeat(64);
+ const exported=new URL(ajsonProxy({...node,uri:node.uri+'&pin='+pin},cleanAjsonSettings()).link);
+ assert.equal(exported.searchParams.get('morph'),'2');
+ assert.equal(exported.searchParams.has('grade'),false);
+ assert.equal(exported.searchParams.get('pin'),pin);
+});

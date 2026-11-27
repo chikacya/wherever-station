@@ -119,7 +119,9 @@ async function main() {
     await dialog.getByRole('tab', { name: /2\. 代理组/ }).click();
     await dialog.getByRole('button', { name: '添加代理组' }).click();
     const source = dialog.locator('.palette-node').first();
-    const box = await source.locator('.drag-handle').boundingBox();
+    const handle = source.locator('.drag-handle');
+    await handle.hover();
+    const box = await handle.boundingBox();
     if (!box) throw new Error('Missing draggable node');
     const pointer = { x: box.x + box.width / 2 + 24, y: box.y + box.height / 2 + 18 };
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -132,14 +134,17 @@ async function main() {
     const offset = Math.hypot(overlayBox.x + overlayBox.width / 2 - pointer.x, overlayBox.y + overlayBox.height / 2 - pointer.y);
     if (offset > 8) throw new Error(`Drag overlay is ${offset.toFixed(1)}px away from the pointer`);
     await page.mouse.up();
-    await page.waitForTimeout(250);
+    await overlay.waitFor({ state: 'detached', timeout: 5000 });
     const card = dialog.locator('.palette-node').first();
-    const cardText = await card.locator('.node-copy').boundingBox();
+    const cardLabel = card.locator('.node-copy');
+    const start = { x: 8, y: 8 };
+    await cardLabel.hover({ position: start });
+    const cardText = await cardLabel.boundingBox();
     const groupDrop = dialog.locator('.group-drop').first();
     if (!cardText || !(await groupDrop.boundingBox())) throw new Error('Missing node card or group drop area');
-    await page.mouse.move(cardText.x + cardText.width / 2, cardText.y + cardText.height / 2);
     await page.mouse.down();
-    await page.mouse.move(cardText.x + cardText.width / 2 + 12, cardText.y + cardText.height / 2 + 12, { steps: 4 });
+    await page.mouse.move(cardText.x + start.x + 16, cardText.y + start.y + 12, { steps: 4 });
+    await overlay.waitFor({ state: 'visible', timeout: 5000 });
     const initialTarget = await groupDrop.boundingBox();
     let dropPointer = { x: initialTarget.x + initialTarget.width / 2, y: initialTarget.y + initialTarget.height / 2 };
     for (let attempt = 0; attempt < 4; attempt++) {

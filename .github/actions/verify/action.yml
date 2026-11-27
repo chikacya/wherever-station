@@ -22,6 +22,8 @@ runs:
     - run: npm run test:e2e
       shell: bash
     - name: Validate generated sing-box configuration
+      env:
+        WHEREVER_GITHUB_TOKEN: ${{ github.token }}
       shell: bash
       run: |
         binary="$RUNNER_TEMP/wherever-check-sing-box"

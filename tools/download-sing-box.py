@@ -18,7 +18,11 @@ def install_release(binary, version):
     api = 'https://api.github.com/repos/SagerNet/sing-box/releases/tags/v' + version
     with tempfile.TemporaryDirectory(prefix='wherever-singbox-') as temporary:
         archive = os.path.join(temporary, asset)
-        request = urllib.request.Request(api, headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'Wherever-Station'})
+        headers = {'Accept': 'application/vnd.github+json', 'User-Agent': 'Wherever-Station'}
+        token = os.environ.get('WHEREVER_GITHUB_TOKEN')
+        if token:
+            headers['Authorization'] = 'Bearer ' + token
+        request = urllib.request.Request(api, headers=headers)
         with urllib.request.urlopen(request, timeout=30) as response:
             release = json.load(response)
         metadata = next((item for item in release.get('assets', []) if item.get('name') == asset), None)
